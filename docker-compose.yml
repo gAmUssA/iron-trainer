@@ -1,0 +1,16 @@
+services:
+  iron-trainer:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /data
+      CORS_ORIGINS: http://localhost:8000
+    volumes:
+      - iron_data:/data
+
+volumes:
+  iron_data:

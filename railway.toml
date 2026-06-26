@@ -1,0 +1,10 @@
+# Railway config-as-code. Builds the repo Dockerfile and health-checks the API.
+# Set service env vars in the Railway dashboard (or `railway variables`).
+[build]
+builder = "dockerfile"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 100
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

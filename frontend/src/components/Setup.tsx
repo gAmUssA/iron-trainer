@@ -1,0 +1,192 @@
+import { useState } from "react";
+import { api, type AppStatus, type AthleteResponse, type Profile } from "../api";
+
+export function ConnectCard({
+  status,
+  athlete,
+  onSynced,
+}: {
+  status: AppStatus;
+  athlete: AthleteResponse;
+  onSynced: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function doSync(full: boolean) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api.sync(full);
+      setMsg(
+        `Synced ${r.fetched} activities (${r.total_activities} total)` +
+          (r.duplicates_removed ? ` · ${r.duplicates_removed} duplicates removed` : "") +
+          (r.pruned_old ? ` · ${r.pruned_old} older than retention pruned` : "") +
+          (r.profile_seeded ? " · thresholds inferred" : "")
+      );
+      onSynced();
+    } catch (e) {
+      setMsg(`Sync failed: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doDedup() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api.dedup(true);
+      const more = r.device_remaining ? ` · ${r.device_remaining} lookups left — click again` : "";
+      setMsg(`De-dup: ${r.duplicates} duplicates across ${r.clusters} events${more}`);
+      onSynced();
+    } catch (e) {
+      setMsg(`De-dup failed: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const rows = [
+    { on: status.strava_configured, label: "Strava API keys configured" },
+    {
+      on: athlete.connected,
+      label: `Strava account connected${athlete.profile.name ? ` (${athlete.profile.name})` : ""}`,
+    },
+    { on: status.anthropic_configured, label: "Claude (AI planner) configured" },
+  ];
+
+  return (
+    <div className="card" id="tour-setup" style={{ display: "flex", flexDirection: "column" }}>
+      <div className="card-label">Setup</div>
+      <div className="status-list">
+        {rows.map((r, i) => (
+          <div className={`status-row${r.on ? " on" : ""}`} key={i}>
+            <span className={`status-dot${r.on ? " ok" : ""}`} />
+            <span className="status-text">{r.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="actions" style={{ marginTop: 18 }}>
+        {!athlete.connected ? (
+          <a className="btn primary" href={api.connectUrl} aria-disabled={!status.strava_configured}>
+            Connect Strava
+          </a>
+        ) : (
+          <>
+            <button className="btn primary" disabled={busy} onClick={() => doSync(false)}>
+              {busy ? "Working…" : "Sync new"}
+            </button>
+            <button className="btn" disabled={busy} onClick={() => doSync(true)}>
+              Full backfill
+            </button>
+            <button className="btn" disabled={busy} onClick={doDedup} title="Bike → Garmin Edge, swim/run → Apple Watch">
+              Re-run de-dup
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="hint">
+        {msg ??
+          (status.strava_configured
+            ? "Sync pulls your history; duplicates from multiple devices are removed automatically."
+            : "Add STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET to .env and restart the backend.")}
+      </div>
+    </div>
+  );
+}
+
+function parsePace(text: string): number | null {
+  if (!text.trim()) return null;
+  if (text.includes(":")) {
+    const [m, s] = text.split(":");
+    return parseInt(m, 10) * 60 + parseInt(s, 10);
+  }
+  return parseFloat(text);
+}
+function fmtPace(sec: number | null): string {
+  if (!sec) return "";
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved: () => void }) {
+  const [ftp, setFtp] = useState(profile.ftp?.toString() ?? "");
+  const [thr, setThr] = useState(profile.threshold_hr?.toString() ?? "");
+  const [maxhr, setMaxhr] = useState(profile.max_hr?.toString() ?? "");
+  const [runPace, setRunPace] = useState(fmtPace(profile.threshold_pace_run));
+  const [css, setCss] = useState(fmtPace(profile.css_swim));
+  const [hours, setHours] = useState(profile.weekly_hours_target?.toString() ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api.updateProfile({
+        ftp: ftp ? parseFloat(ftp) : null,
+        threshold_hr: thr ? parseInt(thr, 10) : null,
+        max_hr: maxhr ? parseInt(maxhr, 10) : null,
+        threshold_pace_run: parsePace(runPace),
+        css_swim: parsePace(css),
+        weekly_hours_target: hours ? parseFloat(hours) : null,
+      });
+      onSaved();
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2400);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card" id="tour-thresholds" style={{ maxWidth: 760 }}>
+      <div className="card-title">Thresholds</div>
+      <div className="card-sub">
+        Seeded from your last ~12 weeks of Strava. Edit to refine — these drive TSS, training zones and
+        the race projection.
+      </div>
+      <div className="thr-grid">
+        <Field label="FTP (W)" value={ftp} onChange={setFtp} placeholder="e.g. 228" />
+        <Field label="Threshold HR" value={thr} onChange={setThr} placeholder="bpm" />
+        <Field label="Max HR" value={maxhr} onChange={setMaxhr} placeholder="bpm" />
+        <Field label="Run threshold pace /km" value={runPace} onChange={setRunPace} placeholder="m:ss" />
+        <Field label="Swim CSS /100m" value={css} onChange={setCss} placeholder="m:ss" />
+        <Field label="Weekly hours" value={hours} onChange={setHours} placeholder="e.g. 9" />
+      </div>
+      <div className="save-row">
+        <button className="btn primary" onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save thresholds"}
+        </button>
+        {saved && (
+          <span className="saved-note">
+            <span className="dot" />Saved — zones &amp; projection recomputed
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
