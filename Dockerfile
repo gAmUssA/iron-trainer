@@ -20,7 +20,9 @@ RUN uv pip install --system -e .
 COPY --from=frontend /app/frontend/dist /app/frontend/dist
 ENV DATA_DIR=/data
 EXPOSE 8000
-VOLUME ["/data"]
+# No VOLUME here: production (Railway + Supabase) is stateless (data in Postgres,
+# exports streamed in-memory), and Railway rejects the Dockerfile VOLUME directive.
+# Local `docker compose` still persists SQLite via its own `iron_data:/data` mount.
 # Honor Railway's injected $PORT (falls back to 8000 for local docker-compose).
 # init_db() runs `alembic upgrade head` on startup, so migrations apply automatically.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

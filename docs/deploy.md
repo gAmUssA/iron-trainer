@@ -93,12 +93,12 @@ No manual migration step — the app runs `alembic upgrade head` on startup.
 
 ### What's automated vs one-time
 
-| Automated | One-time setup |
-|---|---|
-| **DB migrations** — `alembic upgrade head` on every startup | Create the Supabase project + copy its connection string |
-| **Continuous deploy** — Railway redeploys on `git push` | Set Railway env vars (above) |
+| Automated                                                                                 | One-time setup                                            |
+|-------------------------------------------------------------------------------------------|-----------------------------------------------------------|
+| **DB migrations** — `alembic upgrade head` on every startup                               | Create the Supabase project + copy its connection string  |
+| **Continuous deploy** — Railway redeploys on `git push`                                   | Set Railway env vars (above)                              |
 | **CI** — GitHub Actions runs tests (SQLite + Postgres) + lint + frontend build on push/PR | Point the Strava app's callback domain at the Railway URL |
-| **Strava token refresh** — handled at runtime | Add each athlete's Strava id to `ALLOWED_STRAVA_IDS` |
+| **Strava token refresh** — handled at runtime                                             | Add each athlete's Strava id to `ALLOWED_STRAVA_IDS`      |
 
 Possible future automation: Railway **PR preview environments**, a scheduled
 **race-catalog refresh**, and Dependabot for dependency bumps.
