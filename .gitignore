@@ -2,7 +2,9 @@
 .env
 *.env
 !.env.example
-data/
+# SQLite data dirs only (anchored) — NOT backend/app/data/ (bundled seed JSON).
+/data/
+/backend/data/
 *.db
 *.sqlite
 *.sqlite3

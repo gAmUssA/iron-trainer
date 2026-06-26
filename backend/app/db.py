@@ -118,5 +118,10 @@ def _seed_races() -> None:
     try:
         payload = json.loads(data_file.read_text())
     except FileNotFoundError:
+        import logging
+
+        logging.getLogger("uvicorn.error").warning(
+            "Race catalog %s not found — catalog will be empty.", data_file
+        )
         return
     repo.seed_races(payload.get("races", []))
