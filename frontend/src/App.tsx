@@ -15,6 +15,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { PlanView } from "./components/PlanView";
 import { RaceCard } from "./components/RaceCard";
 import { ConnectCard, ProfileEditor } from "./components/Setup";
+import { useTheme } from "./theme";
 import { maybeAutoStartTour, startTour } from "./tour";
 
 type Tab = "dashboard" | "plan" | "trends" | "settings";
@@ -37,6 +38,7 @@ function fmtRaceDate(dateStr: string): string {
 }
 
 export default function App() {
+  const { theme, toggle } = useTheme();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [athlete, setAthlete] = useState<AthleteResponse | null>(null);
@@ -112,6 +114,14 @@ export default function App() {
           <div className="brand-name">Iron Trainer</div>
         </div>
         <div className="topbar-right">
+          <button
+            className="btn tiny"
+            onClick={toggle}
+            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
           <button className="btn tiny" onClick={launchTour} title="Guided tour of the app">
             ? Tour
           </button>

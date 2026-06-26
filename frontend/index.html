@@ -14,6 +14,16 @@
       rel="stylesheet"
     />
     <title>Iron Trainer</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash of the wrong theme.
+      try {
+        var t = localStorage.getItem("iron-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

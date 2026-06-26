@@ -13,14 +13,30 @@ import {
 } from "recharts";
 import type { PmcDay, Readiness, Trends, WeekVolume } from "../api";
 import { paceKm, pace100 } from "../api";
+import { useTheme } from "../theme";
 
+// Sport / metric colors are vivid enough for both themes.
 const COLORS = { swim: "#38bdf8", bike: "#ffb454", run: "#4ade80", ctl: "#4ade80", atl: "#f87171", tsb: "#38bdf8" };
-const GRID = "rgba(255,255,255,0.055)";
-const TICK = { fill: "#5b6270", fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" };
-const tooltipStyle = { background: "#14161c", border: "1px solid #2a3441", borderRadius: 8, color: "#eceef2", fontSize: 12 };
+
+const CHART_THEME = {
+  dark: { grid: "rgba(255,255,255,0.06)", tick: "#5b6270", tipBg: "#14161c", tipBorder: "#2a3441", tipText: "#eceef2" },
+  light: { grid: "rgba(0,0,0,0.09)", tick: "#9099a3", tipBg: "#ffffff", tipBorder: "#d8dce2", tipText: "#161a20" },
+};
+
+/** Theme-derived chart colors (Recharts takes JS values, not CSS vars). */
+function useChart() {
+  const { theme } = useTheme();
+  const c = CHART_THEME[theme];
+  return {
+    grid: c.grid,
+    tick: { fill: c.tick, fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
+    tooltip: { background: c.tipBg, border: `1px solid ${c.tipBorder}`, borderRadius: 8, color: c.tipText, fontSize: 12 },
+  };
+}
 
 // ── Performance Management Chart ──────────────────────────────────────────────
 export function PmcChart({ days }: { days: PmcDay[] }) {
+  const ch = useChart();
   if (!days.length) return null;
   const last = days[days.length - 1];
   const tsb = Math.round(last.tsb);
@@ -45,11 +61,11 @@ export function PmcChart({ days }: { days: PmcDay[] }) {
               <stop offset="100%" stopColor={COLORS.ctl} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke={GRID} />
-          <XAxis dataKey="date" tick={TICK} minTickGap={48} stroke={GRID} />
-          <YAxis yAxisId="load" tick={TICK} stroke={GRID} />
-          <YAxis yAxisId="form" orientation="right" tick={TICK} stroke={GRID} />
-          <Tooltip contentStyle={tooltipStyle} />
+          <CartesianGrid stroke={ch.grid} />
+          <XAxis dataKey="date" tick={ch.tick} minTickGap={48} stroke={ch.grid} />
+          <YAxis yAxisId="load" tick={ch.tick} stroke={ch.grid} />
+          <YAxis yAxisId="form" orientation="right" tick={ch.tick} stroke={ch.grid} />
+          <Tooltip contentStyle={ch.tooltip} />
           <ReferenceLine yAxisId="form" y={0} stroke="#3a4655" />
           <Area yAxisId="load" dataKey="ctl" name="Fitness" stroke={COLORS.ctl} strokeWidth={1.8} fill="url(#ctlFill)" dot={false} />
           <Line yAxisId="load" dataKey="atl" name="Fatigue" stroke={COLORS.atl} strokeWidth={1.6} dot={false} />
@@ -68,16 +84,17 @@ export function WeeklyVolumeChart({ weeks }: { weeks: WeekVolume[] }) {
     Bike: w.by_sport.Bike?.hours ?? 0,
     Run: w.by_sport.Run?.hours ?? 0,
   }));
+  const ch = useChart();
   return (
     <div className="card" id="tour-weekly">
       <div className="card-title">Weekly Volume</div>
       <div className="card-sub">Hours per sport per week — actual, from Strava</div>
       <ResponsiveContainer width="100%" height={300}>
         <ComposedChart data={data} margin={{ top: 14, right: 8, left: -22, bottom: 0 }}>
-          <CartesianGrid stroke={GRID} vertical={false} />
-          <XAxis dataKey="week" tick={TICK} stroke={GRID} minTickGap={20} />
-          <YAxis tick={TICK} stroke={GRID} />
-          <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+          <CartesianGrid stroke={ch.grid} vertical={false} />
+          <XAxis dataKey="week" tick={ch.tick} stroke={ch.grid} minTickGap={20} />
+          <YAxis tick={ch.tick} stroke={ch.grid} />
+          <Tooltip contentStyle={ch.tooltip} cursor={{ fill: "rgba(128,128,128,0.12)" }} />
           <Bar dataKey="Swim" stackId="a" fill={COLORS.swim} radius={[0, 0, 0, 0]} />
           <Bar dataKey="Bike" stackId="a" fill={COLORS.bike} />
           <Bar dataKey="Run" stackId="a" fill={COLORS.run} radius={[2, 2, 0, 0]} />
@@ -119,6 +136,7 @@ function MiniSpark({
   data: { x: string; v: number }[]; invert?: boolean; fmt?: (v: number) => string;
 }) {
   const id = `sp-${title.replace(/\s/g, "")}`;
+  const ch = useChart();
   return (
     <div className="mini">
       <div className="mini-head">
@@ -135,7 +153,7 @@ function MiniSpark({
               </linearGradient>
             </defs>
             <YAxis hide domain={["dataMin", "dataMax"]} reversed={invert} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => (fmt ? fmt(v) : v)} labelStyle={{ color: "#7b8290" }} />
+            <Tooltip contentStyle={ch.tooltip} formatter={(v: number) => (fmt ? fmt(v) : v)} labelStyle={{ color: "var(--muted)" }} />
             <Area dataKey="v" stroke={color} strokeWidth={1.8} fill={`url(#${id})`} dot={{ r: 1.6, fill: color }} />
           </AreaChart>
         </ResponsiveContainer>

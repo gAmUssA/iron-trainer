@@ -13,7 +13,8 @@ and tracks progress in a local web dashboard. All data is stored locally in SQLi
   swappable DB: **SQLite** local-first by default, **Postgres/Supabase** via
   `DATABASE_URL`
 - **Frontend:** React (Vite) + Recharts (`frontend/`), tabbed UI (Dashboard /
-  Training Plan / Trends / Thresholds), dark theme — Space Grotesk + IBM Plex Mono
+  Training Plan / Trends / Thresholds), responsive/mobile-friendly with light &
+  dark themes (header toggle, persisted) — Space Grotesk + IBM Plex Mono
 - **AI:** Claude API for plan generation
 - **Integrations:** Strava API (read), TrainingPeaks / Garmin (file export)
 
