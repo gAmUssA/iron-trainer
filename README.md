@@ -109,8 +109,9 @@ Run from the `backend/` directory. `DATA_DIR` selects the database (defaults to 
 ```bash
 uv run uvicorn app.main:app --reload --port 8000   # dev API (with frontend proxy on :5173)
 uv run iron-serve                                  # production-style serve (API + built UI)
-uv run pytest                                      # test suite (SQLite)
-TEST_DATABASE_URL=postgresql+psycopg://… uv run pytest   # run the suite on Postgres
+uv run pytest                                      # test suite (SQLite, fast)
+uv run pytest --pg                                 # same suite on a throwaway Postgres (testcontainers)
+TEST_DATABASE_URL=postgresql+psycopg://… uv run pytest   # …or point at an existing Postgres
 uv run ruff check app                              # lint
 uv run alembic upgrade head                        # apply DB migrations (auto on startup too)
 

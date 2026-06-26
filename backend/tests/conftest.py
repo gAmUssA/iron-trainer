@@ -3,6 +3,30 @@ import os
 import pytest
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--pg", action="store_true", default=False,
+        help="Run the suite against a throwaway Postgres (testcontainers, needs Docker).",
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _postgres_container(request):
+    """With --pg, spin up a Postgres container and expose it as TEST_DATABASE_URL
+    (which isolated_db already honors). Without it, a no-op → SQLite default."""
+    if not request.config.getoption("--pg"):
+        yield None
+        return
+    from testcontainers.postgres import PostgresContainer
+
+    with PostgresContainer("postgres:16", driver="psycopg") as pg:
+        os.environ["TEST_DATABASE_URL"] = pg.get_connection_url()
+        try:
+            yield pg
+        finally:
+            os.environ.pop("TEST_DATABASE_URL", None)
+
+
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path, monkeypatch):
     """Give every test a clean schema.
