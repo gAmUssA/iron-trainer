@@ -361,9 +361,11 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 /* ── Thresholds ── */
 .thr-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 22px; }
 @media (max-width: 640px) { .thr-grid { grid-template-columns: 1fr 1fr; } }
-.field { display: flex; flex-direction: column; gap: 7px; }
+.field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .field span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 .field input {
+  width: 100%;
+  min-width: 0;
   background: var(--panel-2);
   border: 1px solid var(--border-strong);
   border-radius: 9px;
