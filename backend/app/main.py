@@ -5,14 +5,15 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import __version__, auth, repo
 from .config import REPO_ROOT, get_settings
-from .db import init_db
+from .db import get_engine, init_db
 from .routers import (
     analytics_router,
     athlete_router,
@@ -61,8 +62,21 @@ app.include_router(auth_router.router)
 
 
 @app.get("/api/health")
-def health() -> dict:
-    return {"status": "ok", "version": __version__}
+def health(response: Response, deep: bool = False) -> dict:
+    """Liveness by default. `?deep=1` also checks DB connectivity (503 if down) —
+    useful as a readiness probe to catch a bad DATABASE_URL early."""
+    out = {"status": "ok", "version": __version__}
+    if deep:
+        try:
+            with get_engine().connect() as conn:
+                conn.execute(text("SELECT 1"))
+            out["database"] = "ok"
+        except Exception as e:  # noqa: BLE001 - report any connectivity failure
+            out["status"] = "degraded"
+            out["database"] = "error"
+            out["detail"] = str(e)[:200]
+            response.status_code = 503
+    return out
 
 
 @app.get("/api/status")

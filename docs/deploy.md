@@ -89,7 +89,9 @@ No manual migration step — the app runs `alembic upgrade head` on startup.
 3. Generate the Railway domain, then set `CORS_ORIGINS` + `STRAVA_REDIRECT_URI`
    to it and update the **Strava API app** "Authorization Callback Domain" to
    `<app>.up.railway.app`.
-4. Railway health-checks `/api/health` (from `railway.toml`).
+4. Railway health-checks `/api/health` (liveness, from `railway.toml`). For a
+   readiness check that also verifies the database, hit `/api/health?deep=1`
+   (returns 503 if Postgres is unreachable) — useful to confirm `DATABASE_URL`.
 
 ### What's automated vs one-time
 
