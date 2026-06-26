@@ -28,7 +28,11 @@ _CORE_TABLES = ("athlete", "activities", "plan", "planned_workouts", "metrics_da
 def get_engine() -> Engine:
     settings = get_settings()
     url = settings.effective_database_url
-    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+    if url.startswith("sqlite"):
+        connect_args = {"check_same_thread": False}
+    else:
+        # Fail fast on an unreachable DB instead of hanging the startup window.
+        connect_args = {"connect_timeout": 10}
     engine = create_engine(url, connect_args=connect_args, pool_pre_ping=True)
 
     if settings.is_sqlite:

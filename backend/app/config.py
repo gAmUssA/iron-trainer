@@ -63,8 +63,18 @@ class Settings(BaseSettings):
 
     @property
     def effective_database_url(self) -> str:
-        """SQLAlchemy URL — explicit DATABASE_URL, else local SQLite file."""
-        return self.database_url or f"sqlite:///{self.db_path}"
+        """SQLAlchemy URL — explicit DATABASE_URL, else local SQLite file.
+
+        Normalizes a bare Postgres URL (e.g. the raw Supabase / `postgres://`
+        string) to the psycopg-v3 driver we ship, so the platform doesn't try
+        the absent psycopg2.
+        """
+        url = self.database_url or f"sqlite:///{self.db_path}"
+        if url.startswith("postgres://"):
+            url = "postgresql+psycopg://" + url[len("postgres://") :]
+        elif url.startswith("postgresql://"):
+            url = "postgresql+psycopg://" + url[len("postgresql://") :]
+        return url
 
     @property
     def is_sqlite(self) -> bool:

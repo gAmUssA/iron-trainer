@@ -27,7 +27,18 @@ from .routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    # Don't let a DB/migration error crash-loop the whole deploy: log it and still
+    # start, so the liveness probe passes and /api/health?deep=1 + logs reveal it.
+    try:
+        init_db()
+    except Exception:
+        import logging
+        import traceback
+
+        logging.getLogger("uvicorn.error").error(
+            "Startup init_db() failed — serving anyway; check DATABASE_URL.\n%s",
+            traceback.format_exc(),
+        )
     yield
 
 

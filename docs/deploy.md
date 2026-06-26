@@ -59,10 +59,13 @@ Supabase database.
    (port 5432, host `…pooler.supabase.com`, user `postgres.<project-ref>`): it's
    **IPv4** (Railway egress is IPv4; the direct connection is IPv6-only) and
    supports the prepared statements + DDL that the app and Alembic use.
-3. Form the URL for Railway (swap the driver to `psycopg`, keep SSL):
+3. Set it as `DATABASE_URL`, keeping `?sslmode=require`. You can paste Supabase's
+   raw `postgresql://…` string as-is — the app normalizes it to the psycopg-v3
+   driver automatically:
 
    ```
-   DATABASE_URL=postgresql+psycopg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+   DATABASE_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+   # (equivalently postgresql+psycopg://…)
    ```
 
 No manual migration step — the app runs `alembic upgrade head` on startup.
