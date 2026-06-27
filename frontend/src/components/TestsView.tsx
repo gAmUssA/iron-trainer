@@ -1,40 +1,67 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
-  paceKm,
   pace100,
   type TestProtocol,
   type TestResult,
   type TestPrefill,
 } from "../api";
+import {
+  useUnits,
+  metersToUnit,
+  unitToMeters,
+  secsToHMS,
+  hmsToSecs,
+  paceInUnit,
+  type DistanceUnit,
+} from "../units";
 import { MiniSpark } from "./Dashboards";
 
 const SPORT_COLOR: Record<string, string> = { Bike: "#ffb454", Run: "#4ade80", Swim: "#38bdf8" };
 
-/** Time fields are entered as m:ss (or raw seconds); everything else is numeric. */
-function parseInput(text: string, unit: string): number | null {
+/** A displayed value (in the chosen units) → the canonical value the API wants.
+    `m` distances → meters; `s` durations → seconds (accepts h:mm:ss / m:ss). */
+function toCanonical(text: string, inputUnit: string, distUnit: DistanceUnit): number | null {
   const t = text.trim();
   if (!t) return null;
-  if (unit === "s" && t.includes(":")) {
-    const [m, s] = t.split(":");
-    return parseInt(m, 10) * 60 + parseInt(s || "0", 10);
+  if (inputUnit === "m") {
+    const n = parseFloat(t);
+    return Number.isNaN(n) ? null : unitToMeters(n, distUnit);
   }
-  return parseFloat(t);
+  if (inputUnit === "s") return hmsToSecs(t);
+  const n = parseFloat(t);
+  return Number.isNaN(n) ? null : n;
+}
+
+/** A canonical value (meters / seconds / raw) → a display string for the form. */
+function toDisplay(value: number | null, inputUnit: string, distUnit: DistanceUnit): string {
+  if (value == null) return "";
+  if (inputUnit === "m") return metersToUnit(value, distUnit).toFixed(2);
+  if (inputUnit === "s") return secsToHMS(value);
+  return String(value);
+}
+
+/** Field label + placeholder reflect the active units. */
+function fieldDisplay(input: { label: string; unit: string }, distUnit: DistanceUnit) {
+  if (input.unit === "m") return { label: `Distance covered (${distUnit})`, placeholder: distUnit === "mi" ? "5.91" : "9.5" };
+  if (input.unit === "s") return { label: input.label.replace(/\(s\)/i, "(h:mm:ss)"), placeholder: "m:ss" };
+  return { label: `${input.label} (${input.unit})`, placeholder: "" };
 }
 
 const METRIC_LABEL: Record<string, string> = {
   ftp: "FTP", threshold_hr: "LTHR", threshold_pace_run: "Run threshold", css_swim: "Swim CSS",
 };
 
-function fmtMetric(field: string, v: number): string {
+function fmtMetric(field: string, v: number, distUnit: DistanceUnit): string {
   if (field === "ftp") return `${Math.round(v)} W`;
   if (field === "threshold_hr") return `${Math.round(v)} bpm`;
-  if (field === "threshold_pace_run") return paceKm(v);
+  if (field === "threshold_pace_run") return paceInUnit(v, distUnit);
   if (field === "css_swim") return pace100(v);
   return String(v);
 }
 
 export function TestsView({ onChanged }: { onChanged: () => void }) {
+  const { unit } = useUnits();
   const [protocols, setProtocols] = useState<TestProtocol[]>([]);
   const [results, setResults] = useState<TestResult[]>([]);
 
@@ -75,11 +102,11 @@ export function TestsView({ onChanged }: { onChanged: () => void }) {
               <MiniSpark
                 key={field}
                 title={METRIC_LABEL[field] ?? field}
-                unit={fmtMetric(field, data[data.length - 1].v)}
+                unit={fmtMetric(field, data[data.length - 1].v, unit)}
                 color="#ff5d3b"
                 data={data}
                 invert={field.includes("pace") || field.includes("css")}
-                fmt={(v) => fmtMetric(field, v)}
+                fmt={(v) => fmtMetric(field, v, unit)}
               />
             ))}
           </div>
@@ -90,6 +117,7 @@ export function TestsView({ onChanged }: { onChanged: () => void }) {
 }
 
 function ProtocolCard({ proto, onChanged }: { proto: TestProtocol; onChanged: () => void }) {
+  const { unit } = useUnits();
   const [vals, setVals] = useState<Record<string, string>>({});
   const [recorded, setRecorded] = useState<TestResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -98,12 +126,30 @@ function ProtocolCard({ proto, onChanged }: { proto: TestProtocol; onChanged: ()
   const [candidates, setCandidates] = useState<TestPrefill[] | null>(null);
   const color = SPORT_COLOR[proto.sport] ?? "#9aa0ac";
 
+  // Re-convert already-entered distance fields when the unit preference flips.
+  const prevUnit = useRef(unit);
+  useEffect(() => {
+    if (prevUnit.current === unit) return;
+    const from = prevUnit.current;
+    prevUnit.current = unit;
+    setVals((cur) => {
+      const next = { ...cur };
+      for (const f of proto.inputs) {
+        if (f.unit === "m" && cur[f.field]?.trim()) {
+          const n = parseFloat(cur[f.field]);
+          if (!Number.isNaN(n)) next[f.field] = metersToUnit(unitToMeters(n, from), unit).toFixed(2);
+        }
+      }
+      return next;
+    });
+  }, [unit, proto.inputs]);
+
   async function record() {
     setBusy(true);
     setMsg(null);
     try {
       const inputs: Record<string, number | null> = {};
-      for (const f of proto.inputs) inputs[f.field] = parseInput(vals[f.field] ?? "", f.unit);
+      for (const f of proto.inputs) inputs[f.field] = toCanonical(vals[f.field] ?? "", f.unit, unit);
       setRecorded(await api.recordTest(proto.slug, inputs));
     } catch (e) {
       setMsg(`Couldn’t compute: ${e}`);
@@ -146,10 +192,7 @@ function ProtocolCard({ proto, onChanged }: { proto: TestProtocol; onChanged: ()
 
   function applyCandidate(c: TestPrefill) {
     const next: Record<string, string> = {};
-    for (const f of proto.inputs) {
-      const v = c.inputs[f.field];
-      next[f.field] = v == null ? "" : String(v);
-    }
+    for (const f of proto.inputs) next[f.field] = toDisplay(c.inputs[f.field], f.unit, unit);
     setVals(next);
     setCandidates(null);
   }
@@ -178,16 +221,19 @@ function ProtocolCard({ proto, onChanged }: { proto: TestProtocol; onChanged: ()
       </div>
 
       <div className="thr-grid" style={{ marginTop: 16 }}>
-        {proto.inputs.map((f) => (
-          <label className="field" key={f.field}>
-            <span>{f.label} ({f.unit})</span>
-            <input
-              value={vals[f.field] ?? ""}
-              placeholder={f.unit === "s" ? "m:ss" : ""}
-              onChange={(e) => setVals({ ...vals, [f.field]: e.target.value })}
-            />
-          </label>
-        ))}
+        {proto.inputs.map((f) => {
+          const fd = fieldDisplay(f, unit);
+          return (
+            <label className="field" key={f.field}>
+              <span>{fd.label}</span>
+              <input
+                value={vals[f.field] ?? ""}
+                placeholder={fd.placeholder}
+                onChange={(e) => setVals({ ...vals, [f.field]: e.target.value })}
+              />
+            </label>
+          );
+        })}
       </div>
 
       <div className="actions" style={{ marginTop: 14 }}>
@@ -210,7 +256,7 @@ function ProtocolCard({ proto, onChanged }: { proto: TestProtocol; onChanged: ()
       {recorded && (
         <div className="gen-result" style={{ marginTop: 12 }}>
           <p className="summary">
-            Computed: {Object.entries(recorded.result).map(([f, v]) => `${METRIC_LABEL[f] ?? f} ${fmtMetric(f, v)}`).join(" · ")}
+            Computed: {Object.entries(recorded.result).map(([f, v]) => `${METRIC_LABEL[f] ?? f} ${fmtMetric(f, v, unit)}`).join(" · ")}
           </p>
           <button className="btn primary" disabled={busy} onClick={apply}>Apply to thresholds</button>
         </div>
