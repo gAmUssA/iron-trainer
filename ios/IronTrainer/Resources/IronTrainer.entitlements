@@ -2,10 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Required for WorkoutKit scheduling + HealthKit. -->
-    <key>com.apple.developer.healthkit</key>
-    <true/>
-    <key>com.apple.developer.workout-kit</key>
-    <true/>
+	<key>com.apple.developer.healthkit</key>
+	<true/>
 </dict>
 </plist>
