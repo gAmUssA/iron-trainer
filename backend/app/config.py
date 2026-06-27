@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     allowed_strava_ids: str = ""  # comma-separated Strava athlete ids (empty = allow all)
     default_athlete_id: int = 1  # identity used in local no-login mode
     cookie_secure: bool = False  # set true behind HTTPS (Secure session cookie)
+    log_level: str = "INFO"  # app log verbosity (DEBUG/INFO/WARNING/ERROR)
 
     # Ignore Strava activities older than this many years (keeps the DB lean and
     # the fitness curve relevant). Set to 0 to keep all history.

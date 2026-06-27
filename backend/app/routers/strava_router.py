@@ -9,8 +9,10 @@ from fastapi.responses import RedirectResponse
 
 from .. import auth, repo, services, strava
 from ..config import get_settings
+from ..logging_config import get_logger
 
 router = APIRouter(prefix="/api/strava", tags=["strava"])
+log = get_logger("strava")
 
 
 @router.get("/connect")
@@ -45,12 +47,15 @@ def callback(
 
     if s.auth_required:
         if strava_id is None or not auth.is_allowed(strava_id):
+            log.warning("Rejected Strava login for athlete id %s (not on allowlist).", strava_id)
             raise HTTPException(403, "This Strava account is not allowed on this instance.")
         athlete_id = repo.find_or_create_athlete(strava_id, name)
         request.session["athlete_id"] = athlete_id
+        log.info("Strava login: athlete %s (strava id %s) signed in.", athlete_id, strava_id)
     else:
         # Local single-user mode: attach to the default athlete (no new users).
         athlete_id = s.default_athlete_id
+        log.info("Strava connected to local default athlete (strava id %s).", strava_id)
 
     repo.save_tokens(athlete_id, token)
     dest = s.cors_origin_list[0] if s.cors_origin_list else "/"

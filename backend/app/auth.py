@@ -88,7 +88,11 @@ def _athlete_id_from_bearer(scope) -> int | None:
             value = v.decode("latin-1")
             if value.lower().startswith("bearer "):
                 from . import repo  # lazy: avoids repo↔auth import cycle at load
+                from .logging_config import get_logger
 
-                return repo.athlete_id_for_bearer(value[7:].strip())
+                aid = repo.athlete_id_for_bearer(value[7:].strip())
+                if aid is None:
+                    get_logger("auth").warning("Rejected request with an unknown bearer token.")
+                return aid
             break
     return None

@@ -14,8 +14,11 @@ from app.config import get_settings
 from app.db import get_engine
 
 config = context.config
+# init_db() runs this in-process on startup; the default fileConfig would disable
+# all existing loggers (the app's "iron" logger, uvicorn's), silencing every log
+# after the first migration. Keep them alive.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = SQLModel.metadata
 

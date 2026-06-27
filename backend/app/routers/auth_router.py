@@ -7,8 +7,10 @@ from pydantic import BaseModel
 
 from .. import auth, repo
 from ..config import get_settings
+from ..logging_config import get_logger
 
 router = APIRouter(prefix="/api", tags=["auth"])
+log = get_logger("auth")
 
 
 class PairingCodeRequest(BaseModel):
@@ -43,7 +45,9 @@ def device_pairing_code(body: PairingCodeRequest | None = None) -> dict:
     """Mint a short-lived pairing code for the logged-in athlete (the web UI shows
     it as a QR). In local no-login mode this pairs to the default athlete."""
     aid = auth.current_athlete_id()  # 401 when auth_required and not logged in
-    return repo.create_pairing_code(aid, name=(body.name if body else None))
+    out = repo.create_pairing_code(aid, name=(body.name if body else None))
+    log.info("Issued device pairing code for athlete %s (expires %s).", aid, out["expires_at"])
+    return out
 
 
 @router.post("/device/claim")
@@ -52,5 +56,8 @@ def device_claim(body: ClaimRequest) -> dict:
     the code itself is the credential."""
     result = repo.claim_pairing_code(body.code.strip(), device_name=body.device_name)
     if result is None:
+        log.warning("Rejected device claim with an invalid/expired pairing code.")
         raise HTTPException(status_code=400, detail="Invalid or expired pairing code.")
+    log.info("Device %r paired to athlete %s.", body.device_name or "(unnamed)",
+             result["athlete"].get("strava_athlete_id"))
     return result

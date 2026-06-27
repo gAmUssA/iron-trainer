@@ -14,9 +14,12 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from .. import dashboards, reconcile as recon, repo
+from ..logging_config import get_logger
 from . import llm, template
 from .template import monday_of
 from .validator import validate_season, validate_week_workouts
+
+log = get_logger("planning")
 
 
 def _form_flag(tsb: float | None) -> str:
@@ -60,6 +63,8 @@ def generate_plan(*, use_llm: bool = True, today: date | None = None) -> dict:
     season = template.build_season(start=today, race_date=race_date, weekly_hours=weekly_hours)
     season["race_name"] = race_name
 
+    log.info("Generating plan for athlete %s: race=%r on %s, use_llm=%s",
+             repo.get_athlete().get("id"), race_name, race_date, use_llm)
     llm_used = False
     if use_llm:
         try:
@@ -67,7 +72,8 @@ def generate_plan(*, use_llm: bool = True, today: date | None = None) -> dict:
             season["race_name"] = race_name
             season["race_date"] = race_date.isoformat()
             llm_used = True
-        except llm.LLMUnavailable:
+        except llm.LLMUnavailable as e:
+            log.warning("LLM unavailable, using deterministic template: %s", e)
             llm_used = False
 
     season, adjustments = validate_season(season)
@@ -80,6 +86,9 @@ def generate_plan(*, use_llm: bool = True, today: date | None = None) -> dict:
         workouts, _ = validate_week_workouts(workouts)
         all_workouts.extend(workouts)
     saved = repo.save_workouts(plan_id, all_workouts)
+    log.info("Plan %d created: %s, %d weeks, %d workouts, %d safety adjustment(s).",
+             plan_id, "AI-adapted" if llm_used else "template", len(season["weeks"]),
+             saved, len(adjustments))
 
     return {
         "plan_id": plan_id,
