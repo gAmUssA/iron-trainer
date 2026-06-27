@@ -21,6 +21,10 @@ fastlane/test_output/
 .env
 .env.*
 !.env.example
+asc_api_key.json
+**/asc_api_key.json
+*.p8
+AuthKey_*.p8
 
 # bundler
 vendor/bundle/
