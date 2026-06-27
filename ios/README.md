@@ -81,8 +81,13 @@ ios/
    `ItwWorkout.decode` version-gates the file.
 3. **Build** → `ItwToWorkoutKit` maps steps to a `CustomWorkout` (warmup,
    one interval block, cooldown) with power/HR/pace alerts.
-4. **Schedule** → `WorkoutScheduling.schedule` asks authorization and calls
-   `WorkoutScheduler.shared.schedule(plan, at:)` on the planned date.
+4. **Pick a date** → the preview has a date picker constrained to the next 7 days
+   (WorkoutScheduler's window). It defaults to the workout's planned date, or — if
+   that's further out than 7 days — the nearest schedulable day, with a note. You
+   can change it before scheduling, so an out-of-window date is never a dead-end.
+5. **Schedule** → `WorkoutScheduling.schedule(_:on:)` asks authorization and calls
+   `WorkoutScheduler.shared.schedule(plan, at:)` on the chosen date. If scheduling
+   still fails, the result screen offers **Change date** (back to the picker).
 
 ## Roadmap
 

@@ -5,6 +5,18 @@ struct WorkoutPreviewView: View {
     @EnvironmentObject private var model: ImportModel
     let workout: ItwWorkout
     @State private var working = false
+    @State private var scheduleDate: Date
+
+    init(workout: ItwWorkout) {
+        self.workout = workout
+        _scheduleDate = State(initialValue: WorkoutScheduling.defaultDate(for: workout))
+    }
+
+    /// True when the workout's own planned date is too far out to schedule, so we
+    /// had to pre-select a closer day.
+    private var plannedOutOfWindow: Bool {
+        workout.date != nil && !WorkoutScheduling.plannedDateIsSchedulable(workout)
+    }
 
     var body: some View {
         List {
@@ -19,6 +31,19 @@ struct WorkoutPreviewView: View {
                 Text(workout.title ?? "Workout")
             }
 
+            Section {
+                DatePicker("Schedule for",
+                           selection: $scheduleDate,
+                           in: WorkoutScheduling.window,
+                           displayedComponents: .date)
+            } header: {
+                Text("Schedule")
+            } footer: {
+                Text(plannedOutOfWindow
+                     ? "Apple Watch only accepts workouts within the next 7 days, so the planned date was moved into range — adjust it if you like."
+                     : "Apple Watch only accepts workouts within the next 7 days.")
+            }
+
             Section("Steps") {
                 ForEach(Array(workout.steps.enumerated()), id: \.offset) { _, step in
                     StepRow(step: step)
@@ -28,14 +53,14 @@ struct WorkoutPreviewView: View {
         .safeAreaInset(edge: .bottom) {
             Button {
                 working = true
-                Task { await model.schedule(workout); working = false }
+                Task { await model.schedule(workout, on: scheduleDate); working = false }
             } label: {
-                Label(working ? "Scheduling…" : "Schedule to date",
+                Label(working ? "Scheduling…" : "Schedule to Apple Watch",
                       systemImage: "calendar.badge.plus")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(working || workout.scheduleComponents == nil)
+            .disabled(working)
             .padding()
         }
     }

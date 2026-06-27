@@ -87,12 +87,13 @@ extension ItwWorkout {
         return workout
     }
 
-    /// Parse `date` ("YYYY-MM-DD") into DateComponents for scheduling.
-    var scheduleComponents: DateComponents? {
+    /// The planned date ("YYYY-MM-DD") parsed to a local `Date` (midnight), if present.
+    var plannedDate: Date? {
         guard let date else { return nil }
         let parts = date.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        // Schedule at 6am local on the planned day so it lands as an upcoming session.
-        return DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 6, minute: 0)
+        var comps = DateComponents()
+        comps.year = parts[0]; comps.month = parts[1]; comps.day = parts[2]
+        return Calendar.current.date(from: comps)
     }
 }

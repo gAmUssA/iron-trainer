@@ -17,10 +17,14 @@ struct ContentView: View {
                     WorkoutPreviewView(workout: workout)
                 case let .scheduled(message):
                     ResultState(systemImage: "checkmark.circle.fill",
-                                tint: .green, message: message) { model.reset() }
+                                tint: .green, message: message,
+                                primaryTitle: "Done", onPrimary: { model.reset() }, onSecondary: nil)
                 case let .failed(message):
                     ResultState(systemImage: "exclamationmark.triangle.fill",
-                                tint: .orange, message: message) { model.reset() }
+                                tint: .orange, message: message,
+                                primaryTitle: model.lastWorkout != nil ? "Change date" : "Done",
+                                onPrimary: { model.lastWorkout != nil ? model.editWorkout() : model.reset() },
+                                onSecondary: model.lastWorkout != nil ? { model.reset() } : nil)
                 }
             }
             .navigationTitle("Iron Trainer")
@@ -58,12 +62,15 @@ private struct ResultState: View {
     let systemImage: String
     let tint: Color
     let message: String
-    let onDone: () -> Void
+    let primaryTitle: String
+    let onPrimary: () -> Void
+    let onSecondary: (() -> Void)?
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: systemImage).font(.system(size: 48)).foregroundStyle(tint)
             Text(message).multilineTextAlignment(.center).padding(.horizontal)
-            Button("Done", action: onDone).buttonStyle(.bordered)
+            Button(primaryTitle, action: onPrimary).buttonStyle(.borderedProminent)
+            if let onSecondary { Button("Discard", action: onSecondary).buttonStyle(.bordered) }
         }
         .padding()
     }
