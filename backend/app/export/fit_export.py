@@ -11,6 +11,10 @@ onto a Garmin via Garmin Connect, which is our fallback path.
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from datetime import time as dtime
+from datetime import timezone
+
 from fit_tool.fit_file_builder import FitFileBuilder
 from fit_tool.profile.messages.file_id_message import FileIdMessage
 from fit_tool.profile.messages.workout_message import WorkoutMessage
@@ -98,15 +102,25 @@ def _build_step(index: int, step: dict) -> WorkoutStepMessage:
     dist_m = step.get("distance_m")
     if dur_s:
         msg.duration_type = WorkoutStepDuration.TIME
-        msg.duration_time = float(dur_s)  # seconds
+        msg.duration_time = float(dur_s)  # seconds — fit-tool applies the ×1000 (ms) scale
     elif dist_m:
         msg.duration_type = WorkoutStepDuration.DISTANCE
-        msg.duration_distance = float(dist_m)  # meters
+        msg.duration_distance = float(dist_m)  # meters — fit-tool applies the ×100 (cm) scale
     else:
         msg.duration_type = WorkoutStepDuration.OPEN
 
     _apply_target(msg, step.get("target"))
     return msg
+
+
+def _created_ms(date_str: str | None) -> int:
+    """time_created in ms since the Unix epoch — required by Garmin/TrainingPeaks.
+    Use the planned date (noon UTC) so the library entry is dated sensibly."""
+    try:
+        dt = datetime.combine(date.fromisoformat(date_str), dtime(12, 0), tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        dt = datetime.now(timezone.utc)
+    return round(dt.timestamp() * 1000)
 
 
 def build_fit(workout: dict) -> bytes:
@@ -121,6 +135,7 @@ def build_fit(workout: dict) -> bytes:
     file_id.manufacturer = Manufacturer.DEVELOPMENT.value
     file_id.product = 0
     file_id.serial_number = 0x12345678
+    file_id.time_created = _created_ms(workout.get("date"))
     builder.add(file_id)
 
     wkt = WorkoutMessage()

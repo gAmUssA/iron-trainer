@@ -65,6 +65,22 @@ def test_fit_swim_distance_duration():
     assert abs(steps[0].duration_distance - 1500) < 1
 
 
+def test_fit_time_duration_roundtrip():
+    _, steps = _read_steps(build_fit(BIKE))
+    # Time-based durations survive in seconds (fit-tool applies the ms scale).
+    assert abs(steps[0].duration_time - 600) < 1
+    assert abs(steps[1].duration_time - 1800) < 1
+
+
+def test_fit_has_time_created():
+    # TrainingPeaks/Garmin reject a workout file_id without time_created.
+    ff = FitFile.from_bytes(build_fit(BIKE))
+    file_id = next(
+        r.message for r in ff.records if type(r.message).__name__ == "FileIdMessage"
+    )
+    assert file_id.time_created is not None and file_id.time_created > 0
+
+
 def test_zwo_only_for_bike_with_ftp():
     assert build_zwo(RUN, 250) is None
     assert build_zwo(BIKE, None) is None
