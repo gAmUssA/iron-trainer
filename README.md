@@ -96,6 +96,12 @@ SQLite + generated workout files persist in the `iron_data` volume (`/data`).
 The same image deploys to Fly.io / Railway with a persistent volume at `/data`.
 No code changes vs local. See [`docs/deploy.md`](docs/deploy.md).
 
+## Architecture decisions
+
+The **why** behind major decisions is recorded as ADRs in
+[`docs/adr/`](docs/adr/README.md) (DB abstraction, multi-user auth, Apple Workouts
+export, device-pairing live sync).
+
 ## API reference (selected)
 
 | Method   | Path                                                         | Purpose                                     |
