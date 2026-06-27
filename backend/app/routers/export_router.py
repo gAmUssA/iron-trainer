@@ -40,6 +40,19 @@ def workout_zwo(workout_id: int) -> Response:
     )
 
 
+@router.get("/workout/{workout_id}.itw")
+def workout_itw(workout_id: int) -> Response:
+    w = repo.get_workout(workout_id)
+    if not w:
+        raise HTTPException(404, "Workout not found")
+    name, content = service.workout_itw(w)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
 @router.get("/week/{week_start}.zip")
 def week_zip(week_start: str) -> Response:
     workouts = service.week_workouts(week_start)

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Iron Trainer</string>
+    <key>CFBundleDisplayName</key>
+    <string>Iron Trainer</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>UILaunchScreen</key>
+    <dict/>
+
+    <!-- WorkoutKit / HealthKit usage strings (required for review). -->
+    <key>NSHealthShareUsageDescription</key>
+    <string>Iron Trainer needs access to Health to build and schedule structured workouts.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>Iron Trainer schedules workouts so they appear on your Apple Watch.</string>
+
+    <!-- Declare ownership of the .itw document type so files open in this app. -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>io.gamov.irontrainer.itw</string>
+            <key>UTTypeDescription</key>
+            <string>Iron Trainer Workout</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.json</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>itw</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>application/json</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Iron Trainer Workout</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>io.gamov.irontrainer.itw</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

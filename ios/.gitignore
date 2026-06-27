@@ -1,0 +1,13 @@
+# XcodeGen output — regenerate with `xcodegen generate`
+IronTrainer.xcodeproj/
+
+# Xcode / build
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# macOS
+.DS_Store

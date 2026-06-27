@@ -8,6 +8,7 @@ import zipfile
 
 from .. import repo
 from .fit_export import build_fit
+from .itw_export import build_itw
 from .zwo_export import build_zwo
 
 
@@ -34,9 +35,14 @@ def workout_zwo(workout: dict) -> tuple[str, str] | None:
     return filename(workout, "zwo"), content
 
 
+def workout_itw(workout: dict) -> tuple[str, str]:
+    return filename(workout, "itw"), build_itw(workout, repo.get_athlete())
+
+
 def bundle_zip(workouts: list[dict]) -> bytes:
-    """Zip the .fit for every workout plus .zwo for bike sessions."""
+    """Zip the .fit for every workout, plus .zwo for bike and .itw for all."""
     ftp = _ftp()
+    athlete = repo.get_athlete()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for w in workouts:
@@ -44,6 +50,7 @@ def bundle_zip(workouts: list[dict]) -> bytes:
             zwo = build_zwo(w, ftp)
             if zwo:
                 zf.writestr(filename(w, "zwo"), zwo)
+            zf.writestr(filename(w, "itw"), build_itw(w, athlete))
         # A short README so the user knows how to import.
         zf.writestr("IMPORT_INSTRUCTIONS.txt", _IMPORT_README)
     return buf.getvalue()
@@ -74,8 +81,17 @@ TRAININGPEAKS — bike only. Use the .zwo files.
   3. Drag each onto a calendar date. With TP Premium linked to your device, the
      bike workout syncs automatically.
 
+APPLE WORKOUTS (Apple Watch) — all sports. Use the .itw files.
+  1. Install the Iron Trainer helper app (iOS 18+) from TestFlight/App Store.
+  2. Open a .itw file (from Files, Mail, or AirDrop) — it opens in the app.
+  3. Preview the session, then "Open in Workout app" or "Schedule" it on its
+     planned date. It syncs to your Apple Watch.
+  (.itw is Iron Trainer's own JSON; the helper app builds the native Apple
+   workout on-device, since Apple's .workout format can't be generated here.)
+
 So: run & swim (and bike, if you prefer) -> Garmin Connect via .fit.
     Bike into TrainingPeaks -> .zwo.
+    Apple Watch -> .itw via the Iron Trainer helper app.
 
 Filenames encode the planned date and sport, e.g. 2026-07-06_Bike_Long-ride.fit
 """

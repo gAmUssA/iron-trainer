@@ -1,9 +1,11 @@
 import io
+import json
 import zipfile
 
 from fit_tool.fit_file import FitFile
 
 from app.export.fit_export import build_fit
+from app.export.itw_export import SCHEMA_VERSION, build_itw
 from app.export.service import bundle_zip
 from app.export.zwo_export import build_zwo
 
@@ -98,6 +100,39 @@ def test_bundle_zip_contains_fit_and_zwo(monkeypatch):
         names = zf.namelist()
     assert any(n.endswith(".fit") for n in names)
     assert any(n.endswith(".zwo") for n in names)  # bike only
+    assert any(n.endswith(".itw") for n in names)  # all sports
     assert "IMPORT_INSTRUCTIONS.txt" in names
     # Run has a .fit but no .zwo.
     assert sum(n.endswith(".zwo") for n in names) == 1
+    # Every workout gets a .itw.
+    assert sum(n.endswith(".itw") for n in names) == 2
+
+
+def test_itw_schema_and_steps_roundtrip():
+    doc = json.loads(build_itw(BIKE, {"ftp": 240, "threshold_hr": 165}))
+    assert doc["schema_version"] == SCHEMA_VERSION
+    assert doc["generator"] == "iron-trainer"
+    assert doc["sport"] == "Bike"
+    assert doc["date"] == "2026-07-06"
+    assert doc["athlete"]["ftp"] == 240
+    # Steps pass through unchanged, targets intact.
+    assert len(doc["steps"]) == 3
+    assert doc["steps"][1]["target"] == {"type": "power", "unit": "W", "low": 218, "high": 241}
+
+
+def test_itw_endpoint(monkeypatch):
+    from app import repo
+    from app.export import service
+
+    captured = {}
+
+    def fake_get_athlete():
+        return {"ftp": 250}
+
+    monkeypatch.setattr(repo, "get_athlete", fake_get_athlete)
+    name, content = service.workout_itw(SWIM)
+    captured = json.loads(content)
+    assert name == "2026-07-08_Swim_CSS-set.itw"
+    assert captured["schema_version"] == SCHEMA_VERSION
+    assert captured["athlete"]["ftp"] == 250
+    assert captured["steps"][0]["distance_m"] == 1500
