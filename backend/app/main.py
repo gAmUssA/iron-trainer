@@ -23,6 +23,7 @@ from .routers import (
     plan_router,
     races_router,
     strava_router,
+    tests_router,
 )
 
 log = get_logger("app")
@@ -80,6 +81,7 @@ app.include_router(plan_router.router)
 app.include_router(export_router.router)
 app.include_router(races_router.router)
 app.include_router(auth_router.router)
+app.include_router(tests_router.router)
 
 
 @app.get("/api/health")

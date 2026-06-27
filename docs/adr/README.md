@@ -27,3 +27,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0002](0002-multi-user-login-with-strava.md) | Multi-user: Login with Strava + per-athlete data isolation | Accepted |
 | [0003](0003-apple-workouts-export-workoutkit.md) | Apple Workouts export via `.itw` + WorkoutKit iOS helper app | Accepted |
 | [0004](0004-device-pairing-live-sync.md) | In-app login + live plan sync via device-pairing bearer tokens | Accepted |
+| [0005](0005-fitness-tests-library.md) | Fitness Tests library (measure thresholds + schedulable test workouts) | Accepted |

@@ -41,7 +41,15 @@ private struct Row: View {
         HStack(spacing: 12) {
             Image(systemName: icon).foregroundStyle(.secondary).frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {
-                Text(workout.title ?? workout.sport ?? "Workout").font(.body)
+                HStack(spacing: 6) {
+                    if isTest {
+                        Text("TEST").font(.caption2).fontWeight(.bold)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(.tint.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.tint)
+                    }
+                    Text(workout.title ?? workout.sport ?? "Workout").font(.body)
+                }
                 HStack(spacing: 6) {
                     if let d = workout.date { Text(d) }
                     if let dur = workout.durationS { Text("· \(dur / 60) min") }
@@ -52,6 +60,10 @@ private struct Row: View {
             Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
+    }
+
+    private var isTest: Bool {
+        (workout.title ?? "").localizedCaseInsensitiveContains("test")
     }
 
     private var icon: String {
