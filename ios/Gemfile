@@ -1,0 +1,6 @@
+# Pin fastlane via Bundler so every machine/CI runs the same version:
+#   cd ios && bundle install && bundle exec fastlane <lane>
+source "https://rubygems.org"
+
+gem "fastlane"
+gem "xcodeproj"

@@ -181,6 +181,7 @@ export function PlanView({
                               {(wo.sport === "Bike" || wo.sport === "Brick") && (
                                 <a href={api.workoutZwoUrl(wo.id)} title="TrainingPeaks → Workout Library → Workout Import (bike)">.zwo</a>
                               )}
+                              <a href={api.workoutItwUrl(wo.id)} title="Apple Watch → open in the Iron Trainer helper app">.itw</a>
                             </span>
                           </div>
                         );

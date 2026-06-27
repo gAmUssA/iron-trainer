@@ -4,8 +4,9 @@ AI-adaptive triathlon training for **IRONMAN 70.3 New York — Sat Sep 26, 2026*
 
 Pulls your Strava history, computes training load (TSS / CTL / ATL / TSB), generates
 an LLM-adaptive 70.3 plan (bounded by a safety validator), exports structured `.fit` /
-`.zwo` workouts you import into **TrainingPeaks** (which syncs them to your Garmin/Wahoo),
-and tracks progress in a local web dashboard. All data is stored locally in SQLite.
+`.zwo` / `.itw` workouts you import into **TrainingPeaks** / **Garmin** / **Apple
+Workouts**, and tracks progress in a local web dashboard. All data is stored locally
+in SQLite.
 
 ## Stack
 
@@ -16,7 +17,8 @@ and tracks progress in a local web dashboard. All data is stored locally in SQLi
   Training Plan / Trends / Thresholds), responsive/mobile-friendly with light &
   dark themes (header toggle, persisted) — Space Grotesk + IBM Plex Mono
 - **AI:** Claude API for plan generation
-- **Integrations:** Strava API (read), TrainingPeaks / Garmin (file export)
+- **Integrations:** Strava API (read), TrainingPeaks / Garmin (file export),
+  Apple Workouts via the `.itw` file + iOS 18 helper app (`ios/`)
 
 ## Quick start (local dev)
 
@@ -73,12 +75,16 @@ SQLite + generated workout files persist in the `iron_data` volume (`/data`).
    peak → 2-week taper to race day) to your real fitness. A deterministic
    **safety validator** caps the weekly ramp, inserts recovery weeks, and enforces
    the taper, reporting every adjustment.
-4. **Export** → each session downloads as a structured `.fit` (all sports) and
-   `.zwo` (bike), or grab a weekly / full-plan `.zip`. **Garmin Connect** imports
-   the `.fit` for any sport (Workouts → Import → Send to Device) — this is the
-   path for run & swim. **TrainingPeaks** imports the bike `.zwo` (Workout Library
-   → Workout Import); its import only accepts power-based bike `.zwo`, not `.fit`
-   and not run/swim — so use Garmin Connect for those.
+4. **Export** → each session downloads as a structured `.fit` (all sports),
+   `.zwo` (bike), and `.itw` (Apple Workouts), or grab a weekly / full-plan `.zip`.
+   **Garmin Connect** imports the `.fit` for any sport (Workouts → Import → Send to
+   Device) — this is the path for run & swim. **TrainingPeaks** imports the bike
+   `.zwo` (Workout Library → Workout Import); its import only accepts power-based
+   bike `.zwo`, not `.fit` and not run/swim — so use Garmin Connect for those.
+   **Apple Workouts** uses the `.itw` file: open it in the iOS 18 helper app
+   (`ios/`), which builds the native workout on-device and schedules it to your
+   Apple Watch. (`.itw` is Iron Trainer's own JSON — Apple's binary `.workout`
+   format can't be generated on a server.)
 5. **Track** progress on the dashboards: Performance Management Chart, weekly
    volume, per-sport trends, and a projected 70.3 finish time with **cut-off
    checks** (swim 1:10, bike 5:30 cumulative, finish 8:30 — the standard 70.3
@@ -102,7 +108,7 @@ No code changes vs local. See [`docs/deploy.md`](docs/deploy.md).
 | POST/GET | `/api/plan/generate` · `/api/plan`                           | generate / fetch plan                       |
 | POST     | `/api/plan/replan-week?week_start=YYYY-MM-DD`                | AI re-plan one week                         |
 | POST     | `/api/strava/dedup`                                          | re-run de-duplication (one-click in the UI) |
-| GET      | `/api/export/workout/{id}.fit` · `.zwo`                      | single workout file                         |
+| GET      | `/api/export/workout/{id}.fit` · `.zwo` · `.itw`             | single workout file                         |
 | GET      | `/api/export/week/{week_start}.zip` · `/api/export/plan.zip` | bundles                                     |
 
 ## Tasks (all via `uv`)

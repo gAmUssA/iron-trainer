@@ -218,6 +218,7 @@ export const api = {
   weekZipUrl: (weekStart: string) => `/api/export/week/${weekStart}.zip`,
   workoutFitUrl: (id: number) => `/api/export/workout/${id}.fit`,
   workoutZwoUrl: (id: number) => `/api/export/workout/${id}.zwo`,
+  workoutItwUrl: (id: number) => `/api/export/workout/${id}.itw`,
 };
 
 // ── formatting helpers ────────────────────────────────────────────────────────
