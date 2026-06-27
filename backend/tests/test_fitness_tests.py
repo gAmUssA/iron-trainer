@@ -95,3 +95,21 @@ def test_prefill_maps_bike_skips_swim():
         assert bike and "avg_power_w" in bike[0]["inputs"]
         swim = c.get("/api/tests/swim-css-400-200/prefill").json()["candidates"]
         assert swim == []
+
+
+def test_prefill_returns_most_recent_first():
+    # An older and a newer ride; prefill should surface the newer one first.
+    repo.upsert_activities([
+        {"id": 8001, "type": "Ride", "sport_type": "Ride",
+         "start_date_local": "2026-01-10T08:00:00Z", "moving_time": 1300,
+         "distance": 12000, "average_watts": 200, "weighted_average_watts": 205},
+        {"id": 8002, "type": "Ride", "sport_type": "Ride",
+         "start_date_local": "2026-06-25T08:00:00Z", "moving_time": 1300,
+         "distance": 12000, "average_watts": 250, "weighted_average_watts": 260},
+    ])
+    with TestClient(app) as c:
+        cands = c.get("/api/tests/bike-ftp-20/prefill").json()["candidates"]
+        assert cands[0]["date"] == "2026-06-25"        # newest first
+        assert cands[0]["inputs"]["avg_power_w"] == 260
+        dates = [x["date"] for x in cands]
+        assert dates == sorted(dates, reverse=True)     # descending overall

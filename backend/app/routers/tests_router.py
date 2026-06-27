@@ -89,7 +89,9 @@ def prefill(slug: str, limit: int = 8) -> dict:
     if not sport:
         return {"candidates": []}
     candidates = []
-    for a in repo.list_activities():
+    # list_activities() is oldest-first; scan most-recent-first so prefill suggests
+    # recent efforts (you just did the test), not stale ones.
+    for a in reversed(repo.list_activities()):
         if a.get("sport") != sport:
             continue
         inputs: dict = {}
