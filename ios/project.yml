@@ -11,7 +11,7 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     GENERATE_INFOPLIST_FILE: NO
-    DEVELOPMENT_TEAM: "" # set your Team ID for device builds / TestFlight
+    DEVELOPMENT_TEAM: "3ZMBGR95M8" # Viktor Gamov — device builds / TestFlight
 targets:
   IronTrainer:
     type: application
