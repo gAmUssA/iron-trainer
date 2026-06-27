@@ -22,10 +22,10 @@ SCHEMA_VERSION = 1
 _THRESHOLD_KEYS = ("ftp", "threshold_hr", "max_hr", "threshold_pace_run", "css_swim")
 
 
-def build_itw(workout: dict, athlete: dict | None = None) -> str:
-    """Return the JSON string of a .itw file for one planned session."""
-    athlete = athlete or {}
-    doc = {
+def _workout_doc(workout: dict, athlete: dict) -> dict:
+    """The per-workout .itw object. Each item is a standalone, decodable workout
+    (carries its own schema_version) so it can be read singly or inside a plan."""
+    return {
         "schema_version": SCHEMA_VERSION,
         "generator": "iron-trainer",
         "date": workout.get("date"),
@@ -36,5 +36,29 @@ def build_itw(workout: dict, athlete: dict | None = None) -> str:
         "distance_m": workout.get("distance_m"),
         "athlete": {k: athlete.get(k) for k in _THRESHOLD_KEYS},
         "steps": workout.get("steps") or [],
+    }
+
+
+def build_itw(workout: dict, athlete: dict | None = None) -> str:
+    """Return the JSON string of a .itw file for one planned session."""
+    return json.dumps(_workout_doc(workout, athlete or {}), ensure_ascii=False, indent=2)
+
+
+def build_plan_itw(workouts: list[dict], plan: dict | None, athlete: dict | None = None) -> str:
+    """Return the JSON string of a whole-plan .itw the iOS app fetches over HTTP:
+    a top-level envelope plus a list of standalone per-workout docs."""
+    athlete = athlete or {}
+    plan_meta = None
+    if plan:
+        plan_meta = {
+            "race_name": plan.get("race_name"),
+            "race_date": plan.get("race_date"),
+            "summary": plan.get("summary"),
+        }
+    doc = {
+        "schema_version": SCHEMA_VERSION,
+        "generator": "iron-trainer",
+        "plan": plan_meta,
+        "workouts": [_workout_doc(w, athlete) for w in workouts],
     }
     return json.dumps(doc, ensure_ascii=False, indent=2)
