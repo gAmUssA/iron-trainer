@@ -28,7 +28,7 @@ struct WorkoutListView: View {
                       systemImage: "calendar.badge.plus")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .primaryActionButtonStyle()
             .disabled(working)
             .padding()
         }
