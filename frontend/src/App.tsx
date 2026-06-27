@@ -17,6 +17,7 @@ import { RaceCard } from "./components/RaceCard";
 import { ConnectCard, ProfileEditor } from "./components/Setup";
 import { TestsView } from "./components/TestsView";
 import { useTheme } from "./theme";
+import { useUnits } from "./units";
 import { maybeAutoStartTour, startTour } from "./tour";
 
 type Tab = "dashboard" | "plan" | "trends" | "tests" | "settings";
@@ -41,6 +42,7 @@ function fmtRaceDate(dateStr: string): string {
 
 export default function App() {
   const { theme, toggle } = useTheme();
+  const { unit, toggle: toggleUnit } = useUnits();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [athlete, setAthlete] = useState<AthleteResponse | null>(null);
@@ -116,6 +118,14 @@ export default function App() {
           <div className="brand-name">Iron Trainer</div>
         </div>
         <div className="topbar-right">
+          <button
+            className="btn tiny"
+            onClick={toggleUnit}
+            title={`Distance units: ${unit} (tap to switch)`}
+            aria-label="Toggle distance units"
+          >
+            {unit}
+          </button>
           <button
             className="btn tiny"
             onClick={toggle}

@@ -12,7 +12,8 @@ import {
   YAxis,
 } from "recharts";
 import type { PmcDay, Readiness, Trends, WeekVolume } from "../api";
-import { paceKm, pace100 } from "../api";
+import { pace100 } from "../api";
+import { useUnits, paceInUnit } from "../units";
 import { useTheme } from "../theme";
 
 // Sport / metric colors are vivid enough for both themes.
@@ -111,6 +112,7 @@ export function WeeklyVolumeChart({ weeks }: { weeks: WeekVolume[] }) {
 
 // ── Per-sport trends ──────────────────────────────────────────────────────────
 export function TrendsChart({ trends }: { trends: Trends }) {
+  const { unit } = useUnits();
   return (
     <div className="trend-stack" id="tour-trends">
       <MiniSpark
@@ -118,7 +120,8 @@ export function TrendsChart({ trends }: { trends: Trends }) {
         data={trends.Bike.map((p) => ({ x: p.date.slice(5), v: p.power }))}
       />
       <MiniSpark
-        title="Run pace" unit="threshold /km" color={COLORS.run} invert fmt={paceKm}
+        title="Run pace" unit={`threshold /${unit}`} color={COLORS.run} invert
+        fmt={(v) => paceInUnit(v, unit)}
         data={trends.Run.map((p) => ({ x: p.date.slice(5), v: p.pace }))}
       />
       <MiniSpark
