@@ -19,6 +19,22 @@
     <key>UILaunchScreen</key>
     <dict/>
 
+    <!-- Required by App Store validation (90474). iPad needs all four for multitasking. -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <!-- Declaring CFBundleDocumentTypes (.itw) requires this (90737); we open in place. -->
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
+
     <!-- WorkoutKit / HealthKit usage strings (required for review). -->
     <key>NSHealthShareUsageDescription</key>
     <string>Iron Trainer needs access to Health to build and schedule structured workouts.</string>
