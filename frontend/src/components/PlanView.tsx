@@ -174,7 +174,12 @@ export function PlanView({
                             <span className={`session-status ${st.cls}`} title={wo.status ?? "planned"}>{st.mark}</span>
                             <span className="sport-badge" style={{ color: sp.color, borderColor: sp.color, border: `1px solid ${sp.color}` }}>{sp.label}</span>
                             <span className="session-date">{wo.date.slice(5)}</span>
-                            <span className="session-title">{wo.title}</span>
+                            <span className="session-title">
+                              {wo.intensity === "test" && (
+                                <span className="sport-badge" style={{ color: "var(--accent)", border: "1px solid var(--accent)", marginRight: 6 }}>TEST</span>
+                              )}
+                              {wo.title}
+                            </span>
                             <span className="session-meta">{fmtDur(wo.duration_s)} · {wo.intensity} · {wo.planned_tss} TSS</span>
                             <span className="session-dl">
                               <a href={api.workoutFitUrl(wo.id)} title="Garmin Connect → Workouts → Import (all sports)">.fit</a>

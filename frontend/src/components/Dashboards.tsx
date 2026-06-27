@@ -129,7 +129,7 @@ export function TrendsChart({ trends }: { trends: Trends }) {
   );
 }
 
-function MiniSpark({
+export function MiniSpark({
   title, unit, color, data, invert, fmt,
 }: {
   title: string; unit: string; color: string;

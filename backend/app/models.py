@@ -155,3 +155,21 @@ class DeviceToken(SQLModel, table=True):
     token_hash: str | None = Field(default=None, index=True, unique=True)  # sha256 hex
     created_at: str | None = None
     last_used_at: str | None = None
+
+
+class FitnessTestResult(SQLModel, table=True):
+    """A recorded fitness-test result: the raw inputs an athlete entered and the
+    thresholds computed from them. Applying it writes those thresholds to the
+    athlete profile (see repo.apply_test_result)."""
+
+    __tablename__ = "fitness_test_result"
+
+    id: int | None = Field(default=None, primary_key=True)
+    athlete_id: int = Field(foreign_key="athlete.id", ondelete="CASCADE", index=True)
+    test_slug: str = Field(index=True)
+    sport: str
+    date: str  # ISO YYYY-MM-DD (when the test was performed)
+    inputs_json: str | None = None   # raw entry, e.g. {"avg_power_w": 250}
+    result_json: str | None = None   # computed thresholds, e.g. {"ftp": 238}
+    applied: bool = False
+    created_at: str | None = None

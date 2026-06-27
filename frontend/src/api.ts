@@ -192,6 +192,38 @@ async function send<T>(path: string, method: string, body?: unknown): Promise<T>
   return res.json() as Promise<T>;
 }
 
+export interface TestInputSpec {
+  field: string;
+  label: string;
+  unit: string;
+}
+export interface TestProtocol {
+  slug: string;
+  name: string;
+  sport: string;
+  measures: string[];
+  description: string;
+  inputs: TestInputSpec[];
+  prefill_sport: string | null;
+  last_tested: string | null;
+  due: boolean;
+}
+export interface TestResult {
+  id: number;
+  test_slug: string;
+  sport: string;
+  date: string;
+  inputs: Record<string, number | null>;
+  result: Record<string, number>;
+  applied: boolean;
+}
+export interface TestPrefill {
+  activity_id: number;
+  date: string;
+  name: string | null;
+  inputs: Record<string, number | null>;
+}
+
 export const api = {
   status: () => getJSON<AppStatus>("/api/status"),
   me: () => getJSON<Me>("/api/me"),
@@ -215,6 +247,15 @@ export const api = {
     send<ReconcileResult>(`/api/plan/reconcile?weeks_ahead=${weeksAhead}`, "POST"),
   compliance: () =>
     getJSON<{ weeks: WeekCompliance[]; recent: RecentCompliance | null }>("/api/plan/compliance"),
+  tests: () => getJSON<{ tests: TestProtocol[]; retest_days: number }>("/api/tests"),
+  testResults: () => getJSON<{ results: TestResult[] }>("/api/tests/results"),
+  recordTest: (test_slug: string, inputs: Record<string, number | null>, date?: string) =>
+    send<TestResult>("/api/tests/result", "POST", { test_slug, inputs, date }),
+  applyTest: (id: number) => send<TestResult>(`/api/tests/result/${id}/apply`, "POST"),
+  scheduleTest: (slug: string, date: string) =>
+    send<{ title: string }>(`/api/tests/${slug}/schedule`, "POST", { date }),
+  testPrefill: (slug: string) =>
+    getJSON<{ candidates: TestPrefill[] }>(`/api/tests/${slug}/prefill`),
   connectUrl: "/api/strava/connect",
   planZipUrl: "/api/export/plan.zip",
   weekZipUrl: (weekStart: string) => `/api/export/week/${weekStart}.zip`,

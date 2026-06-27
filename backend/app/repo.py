@@ -17,12 +17,21 @@ from datetime import date, datetime, timezone
 from sqlalchemy import delete, func, update
 from sqlmodel import Session, select
 
-from . import metrics
+from . import fitness_tests, metrics
 from .auth import current_athlete_id
 from .config import get_settings
 from .db import get_session
 from .metrics import Thresholds
-from .models import Activity, Athlete, DeviceToken, MetricDaily, Plan, PlannedWorkout, Race
+from .models import (
+    Activity,
+    Athlete,
+    DeviceToken,
+    FitnessTestResult,
+    MetricDaily,
+    Plan,
+    PlannedWorkout,
+    Race,
+)
 
 _ACT_UPDATE_COLS = [
     "sport", "start_date", "name", "moving_time", "elapsed_time", "distance",
@@ -504,6 +513,88 @@ def get_workouts(plan_id: int | None = None) -> list[dict]:
             .order_by(PlannedWorkout.date)
         ).all()
         return [_workout_dict(w) for w in rows]
+
+
+# ── fitness tests ───────────────────────────────────────────────────────────────
+
+
+def save_test_result(slug: str, date: str, inputs: dict, result: dict) -> dict:
+    """Record a test result (raw inputs + computed thresholds) for the athlete."""
+    aid = current_athlete_id()
+    test = fitness_tests.get(slug) or {}
+    with get_session() as s:
+        row = FitnessTestResult(
+            athlete_id=aid, test_slug=slug, sport=test.get("sport", ""), date=date,
+            inputs_json=json.dumps(inputs), result_json=json.dumps(result),
+            applied=False, created_at=_now_iso(),
+        )
+        s.add(row)
+        s.flush()
+        return _test_result_dict(row)
+
+
+def list_test_results() -> list[dict]:
+    aid = current_athlete_id()
+    with get_session() as s:
+        rows = s.exec(
+            select(FitnessTestResult)
+            .where(FitnessTestResult.athlete_id == aid)
+            .order_by(FitnessTestResult.date)
+        ).all()
+        return [_test_result_dict(r) for r in rows]
+
+
+def apply_test_result(result_id: int) -> dict | None:
+    """Write a result's computed thresholds onto the athlete profile, then refresh
+    derived metrics (same cascade as editing thresholds). Returns the updated result."""
+    aid = current_athlete_id()
+    with get_session() as s:
+        row = s.get(FitnessTestResult, result_id)
+        if row is None or row.athlete_id != aid:
+            return None
+        result = json.loads(row.result_json or "{}")
+    if result:
+        save_profile(result)
+        recompute_tss()
+        rebuild_metrics()
+    with get_session() as s:
+        row = s.get(FitnessTestResult, result_id)
+        row.applied = True
+        s.add(row)
+        return _test_result_dict(row)
+
+
+def last_tested_by_sport() -> dict[str, str]:
+    """Most recent test date per sport (for the 'due for re-test' badge)."""
+    out: dict[str, str] = {}
+    for r in list_test_results():
+        sport = r.get("sport")
+        if sport and r.get("date", "") > out.get(sport, ""):
+            out[sport] = r["date"]
+    return out
+
+
+def add_test_workout_to_plan(slug: str, date: str) -> dict:
+    """Materialize a test protocol as a PlannedWorkout in the active plan, so it shows
+    in the Training Plan, exports, and syncs to iOS. Raises if there's no active plan."""
+    aid = current_athlete_id()
+    with get_session() as s:
+        plan_id = s.exec(
+            select(Plan.id).where(Plan.athlete_id == aid, Plan.status == "active").order_by(Plan.id.desc())
+        ).first()
+    if plan_id is None:
+        raise ValueError("No active plan — generate a plan before scheduling a test.")
+    workout = fitness_tests.to_workout(slug)
+    workout["date"] = date
+    save_workouts(plan_id, [workout], replace_all=False)
+    return workout
+
+
+def _test_result_dict(r: FitnessTestResult) -> dict:
+    d = r.model_dump()
+    d["inputs"] = json.loads(d.pop("inputs_json") or "{}")
+    d["result"] = json.loads(d.pop("result_json") or "{}")
+    return d
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

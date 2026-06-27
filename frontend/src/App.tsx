@@ -15,15 +15,17 @@ import { LoginScreen } from "./components/LoginScreen";
 import { PlanView } from "./components/PlanView";
 import { RaceCard } from "./components/RaceCard";
 import { ConnectCard, ProfileEditor } from "./components/Setup";
+import { TestsView } from "./components/TestsView";
 import { useTheme } from "./theme";
 import { maybeAutoStartTour, startTour } from "./tour";
 
-type Tab = "dashboard" | "plan" | "trends" | "settings";
+type Tab = "dashboard" | "plan" | "trends" | "tests" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "plan", label: "Training Plan" },
   { id: "trends", label: "Trends" },
+  { id: "tests", label: "Tests" },
   { id: "settings", label: "Thresholds" },
 ];
 
@@ -194,6 +196,12 @@ export default function App() {
               anthropicReady={status.anthropic_configured}
               onChanged={loadData}
             />
+          </div>
+        )}
+
+        {tab === "tests" && (
+          <div className="tab-panel">
+            <TestsView onChanged={loadData} />
           </div>
         )}
 
