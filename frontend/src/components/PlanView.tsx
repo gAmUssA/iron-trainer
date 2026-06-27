@@ -135,6 +135,13 @@ export function PlanView({
       )}
 
       {weeks.length > 0 && (
+        <p className="muted small" style={{ marginTop: 8 }}>
+          <b>.fit</b> → Garmin Connect (all sports: Workouts → Import → Send to Device).{" "}
+          <b>.zwo</b> → TrainingPeaks (bike only; its import doesn’t accept .fit or run/swim).
+        </p>
+      )}
+
+      {weeks.length > 0 && (
         <div className="weeks">
           {weeks.map((w) => {
             const open = openWeek === w.week_start;
@@ -170,8 +177,10 @@ export function PlanView({
                             <span className="session-title">{wo.title}</span>
                             <span className="session-meta">{fmtDur(wo.duration_s)} · {wo.intensity} · {wo.planned_tss} TSS</span>
                             <span className="session-dl">
-                              <a href={api.workoutFitUrl(wo.id)}>.fit</a>
-                              {(wo.sport === "Bike" || wo.sport === "Brick") && <a href={api.workoutZwoUrl(wo.id)}>.zwo</a>}
+                              <a href={api.workoutFitUrl(wo.id)} title="Garmin Connect → Workouts → Import (all sports)">.fit</a>
+                              {(wo.sport === "Bike" || wo.sport === "Brick") && (
+                                <a href={api.workoutZwoUrl(wo.id)} title="TrainingPeaks → Workout Library → Workout Import (bike)">.zwo</a>
+                              )}
                             </span>
                           </div>
                         );

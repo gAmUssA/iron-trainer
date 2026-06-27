@@ -59,17 +59,23 @@ def week_workouts(week_start: str) -> list[dict]:
 _IMPORT_README = """Iron Trainer — importing your workouts
 ======================================
 
-TrainingPeaks (Premium):
-  1. Open trainingpeaks.com -> Workout Library.
-  2. Click the (...) menu on a folder -> "Workout Import".
-  3. Select the .fit files (or .zwo for bike). Workouts land in your library.
-  4. Drag each onto your calendar date, or use the planned dates in the filename.
-  5. With TP Premium connected to Garmin/Wahoo, the structured workout syncs to
-     your device automatically.
+Two destinations, two file types:
 
-Garmin Connect (fallback / direct):
-  1. Garmin Connect -> Training -> Workouts -> Import.
-  2. Select the .fit file, then "Send to Device".
+GARMIN CONNECT — all sports (bike, run, swim). Use the .fit files.
+  1. Garmin Connect (web) -> Training & Planning -> Workouts -> Import.
+  2. Select a .fit file; it appears as a structured workout.
+  3. "Send to Device" (or schedule it on a date) -> it syncs to your Garmin.
+  (Wahoo and Suunto also accept these structured workouts.)
+
+TRAININGPEAKS — bike only. Use the .zwo files.
+  1. trainingpeaks.com -> Workout Library -> (...) on a folder -> "Workout Import".
+  2. Select the .zwo files. TrainingPeaks' import ONLY accepts power-based bike
+     .zwo — it does not import .fit, and it cannot import run or swim workouts.
+  3. Drag each onto a calendar date. With TP Premium linked to your device, the
+     bike workout syncs automatically.
+
+So: run & swim (and bike, if you prefer) -> Garmin Connect via .fit.
+    Bike into TrainingPeaks -> .zwo.
 
 Filenames encode the planned date and sport, e.g. 2026-07-06_Bike_Long-ride.fit
 """
