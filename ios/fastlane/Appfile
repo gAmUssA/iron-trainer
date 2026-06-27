@@ -1,0 +1,7 @@
+# Identifiers come from the environment so no account details are committed.
+# Set these in ios/.env (gitignored) or your CI secrets:
+#   APPLE_ID, ITC_TEAM_ID (App Store Connect team), TEAM_ID (developer portal team)
+app_identifier "io.gamov.irontrainer.helper"
+apple_id ENV["APPLE_ID"]
+itc_team_id ENV["ITC_TEAM_ID"]
+team_id ENV["TEAM_ID"]

@@ -9,5 +9,22 @@ xcuserdata/
 *.xcscmblueprint
 *.xccheckout
 
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+*.ipa
+*.app.dSYM.zip
+
+# secrets / local config
+.env
+.env.*
+!.env.example
+
+# bundler
+vendor/bundle/
+.bundle/
+
 # macOS
 .DS_Store
