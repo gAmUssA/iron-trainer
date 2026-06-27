@@ -3,22 +3,31 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var model: ImportModel
+    @EnvironmentObject private var auth: AuthModel
     @State private var showingPicker = false
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationStack {
             Group {
                 switch model.state {
                 case .empty:
-                    EmptyState(showingPicker: $showingPicker)
+                    EmptyState(signedIn: auth.isSignedIn,
+                               onLoadPlan: loadPlan,
+                               onImport: { showingPicker = true },
+                               onConnect: { showingSettings = true })
                 case .loading:
-                    ProgressView("Reading workout…")
+                    ProgressView("Loading…")
                 case let .loaded(workout):
                     WorkoutPreviewView(workout: workout)
+                case let .loadedPlan(workouts):
+                    WorkoutListView(workouts: workouts)
                 case let .scheduled(message):
                     ResultState(systemImage: "checkmark.circle.fill",
                                 tint: .green, message: message,
-                                primaryTitle: "Done", onPrimary: { model.reset() }, onSecondary: nil)
+                                primaryTitle: model.lastPlan != nil ? "Back to plan" : "Done",
+                                onPrimary: { model.lastPlan != nil ? model.backToPlan() : model.reset() },
+                                onSecondary: model.lastPlan != nil ? { model.reset() } : nil)
                 case let .failed(message):
                     ResultState(systemImage: "exclamationmark.triangle.fill",
                                 tint: .orange, message: message,
@@ -29,7 +38,13 @@ struct ContentView: View {
             }
             .navigationTitle("Iron Trainer")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if auth.isSignedIn {
+                        Button { loadPlan() } label: { Image(systemName: "arrow.clockwise") }
+                    }
                     Button { showingPicker = true } label: { Image(systemName: "doc.badge.plus") }
                 }
             }
@@ -40,20 +55,39 @@ struct ContentView: View {
                     Task { await model.importFrom(FileImportSource(url: url)) }
                 }
             }
+            .sheet(isPresented: $showingSettings) { SettingsView() }
         }
+    }
+
+    private func loadPlan() {
+        guard let server = auth.serverURL, let bearer = auth.bearer else {
+            showingSettings = true
+            return
+        }
+        Task { await model.loadPlan(from: PlanNetworkSource(baseURL: server, bearer: bearer)) }
     }
 }
 
 private struct EmptyState: View {
-    @Binding var showingPicker: Bool
+    let signedIn: Bool
+    let onLoadPlan: () -> Void
+    let onImport: () -> Void
+    let onConnect: () -> Void
+
     var body: some View {
         ContentUnavailableView {
             Label("No workout yet", systemImage: "figure.run")
         } description: {
-            Text("Open a .itw file from Iron Trainer (Files, Mail, or AirDrop), or import one here.")
+            Text(signedIn
+                 ? "Load your training plan from Iron Trainer, or open a .itw file."
+                 : "Connect to Iron Trainer to sync your plan, or open a .itw file (Files, Mail, AirDrop).")
         } actions: {
-            Button("Import .itw file") { showingPicker = true }
-                .buttonStyle(.borderedProminent)
+            if signedIn {
+                Button("Load my plan", action: onLoadPlan).buttonStyle(.borderedProminent)
+            } else {
+                Button("Connect", action: onConnect).buttonStyle(.borderedProminent)
+            }
+            Button("Import .itw file", action: onImport).buttonStyle(.bordered)
         }
     }
 }

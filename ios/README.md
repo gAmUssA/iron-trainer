@@ -89,9 +89,23 @@ ios/
    `WorkoutScheduler.shared.schedule(plan, at:)` on the chosen date. If scheduling
    still fails, the result screen offers **Change date** (back to the picker).
 
+## Live sync (in-app login)
+
+Beyond file import, the app can pull your plan straight from the server:
+
+1. In the web app: **Setup → Connect iOS app** → shows a QR (and an 8-char code).
+2. In the app: **Settings (gear)** → **Scan QR** (camera) or enter the server URL +
+   code by hand. This calls `POST /api/device/claim`, storing a bearer token in the
+   Keychain (`AuthModel` + `Keychain`). A scanned `irontrainer://pair?…` link also
+   signs you in directly via `onOpenURL`.
+3. **Load my plan** → `PlanNetworkSource` GETs `/api/export/plan.itw` with the
+   token → a `WorkoutListView`. Tap a workout for the date-picker preview, or use
+   **Schedule next 7 days** to batch-schedule everything in range (15-workout cap).
+
+Pairing works in both modes: with `AUTH_REQUIRED` off it pairs to the default
+athlete; deployed, it's scoped to the logged-in athlete.
+
 ## Roadmap
 
-- **MVP (now):** file import → preview → schedule to date.
-- **Next:** "Open in Workout app" action; richer interval repeats; direct
-  network fetch via `NetworkSource` once in-app login exists (the API shape is
-  already stubbed).
+- **Next:** "Open in Workout app" action; richer interval repeats; auto-refresh
+  the plan after re-plans; token rotation UI.

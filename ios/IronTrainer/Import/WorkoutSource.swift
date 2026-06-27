@@ -21,17 +21,50 @@ struct FileImportSource: WorkoutSource {
     }
 }
 
-/// Deferred: fetch directly from the backend once in-app auth exists.
-/// Endpoint shape is already designed: GET /api/export/workout/{id}.itw
+enum NetworkError: LocalizedError {
+    case notSignedIn
+    case http(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .notSignedIn: return "Sign in to Iron Trainer first (Settings → Connect)."
+        case let .http(code): return "Server returned HTTP \(code)."
+        }
+    }
+}
+
+private func authedRequest(_ url: URL, bearer: String) -> URLRequest {
+    var req = URLRequest(url: url)
+    req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+    req.setValue("application/json", forHTTPHeaderField: "Accept")
+    return req
+}
+
+/// Fetch a single workout: GET /api/export/workout/{id}.itw (bearer-authenticated).
 struct NetworkSource: WorkoutSource {
     let baseURL: URL
+    let bearer: String
     let workoutID: Int
     var session: URLSession = .shared
-    // TODO: inject auth (cookie/session) when in-app login lands.
 
     func load() async throws -> ItwWorkout {
         let url = baseURL.appending(path: "/api/export/workout/\(workoutID).itw")
-        let (data, _) = try await session.data(from: url)
+        let (data, resp) = try await session.data(for: authedRequest(url, bearer: bearer))
+        if let h = resp as? HTTPURLResponse, h.statusCode != 200 { throw NetworkError.http(h.statusCode) }
         return try ItwWorkout.decode(from: data)
+    }
+}
+
+/// Fetch the whole plan: GET /api/export/plan.itw (bearer-authenticated) → workouts.
+struct PlanNetworkSource {
+    let baseURL: URL
+    let bearer: String
+    var session: URLSession = .shared
+
+    func loadPlan() async throws -> [ItwWorkout] {
+        let url = baseURL.appending(path: "/api/export/plan.itw")
+        let (data, resp) = try await session.data(for: authedRequest(url, bearer: bearer))
+        if let h = resp as? HTTPURLResponse, h.statusCode != 200 { throw NetworkError.http(h.statusCode) }
+        return try PlanFile.decode(from: data).workouts
     }
 }

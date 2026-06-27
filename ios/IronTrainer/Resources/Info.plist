@@ -35,6 +35,23 @@
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
 
+    <!-- Camera: scanning the pairing QR from the web app. -->
+    <key>NSCameraUsageDescription</key>
+    <string>Iron Trainer uses the camera to scan the pairing QR code from the web app.</string>
+
+    <!-- Custom URL scheme so an irontrainer://pair?… link signs the app in. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>io.gamov.irontrainer.pair</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>irontrainer</string>
+            </array>
+        </dict>
+    </array>
+
     <!-- WorkoutKit / HealthKit usage strings (required for review). -->
     <key>NSHealthShareUsageDescription</key>
     <string>Iron Trainer needs access to Health to build and schedule structured workouts.</string>
