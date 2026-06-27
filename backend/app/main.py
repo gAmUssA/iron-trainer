@@ -14,6 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import __version__, auth, repo
 from .config import REPO_ROOT, get_settings
 from .db import get_engine, init_db
+from .logging_config import get_logger, setup_logging
 from .routers import (
     analytics_router,
     athlete_router,
@@ -24,21 +25,30 @@ from .routers import (
     strava_router,
 )
 
+log = get_logger("app")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_logging()
+    s = get_settings()
+    log.info(
+        "Iron Trainer %s starting — db=%s, auth_required=%s, allowlist=%d id(s)",
+        __version__,
+        "postgres" if not s.is_sqlite else "sqlite",
+        s.auth_required,
+        len(s.allowed_strava_id_set),
+    )
     # Don't let a DB/migration error crash-loop the whole deploy: log it and still
     # start, so the liveness probe passes and /api/health?deep=1 + logs reveal it.
     try:
         init_db()
+        log.info("Database ready (migrations applied).")
     except Exception:
-        import logging
         import traceback
 
-        logging.getLogger("uvicorn.error").error(
-            "Startup init_db() failed — serving anyway; check DATABASE_URL.\n%s",
-            traceback.format_exc(),
-        )
+        log.error("Startup init_db() failed — serving anyway; check DATABASE_URL.\n%s",
+                  traceback.format_exc())
     yield
 
 

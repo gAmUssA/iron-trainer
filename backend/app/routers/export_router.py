@@ -53,6 +53,17 @@ def workout_itw(workout_id: int) -> Response:
     )
 
 
+@router.get("/plan.itw")
+def plan_itw() -> Response:
+    """The whole active plan as one .itw JSON doc — what the iOS app fetches over
+    HTTP (with a bearer token). Workouts list is empty if there's no plan yet."""
+    return Response(
+        content=service.plan_itw(),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="iron-trainer-plan.itw"'},
+    )
+
+
 @router.get("/week/{week_start}.zip")
 def week_zip(week_start: str) -> Response:
     workouts = service.week_workouts(week_start)

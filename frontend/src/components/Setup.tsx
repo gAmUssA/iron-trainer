@@ -1,5 +1,72 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { api, type AppStatus, type AthleteResponse, type Profile } from "../api";
+
+/** "Connect iOS app": mint a pairing code and show it as a QR the helper app scans. */
+function ConnectAppPairing() {
+  const [code, setCode] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState(0);
+  const [left, setLeft] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const tick = () => setLeft(Math.max(0, Math.round(expiresAt - Date.now() / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [expiresAt]);
+
+  async function generate() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await api.createPairingCode();
+      setCode(r.code);
+      setExpiresAt(r.expires_at);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const expired = code != null && left <= 0;
+  const payload =
+    code && `irontrainer://pair?server=${encodeURIComponent(window.location.origin)}&code=${code}`;
+
+  return (
+    <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+      <div className="card-label">Connect iOS app</div>
+      {!code || expired ? (
+        <>
+          <div className="hint" style={{ marginTop: 6 }}>
+            Scan a one-time code with the Iron Trainer iOS app to sync your plan to Apple Watch.
+          </div>
+          <div className="actions" style={{ marginTop: 10 }}>
+            <button className="btn" disabled={busy} onClick={generate}>
+              {busy ? "Working…" : expired ? "New code" : "Connect iOS app"}
+            </button>
+          </div>
+          {err && <div className="hint">Couldn’t create a code: {err}</div>}
+        </>
+      ) : (
+        <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 10 }}>
+          <div style={{ background: "#fff", padding: 8, borderRadius: 10 }}>
+            <QRCodeSVG value={payload as string} size={120} />
+          </div>
+          <div>
+            <div className="mono" style={{ fontSize: 22, letterSpacing: "0.12em" }}>{code}</div>
+            <div className="hint" style={{ marginTop: 4 }}>
+              In the app: Settings → Scan QR (or enter the code). Expires in {left}s.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ConnectCard({
   status,
@@ -94,6 +161,8 @@ export function ConnectCard({
             ? "Sync pulls your history; duplicates from multiple devices are removed automatically."
             : "Add STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET to .env and restart the backend.")}
       </div>
+
+      {status.authenticated && <ConnectAppPairing />}
     </div>
   );
 }

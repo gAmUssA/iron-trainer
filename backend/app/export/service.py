@@ -8,7 +8,7 @@ import zipfile
 
 from .. import repo
 from .fit_export import build_fit
-from .itw_export import build_itw
+from .itw_export import build_itw, build_plan_itw
 from .zwo_export import build_zwo
 
 
@@ -37,6 +37,11 @@ def workout_zwo(workout: dict) -> tuple[str, str] | None:
 
 def workout_itw(workout: dict) -> tuple[str, str]:
     return filename(workout, "itw"), build_itw(workout, repo.get_athlete())
+
+
+def plan_itw() -> str:
+    """The current athlete's whole active plan as one .itw JSON doc (for the app)."""
+    return build_plan_itw(repo.get_workouts(), repo.get_active_plan(), repo.get_athlete())
 
 
 def bundle_zip(workouts: list[dict]) -> bytes:

@@ -66,8 +66,12 @@ class AuthContextMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        session = scope.get("session") or {}
-        aid = session.get("athlete_id")
+        # A native client authenticates with `Authorization: Bearer <token>`;
+        # otherwise fall back to the signed-cookie session. Bearer wins when present.
+        aid = _athlete_id_from_bearer(scope)
+        if aid is None:
+            session = scope.get("session") or {}
+            aid = session.get("athlete_id")
         if aid is None and not get_settings().auth_required:
             aid = get_settings().default_athlete_id
         token = _ctx_athlete_id.set(aid)
@@ -75,3 +79,20 @@ class AuthContextMiddleware:
             await self.app(scope, receive, send)
         finally:
             _ctx_athlete_id.reset(token)
+
+
+def _athlete_id_from_bearer(scope) -> int | None:
+    """Resolve a Bearer token from the request headers to an athlete id, if any."""
+    for k, v in scope.get("headers") or []:
+        if k == b"authorization":
+            value = v.decode("latin-1")
+            if value.lower().startswith("bearer "):
+                from . import repo  # lazy: avoids repo↔auth import cycle at load
+                from .logging_config import get_logger
+
+                aid = repo.athlete_id_for_bearer(value[7:].strip())
+                if aid is None:
+                    get_logger("auth").warning("Rejected request with an unknown bearer token.")
+                return aid
+            break
+    return None

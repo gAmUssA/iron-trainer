@@ -9,7 +9,9 @@ Postgres — the only dialect-specific spot is the activity upsert.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import secrets
 from datetime import date, datetime, timezone
 
 from sqlalchemy import delete, func, update
@@ -20,7 +22,7 @@ from .auth import current_athlete_id
 from .config import get_settings
 from .db import get_session
 from .metrics import Thresholds
-from .models import Activity, Athlete, MetricDaily, Plan, PlannedWorkout, Race
+from .models import Activity, Athlete, DeviceToken, MetricDaily, Plan, PlannedWorkout, Race
 
 _ACT_UPDATE_COLS = [
     "sport", "start_date", "name", "moving_time", "elapsed_time", "distance",
@@ -89,6 +91,61 @@ def save_tokens(athlete_id: int, token: dict) -> None:
         a.strava_token_expires_at = token.get("expires_at")
         a.updated_at = _now_iso()
         s.add(a)
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_pairing_code(athlete_id: int, name: str | None = None, ttl_s: int = 600) -> dict:
+    """Mint a short-lived pairing code for an athlete. Returns {code, expires_at}.
+    The native app exchanges the code for a bearer token via claim_pairing_code."""
+    code = secrets.token_hex(4)  # 8 hex chars, easy to type/QR
+    expires_at = int(datetime.now(timezone.utc).timestamp()) + ttl_s
+    with get_session() as s:
+        s.add(DeviceToken(athlete_id=athlete_id, name=name, pairing_code=code,
+                          pairing_expires_at=expires_at, created_at=_now_iso()))
+    return {"code": code, "expires_at": expires_at}
+
+
+def claim_pairing_code(code: str, device_name: str | None = None) -> dict | None:
+    """Exchange a valid, unexpired, unclaimed code for a bearer token.
+    Returns {token, athlete:{name,strava_athlete_id}} or None if invalid."""
+    now = int(datetime.now(timezone.utc).timestamp())
+    with get_session() as s:
+        row = s.exec(select(DeviceToken).where(DeviceToken.pairing_code == code)).first()
+        if row is None or row.token_hash is not None:
+            return None  # unknown or already claimed
+        if row.pairing_expires_at is not None and row.pairing_expires_at < now:
+            return None  # expired
+        token = secrets.token_urlsafe(32)
+        row.token_hash = _hash_token(token)
+        row.pairing_code = None
+        row.pairing_expires_at = None
+        if device_name:
+            row.name = device_name
+        row.last_used_at = _now_iso()
+        s.add(row)
+        a = s.get(Athlete, row.athlete_id)
+        athlete = {
+            "name": a.name if a else None,
+            "strava_athlete_id": a.strava_athlete_id if a else None,
+        }
+    return {"token": token, "athlete": athlete}
+
+
+def athlete_id_for_bearer(token: str) -> int | None:
+    """Resolve a bearer token to its athlete id (bumping last_used_at). Used by the
+    auth middleware, so it operates by token rather than the current-user context."""
+    if not token:
+        return None
+    with get_session() as s:
+        row = s.exec(select(DeviceToken).where(DeviceToken.token_hash == _hash_token(token))).first()
+        if row is None:
+            return None
+        row.last_used_at = _now_iso()
+        s.add(row)
+        return int(row.athlete_id)
 
 
 def save_profile(profile: dict) -> None:

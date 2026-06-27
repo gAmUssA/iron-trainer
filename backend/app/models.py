@@ -134,3 +134,24 @@ class MetricDaily(SQLModel, table=True):
     ctl: float | None = None
     atl: float | None = None
     tsb: float | None = None
+
+
+class DeviceToken(SQLModel, table=True):
+    """A paired native client (e.g. the iOS app).
+
+    Lifecycle: a logged-in athlete mints a row with a short-lived ``pairing_code``
+    (token_hash null). The app exchanges the code for a bearer token; we store only
+    its sha256 in ``token_hash`` and clear the code. Requests then authenticate with
+    ``Authorization: Bearer <token>``.
+    """
+
+    __tablename__ = "device_token"
+
+    id: int | None = Field(default=None, primary_key=True)
+    athlete_id: int = Field(foreign_key="athlete.id", ondelete="CASCADE", index=True)
+    name: str | None = None  # device label
+    pairing_code: str | None = Field(default=None, index=True)  # cleared once claimed
+    pairing_expires_at: int | None = Field(default=None, sa_type=BigInteger)  # epoch s
+    token_hash: str | None = Field(default=None, index=True, unique=True)  # sha256 hex
+    created_at: str | None = None
+    last_used_at: str | None = None

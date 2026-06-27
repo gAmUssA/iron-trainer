@@ -10,6 +10,9 @@ import httpx
 from . import analysis, dedup, repo, strava
 from .auth import current_athlete_id
 from .config import get_settings
+from .logging_config import get_logger
+
+log = get_logger("strava")
 
 
 class NotConnected(Exception):
@@ -23,6 +26,7 @@ def valid_access_token() -> str:
         raise NotConnected("Strava is not connected. Visit /api/strava/connect first.")
     expires_at = a.get("strava_token_expires_at") or 0
     if expires_at <= int(time.time()) + 60:
+        log.info("Strava token expired for athlete %s — refreshing.", current_athlete_id())
         token = strava.refresh_access_token(refresh)
         repo.save_tokens(current_athlete_id(), token)
         return token["access_token"]
@@ -72,7 +76,8 @@ def deduplicate(
                 if e.response.status_code == 429:
                     break  # rate limited — resume next run (names are cached)
                 continue
-            except Exception:  # noqa: BLE001 - detail is best-effort
+            except Exception as e:  # noqa: BLE001 - detail is best-effort
+                log.debug("Device-detail fetch failed for activity %s: %s", a.get("id"), e)
                 continue
             a["device_name"] = detail.get("device_name")
             repo.set_device_name(a["id"], a["device_name"])
@@ -105,6 +110,7 @@ def run_sync(*, full: bool = False) -> dict:
         after = settings.history_cutoff_epoch
     else:
         after = repo.latest_activity_epoch()
+    log.info("Strava sync starting (athlete %s, full=%s).", current_athlete_id(), full)
     raw = strava.fetch_activities(token, after=after)
     upserted = repo.upsert_activities(raw)
 
@@ -120,6 +126,11 @@ def run_sync(*, full: bool = False) -> dict:
     dedup_stats = deduplicate(token=token, max_fetches=200)
     seeded = seed_profile_if_empty()
     days = repo.rebuild_metrics()
+    log.info(
+        "Strava sync done: fetched=%d upserted=%d pruned=%d dups_removed=%d metrics_days=%d%s",
+        len(raw), upserted, pruned, dedup_stats["duplicates"], days,
+        " (thresholds inferred)" if seeded else "",
+    )
     return {
         "fetched": len(raw),
         "upserted": upserted,

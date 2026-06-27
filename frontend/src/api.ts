@@ -196,6 +196,8 @@ export const api = {
   status: () => getJSON<AppStatus>("/api/status"),
   me: () => getJSON<Me>("/api/me"),
   logout: () => send<{ ok: boolean }>("/api/auth/logout", "POST"),
+  createPairingCode: () =>
+    send<{ code: string; expires_at: number }>("/api/device/pairing-code", "POST", {}),
   athlete: () => getJSON<AthleteResponse>("/api/athlete"),
   updateProfile: (p: Partial<Profile>) => send<AthleteResponse>("/api/athlete/profile", "PUT", p),
   sync: (full = false) => send<SyncResult>(`/api/strava/sync?full=${full}`, "POST"),

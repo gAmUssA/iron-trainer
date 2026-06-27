@@ -97,3 +97,36 @@ extension ItwWorkout {
         return Calendar.current.date(from: comps)
     }
 }
+
+/// The whole-plan document fetched from GET /api/export/plan.itw.
+struct PlanFile: Codable {
+    let schemaVersion: Int
+    let plan: PlanMeta?
+    let workouts: [ItwWorkout]
+
+    struct PlanMeta: Codable {
+        let raceName: String?
+        let raceDate: String?
+        let summary: String?
+
+        enum CodingKeys: String, CodingKey {
+            case raceName = "race_name"
+            case raceDate = "race_date"
+            case summary
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case plan, workouts
+    }
+
+    static func decode(from data: Data) throws -> PlanFile {
+        let file = try JSONDecoder().decode(PlanFile.self, from: data)
+        guard file.schemaVersion <= ItwWorkout.supportedSchemaVersion else {
+            throw ItwError.unsupportedSchema(found: file.schemaVersion,
+                                             supported: ItwWorkout.supportedSchemaVersion)
+        }
+        return file
+    }
+}
