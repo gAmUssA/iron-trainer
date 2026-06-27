@@ -3,7 +3,7 @@ import Foundation
 /// Decodes the Iron Trainer Workout (.itw) JSON emitted by the backend
 /// (`backend/app/export/itw_export.py`). This is *our* intermediate format, not
 /// Apple's binary `.workout` — the native workout is built on-device from this.
-struct ItwWorkout: Codable {
+struct ItwWorkout: Codable, Equatable {
     /// Highest schema major version this build understands.
     static let supportedSchemaVersion = 1
 
@@ -18,7 +18,7 @@ struct ItwWorkout: Codable {
     let athlete: Athlete?
     let steps: [Step]
 
-    struct Athlete: Codable {
+    struct Athlete: Codable, Equatable {
         let ftp: Double?
         let thresholdHr: Int?
         let maxHr: Int?
@@ -34,7 +34,7 @@ struct ItwWorkout: Codable {
         }
     }
 
-    struct Step: Codable {
+    struct Step: Codable, Equatable {
         let type: String?        // warmup | cooldown | recovery | interval | steady
         let durationS: Int?
         let distanceM: Double?
@@ -50,7 +50,7 @@ struct ItwWorkout: Codable {
         }
     }
 
-    struct Target: Codable {
+    struct Target: Codable, Equatable {
         let type: String?        // power | pace | hr | open
         let low: Double?
         let high: Double?

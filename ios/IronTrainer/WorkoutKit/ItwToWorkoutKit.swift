@@ -94,8 +94,11 @@ enum ItwToWorkoutKit {
             return PowerRangeAlert(target: lo...hi)
 
         case "hr":
-            let lo = Int(min(low, high))
-            let hi = Int(max(low, high))
+            // Heart rate is a Measurement<UnitFrequency>; WorkoutKit exposes bpm
+            // as WorkoutAlertMetric.countPerMinute.
+            let bpm = WorkoutAlertMetric.countPerMinute
+            let lo = Measurement(value: min(low, high), unit: bpm)
+            let hi = Measurement(value: max(low, high), unit: bpm)
             return HeartRateRangeAlert(target: lo...hi)
 
         case "pace":
@@ -107,7 +110,7 @@ enum ItwToWorkoutKit {
             let hi = Measurement(value: fast, unit: UnitSpeed.metersPerSecond)
             // Swim alerts are limited; fall back to no alert there for the MVP.
             if activity == .swimming { return nil }
-            return SpeedRangeAlert(target: lo...hi)
+            return SpeedRangeAlert(target: lo...hi, metric: .current)
 
         default:
             return nil
