@@ -11,6 +11,7 @@ from .config import get_settings
 
 AUTHORIZE_URL = "https://www.strava.com/oauth/authorize"
 TOKEN_URL = "https://www.strava.com/oauth/token"
+DEAUTHORIZE_URL = "https://www.strava.com/oauth/deauthorize"
 API_BASE = "https://www.strava.com/api/v3"
 
 # We need full activity history (incl. private) to assess fitness.
@@ -44,6 +45,17 @@ def exchange_code(code: str) -> dict:
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def deauthorize(access_token: str) -> None:
+    """Revoke the app's access for this athlete at Strava (POST /oauth/deauthorize).
+    Called when a user disconnects, per the Strava API agreement."""
+    resp = httpx.post(
+        DEAUTHORIZE_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=30,
+    )
+    resp.raise_for_status()
 
 
 def refresh_access_token(refresh_token: str) -> dict:

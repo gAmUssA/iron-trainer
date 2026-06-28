@@ -29,3 +29,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0004](0004-device-pairing-live-sync.md) | In-app login + live plan sync via device-pairing bearer tokens | Accepted |
 | [0005](0005-fitness-tests-library.md) | Fitness Tests library (measure thresholds + schedulable test workouts) | Accepted |
 | [0006](0006-display-units-preference.md) | Display units preference (miles/km + human-readable durations) | Accepted |
+| [0007](0007-strava-compliance.md) | Strava OAuth UX hardening + brand/policy compliance | Accepted |

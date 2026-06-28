@@ -213,7 +213,17 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { color: var(--on-accent); filter: brightness(1.05); }
 .btn.tiny { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
+.btn.danger { border-color: #e0533a; color: #e0533a; }
+.btn.danger:hover { background: #e0533a; border-color: #e0533a; color: #fff; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Strava attribution link treatment per brand guidelines (#FC5200, identifiable). */
+.strava-link { color: #FC5200; font-weight: 600; text-decoration: underline; font-size: 13px; align-self: center; }
+.strava-link:hover { filter: brightness(1.1); }
+
+/* App footer — "Powered by Strava" attribution on data views. */
+.app-footer { display: flex; justify-content: center; padding: 22px 16px 30px; opacity: 0.9; }
+.app-footer img { display: block; }
 
 /* ── Setup card ── */
 .status-list { display: flex; flex-direction: column; gap: 11px; font-size: 13.5px; margin-top: 16px; }

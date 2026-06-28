@@ -172,7 +172,10 @@ ALLOWED_STRAVA_IDS=33050502,12345678           # who may log in (empty = anyone)
   a signed-cookie session. Each user's activities / plan / metrics are isolated by
   `athlete_id`; the `race` catalog is shared.
 - **Allowlist** (`ALLOWED_STRAVA_IDS`) gates who can register — keep it set for a
-  private deployment. Empty allows anyone (logged with a startup warning).
+  private deployment. Empty allows anyone (logged with a startup warning). Note this
+  is *in addition to* Strava's own per-app connected-athlete cap (new apps = 1
+  athlete; request more via the Developer Program form). See
+  [Strava API compliance](strava-compliance.md).
 - **Cookies:** the frontend sends `credentials: include`; CORS already allows
   credentials for the configured origin. Behind TLS, set `COOKIE_SECURE=true`
   (marks the session cookie `Secure`) and serve same-origin so the cookie flows.
