@@ -213,6 +213,7 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { color: var(--on-accent); filter: brightness(1.05); }
 .btn.tiny { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
+.btn.disabled { opacity: 0.5; pointer-events: none; }
 .btn.danger { border-color: #e0533a; color: #e0533a; }
 .btn.danger:hover { background: #e0533a; border-color: #e0533a; color: #fff; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
