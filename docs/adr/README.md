@@ -30,3 +30,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0005](0005-fitness-tests-library.md) | Fitness Tests library (measure thresholds + schedulable test workouts) | Accepted |
 | [0006](0006-display-units-preference.md) | Display units preference (miles/km + human-readable durations) | Accepted |
 | [0007](0007-strava-compliance.md) | Strava OAuth UX hardening + brand/policy compliance | Accepted |
+| [0008](0008-strava-bulk-import.md) | Strava bulk-export (GDPR archive) importer | Accepted |

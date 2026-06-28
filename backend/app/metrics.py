@@ -18,6 +18,27 @@ from datetime import date, timedelta
 # Fallback IF when no intensity signal is available (treat as moderate aerobic).
 DEFAULT_IF = 0.70
 
+
+def normalized_power(samples: list[float | None], dt_s: float = 1.0) -> float | None:
+    """Normalized Power from a ~1 Hz power stream: 30 s rolling average, raised to the
+    4th power, averaged, 4th root. Returns None without enough data."""
+    from collections import deque
+
+    vals = [float(p) for p in samples if p is not None]
+    window = max(1, round(30.0 / dt_s))
+    if len(vals) < max(30, window):
+        return None
+    win: deque[float] = deque(maxlen=window)
+    rolled: list[float] = []
+    for p in vals:
+        win.append(p)
+        if len(win) == window:
+            rolled.append((sum(win) / window) ** 4)
+    if not rolled:
+        return None
+    return round((sum(rolled) / len(rolled)) ** 0.25)
+
+
 CTL_TIME_CONSTANT = 42  # days (chronic / "fitness")
 ATL_TIME_CONSTANT = 7  # days (acute / "fatigue")
 

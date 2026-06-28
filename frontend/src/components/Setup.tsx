@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, type AppStatus, type AthleteResponse, type Profile } from "../api";
 
@@ -114,6 +114,27 @@ export function ConnectCard({
     }
   }
 
+  async function doImport(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setBusy(true);
+    setMsg("Importing archive… (large exports can take a while)");
+    try {
+      const r = await api.importArchive(file);
+      setMsg(
+        `Imported ${r.parsed} activities (${r.with_streams} with power streams)` +
+          (r.duplicates_removed ? ` · ${r.duplicates_removed} duplicates removed` : "") +
+          (r.profile_seeded ? " · thresholds inferred" : "")
+      );
+      onSynced();
+    } catch (err) {
+      setMsg(`Import failed: ${err}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function doDisconnect() {
     if (!window.confirm(
       "Disconnect Strava and delete your synced activities and derived data? " +
@@ -184,10 +205,22 @@ export function ConnectCard({
         )}
       </div>
 
+      <div className="actions" style={{ marginTop: 10, alignItems: "center" }}>
+        <label className={`btn${busy ? " disabled" : ""}`} title="Bulk-load your full history from a Strava data export">
+          Import Strava archive (.zip)
+          <input type="file" accept=".zip,application/zip" disabled={busy} onChange={doImport}
+                 style={{ display: "none" }} />
+        </label>
+        <a className="strava-link" href="https://www.strava.com/athlete/delete_your_account"
+           target="_blank" rel="noopener noreferrer" title="Strava → Settings → Download your data">
+          How to get your archive
+        </a>
+      </div>
+
       <div className="hint">
         {msg ??
           (status.strava_configured
-            ? "Sync pulls your history; duplicates from multiple devices are removed automatically."
+            ? "Sync pulls recent history; or bulk-load everything from a Strava data export (bypasses API limits)."
             : "Add STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET to .env and restart the backend.")}
       </div>
 

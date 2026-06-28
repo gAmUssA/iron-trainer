@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import secrets
+import shutil
+import tempfile
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, UploadFile
 from fastapi.responses import RedirectResponse
 
 from .. import auth, repo, services, strava
@@ -97,6 +100,25 @@ def disconnect() -> dict:
              aid, summary["deleted_activities"], summary["deleted_metrics"])
     return {"deauthorized": deauthorized, **summary,
             "message": "Disconnected. Your Strava activities and derived data have been deleted."}
+
+
+@router.post("/import")
+def import_archive(file: UploadFile) -> dict:
+    """Bulk-load history from a user's uploaded Strava GDPR export ZIP. Athlete-scoped;
+    works without a live API connection (bypasses the rate-limit/athlete cap)."""
+    auth.current_athlete_id()  # 401 if auth_required and not logged in
+    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    try:
+        shutil.copyfileobj(file.file, tmp)  # stream upload to disk (don't hold GBs in RAM)
+        tmp.close()
+        return services.import_archive(tmp.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
 
 
 @router.post("/sync")

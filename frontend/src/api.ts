@@ -115,6 +115,17 @@ export interface DedupResult {
   metrics_days: number;
 }
 
+export interface ImportResult {
+  parsed: number;
+  upserted: number;
+  with_streams: number;
+  pruned_old: number;
+  total_activities: number;
+  duplicates_removed: number;
+  metrics_days: number;
+  profile_seeded: boolean;
+}
+
 export interface PlanWeek {
   week_index: number;
   week_start: string;
@@ -234,6 +245,13 @@ export const api = {
   updateProfile: (p: Partial<Profile>) => send<AthleteResponse>("/api/athlete/profile", "PUT", p),
   sync: (full = false) => send<SyncResult>(`/api/strava/sync?full=${full}`, "POST"),
   dedup: (fetch = true) => send<DedupResult>(`/api/strava/dedup?fetch=${fetch}`, "POST"),
+  importArchive: async (file: File): Promise<ImportResult> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/strava/import", { method: "POST", credentials: "include", body: fd });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json() as Promise<ImportResult>;
+  },
   disconnect: () =>
     send<{ deauthorized: boolean; deleted_activities: number; deleted_metrics: number; message: string }>(
       "/api/strava/disconnect", "POST"),

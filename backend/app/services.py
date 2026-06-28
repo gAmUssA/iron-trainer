@@ -7,12 +7,48 @@ from datetime import date
 
 import httpx
 
-from . import analysis, dedup, repo, strava
+from . import analysis, dedup, repo, strava, strava_import
 from .auth import current_athlete_id
 from .config import get_settings
 from .logging_config import get_logger
 
 log = get_logger("strava")
+
+
+def import_archive(zip_path: str) -> dict:
+    """Bulk-load history from a user's Strava GDPR export ZIP (no API needed). Mirrors
+    run_sync's post-steps: upsert → prune to the retention window → de-dup (no device
+    lookups, since there's no token) → seed thresholds → rebuild metrics."""
+    settings = get_settings()
+    log.info("Strava archive import starting (athlete %s).", current_athlete_id())
+    activities = strava_import.parse_archive(zip_path)
+    with_streams = sum(1 for a in activities if a.get("device_watts"))
+    upserted = repo.upsert_activities(activities)
+
+    pruned = 0
+    cutoff = settings.history_cutoff_date
+    if cutoff:
+        pruned = repo.delete_activities_before(cutoff.isoformat())
+
+    dedup_stats = deduplicate(token=None, fetch_details=False)
+    seeded = seed_profile_if_empty()
+    days = repo.rebuild_metrics()
+    log.info(
+        "Archive import done: parsed=%d upserted=%d streams=%d pruned=%d dups_removed=%d "
+        "metrics_days=%d%s",
+        len(activities), upserted, with_streams, pruned, dedup_stats["duplicates"], days,
+        " (thresholds inferred)" if seeded else "",
+    )
+    return {
+        "parsed": len(activities),
+        "upserted": upserted,
+        "with_streams": with_streams,
+        "pruned_old": pruned,
+        "total_activities": repo.activity_count(),
+        "duplicates_removed": dedup_stats["duplicates"],
+        "metrics_days": days,
+        "profile_seeded": seeded is not None,
+    }
 
 
 class NotConnected(Exception):
