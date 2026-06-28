@@ -100,7 +100,11 @@ def test_login_rejected_when_not_allowlisted(monkeypatch):
     _login_env(monkeypatch, "111")  # 222 not allowed
     monkeypatch.setattr("app.strava.exchange_code", lambda code: {"athlete": {"id": 222}})
     with TestClient(app) as c:
-        assert _do_oauth(c).status_code == 403
+        r = _do_oauth(c)
+        # Rejection now redirects to the SPA with a friendly flag (not a raw 403).
+        assert r.status_code in (302, 307)
+        assert "strava_error=not_allowed" in r.headers["location"]
+        assert c.get("/api/me").json()["authenticated"] is False
     get_settings.cache_clear()
 
 

@@ -102,6 +102,27 @@ def save_tokens(athlete_id: int, token: dict) -> None:
         s.add(a)
 
 
+def disconnect_strava() -> dict:
+    """Delete the current athlete's Strava data on disconnect (Strava API agreement
+    §7.4): remove synced activities + derived daily metrics, and clear the stored
+    Strava tokens and Strava-sourced name. The athlete row and any manually-entered
+    thresholds are kept (those are the user's, not Strava Data)."""
+    aid = current_athlete_id()
+    with get_session() as s:
+        acts = s.execute(delete(Activity).where(Activity.athlete_id == aid)).rowcount
+        metrics = s.execute(delete(MetricDaily).where(MetricDaily.athlete_id == aid)).rowcount
+        a = s.get(Athlete, aid)
+        if a is not None:
+            a.strava_access_token = None
+            a.strava_refresh_token = None
+            a.strava_token_expires_at = None
+            a.strava_athlete_id = None
+            a.name = None  # name came from Strava
+            a.updated_at = _now_iso()
+            s.add(a)
+    return {"deleted_activities": acts or 0, "deleted_metrics": metrics or 0}
+
+
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 

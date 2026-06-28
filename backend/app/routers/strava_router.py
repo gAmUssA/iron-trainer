@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import secrets
+from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
@@ -13,6 +15,14 @@ from ..logging_config import get_logger
 
 router = APIRouter(prefix="/api/strava", tags=["strava"])
 log = get_logger("strava")
+
+
+def _redirect(**params: str) -> RedirectResponse:
+    """Send the browser back to the SPA with a query flag, so OAuth outcomes surface
+    as a friendly in-app banner instead of a raw JSON error page."""
+    s = get_settings()
+    dest = s.cors_origin_list[0] if s.cors_origin_list else ""
+    return RedirectResponse(f"{dest}/?{urlencode(params)}")
 
 
 @router.get("/connect")
@@ -33,14 +43,21 @@ def callback(
     state: str | None = Query(None),
     error: str | None = Query(None),
 ) -> RedirectResponse:
-    if error or not code:
-        raise HTTPException(400, f"Strava authorization failed: {error or 'no code'}")
     s = get_settings()
+    if error or not code:
+        # Strava bounced the user back denied/cancelled (e.g. access_denied).
+        log.info("Strava authorization returned without a code (error=%s).", error)
+        return _redirect(strava_error=error or "no_code")
     if s.auth_required and (not state or state != request.session.get("oauth_state")):
-        raise HTTPException(400, "Invalid OAuth state")
+        log.warning("Strava callback with invalid OAuth state.")
+        return _redirect(strava_error="invalid_state")
     request.session.pop("oauth_state", None)
 
-    token = strava.exchange_code(code)
+    try:
+        token = strava.exchange_code(code)
+    except httpx.HTTPError as e:
+        log.warning("Strava token exchange failed: %s", e)
+        return _redirect(strava_error="exchange_failed")
     strava_id = (token.get("athlete") or {}).get("id")
     ath = token.get("athlete") or {}
     name = " ".join(filter(None, [ath.get("firstname"), ath.get("lastname")])) or None
@@ -48,7 +65,7 @@ def callback(
     if s.auth_required:
         if strava_id is None or not auth.is_allowed(strava_id):
             log.warning("Rejected Strava login for athlete id %s (not on allowlist).", strava_id)
-            raise HTTPException(403, "This Strava account is not allowed on this instance.")
+            return _redirect(strava_error="not_allowed")
         athlete_id = repo.find_or_create_athlete(strava_id, name)
         request.session["athlete_id"] = athlete_id
         log.info("Strava login: athlete %s (strava id %s) signed in.", athlete_id, strava_id)
@@ -58,8 +75,28 @@ def callback(
         log.info("Strava connected to local default athlete (strava id %s).", strava_id)
 
     repo.save_tokens(athlete_id, token)
-    dest = s.cors_origin_list[0] if s.cors_origin_list else "/"
-    return RedirectResponse(f"{dest}/?connected=1")
+    return _redirect(connected="1")
+
+
+@router.post("/disconnect")
+def disconnect() -> dict:
+    """Disconnect Strava and delete the athlete's Strava data (API agreement §7.4):
+    revoke access at Strava, then purge synced activities + derived metrics + tokens.
+    Returns a deletion summary — the §2.5 written confirmation."""
+    aid = auth.current_athlete_id()  # 401 if auth_required and not logged in
+    deauthorized = False
+    try:
+        token = services.valid_access_token()
+        strava.deauthorize(token)
+        deauthorized = True
+    except (services.NotConnected, httpx.HTTPError) as e:
+        # Already revoked / token gone — still purge local data.
+        log.info("Deauthorize skipped (%s); proceeding to local deletion.", e)
+    summary = repo.disconnect_strava()
+    log.info("Athlete %s disconnected Strava: deleted %s activities, %s metric days.",
+             aid, summary["deleted_activities"], summary["deleted_metrics"])
+    return {"deauthorized": deauthorized, **summary,
+            "message": "Disconnected. Your Strava activities and derived data have been deleted."}
 
 
 @router.post("/sync")

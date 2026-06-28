@@ -114,6 +114,24 @@ export function ConnectCard({
     }
   }
 
+  async function doDisconnect() {
+    if (!window.confirm(
+      "Disconnect Strava and delete your synced activities and derived data? " +
+      "Your manually-entered thresholds are kept. This revokes the app's Strava access."
+    )) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api.disconnect();
+      setMsg(`${r.message} (${r.deleted_activities} activities, ${r.deleted_metrics} metric days removed.)`);
+      onSynced();
+    } catch (e) {
+      setMsg(`Disconnect failed: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const rows = [
     { on: status.strava_configured, label: "Strava API keys configured" },
     {
@@ -135,10 +153,11 @@ export function ConnectCard({
         ))}
       </div>
 
-      <div className="actions" style={{ marginTop: 18 }}>
+      <div className="actions" style={{ marginTop: 18, alignItems: "center" }}>
         {!athlete.connected ? (
-          <a className="btn primary" href={api.connectUrl} aria-disabled={!status.strava_configured}>
-            Connect Strava
+          <a href={api.connectUrl} aria-label="Connect with Strava"
+             style={{ pointerEvents: status.strava_configured ? "auto" : "none", opacity: status.strava_configured ? 1 : 0.5 }}>
+            <img src="/strava/btn_strava_connect.svg" alt="Connect with Strava" style={{ height: 44 }} />
           </a>
         ) : (
           <>
@@ -150,6 +169,16 @@ export function ConnectCard({
             </button>
             <button className="btn" disabled={busy} onClick={doDedup} title="Bike → Garmin Edge, swim/run → Apple Watch">
               Re-run de-dup
+            </button>
+            {athlete.profile.strava_athlete_id && (
+              <a className="strava-link" href={`https://www.strava.com/athletes/${athlete.profile.strava_athlete_id}`}
+                 target="_blank" rel="noopener noreferrer">
+                View on Strava
+              </a>
+            )}
+            <button className="btn danger" disabled={busy} onClick={doDisconnect}
+                    title="Revoke Strava access and delete your Strava data">
+              Disconnect & delete data
             </button>
           </>
         )}

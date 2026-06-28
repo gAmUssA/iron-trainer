@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  stravaErrorMessage,
   type AppStatus,
   type AthleteResponse,
   type PmcDay,
@@ -53,6 +54,17 @@ export default function App() {
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [compliance, setCompliance] = useState<WeekCompliance[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [stravaNotice, setStravaNotice] = useState<string | null>(null);
+
+  // Surface the OAuth outcome the backend redirected us back with, then clean the URL.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const err = q.get("strava_error");
+    if (err) setStravaNotice(stravaErrorMessage(err));
+    if (err || q.get("connected")) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     const [a, p, w, t, r, pl, comp] = await Promise.all([
@@ -103,7 +115,7 @@ export default function App() {
 
   // Login gate (only when the server requires auth and nobody is signed in).
   if (status && status.auth_required && !status.authenticated) {
-    return <LoginScreen status={status} />;
+    return <LoginScreen status={status} notice={stravaNotice} />;
   }
 
   return (
@@ -170,6 +182,14 @@ export default function App() {
 
       <main className="content">
         {error && <div className="card error">Could not reach API: {error}</div>}
+        {stravaNotice && (
+          <div className="card error" role="alert">
+            {stravaNotice}
+            <button className="btn tiny" style={{ marginLeft: 12 }} onClick={() => setStravaNotice(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {tab === "dashboard" && (
           <div className="tab-panel">
@@ -222,6 +242,12 @@ export default function App() {
           </div>
         )}
       </main>
+
+      <footer className="app-footer">
+        <a href="https://www.strava.com" target="_blank" rel="noopener noreferrer" aria-label="Powered by Strava">
+          <img src="/strava/powered_by_strava.svg" alt="Powered by Strava" height="20" />
+        </a>
+      </footer>
     </div>
   );
 }

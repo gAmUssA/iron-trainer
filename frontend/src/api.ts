@@ -234,6 +234,9 @@ export const api = {
   updateProfile: (p: Partial<Profile>) => send<AthleteResponse>("/api/athlete/profile", "PUT", p),
   sync: (full = false) => send<SyncResult>(`/api/strava/sync?full=${full}`, "POST"),
   dedup: (fetch = true) => send<DedupResult>(`/api/strava/dedup?fetch=${fetch}`, "POST"),
+  disconnect: () =>
+    send<{ deauthorized: boolean; deleted_activities: number; deleted_metrics: number; message: string }>(
+      "/api/strava/disconnect", "POST"),
   pmc: () => getJSON<{ days: PmcDay[] }>("/api/metrics/pmc"),
   weekly: () => getJSON<{ weeks: WeekVolume[] }>("/api/metrics/weekly"),
   trends: () => getJSON<Trends>("/api/metrics/trends"),
@@ -263,6 +266,21 @@ export const api = {
   workoutZwoUrl: (id: number) => `/api/export/workout/${id}.zwo`,
   workoutItwUrl: (id: number) => `/api/export/workout/${id}.itw`,
 };
+
+// ── Strava OAuth error copy (codes set by the backend callback redirect) ────────
+export function stravaErrorMessage(code: string | null): string | null {
+  if (!code) return null;
+  const map: Record<string, string> = {
+    access_denied: "Strava sign-in was cancelled or access was denied.",
+    no_code: "Strava sign-in didn’t complete — please try again.",
+    invalid_state: "Strava sign-in expired — please try again.",
+    exchange_failed: "Couldn’t complete Strava sign-in — please try again.",
+    not_allowed: "This Strava account isn’t approved on this instance yet.",
+    limit:
+      "This app has reached its Strava connected-athlete limit — the owner needs to request an increase.",
+  };
+  return map[code] ?? "Strava sign-in failed — please try again.";
+}
 
 // ── formatting helpers ────────────────────────────────────────────────────────
 export function paceKm(secPerKm: number | null): string {
