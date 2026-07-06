@@ -13,6 +13,7 @@ import {
 } from "./api";
 import { PmcChart, ReadinessCard, TrendsChart, WeeklyVolumeChart } from "./components/Dashboards";
 import { LoginScreen } from "./components/LoginScreen";
+import { NutritionView } from "./components/NutritionView";
 import { PlanView } from "./components/PlanView";
 import { RaceCard } from "./components/RaceCard";
 import { ConnectCard, ProfileEditor } from "./components/Setup";
@@ -21,11 +22,12 @@ import { useTheme } from "./theme";
 import { useUnits } from "./units";
 import { maybeAutoStartTour, startTour } from "./tour";
 
-type Tab = "dashboard" | "plan" | "trends" | "tests" | "settings";
+type Tab = "dashboard" | "plan" | "nutrition" | "trends" | "tests" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "plan", label: "Training Plan" },
+  { id: "nutrition", label: "Nutrition" },
   { id: "trends", label: "Trends" },
   { id: "tests", label: "Tests" },
   { id: "settings", label: "Thresholds" },
@@ -225,6 +227,16 @@ export default function App() {
               compliance={compliance}
               anthropicReady={status.anthropic_configured}
               onChanged={loadData}
+            />
+          </div>
+        )}
+
+        {tab === "nutrition" && (
+          <div className="tab-panel">
+            <NutritionView
+              anthropicReady={status?.anthropic_configured ?? false}
+              hasBodyWeight={!!athlete?.profile.body_weight_kg}
+              onGoToSettings={() => setTab("settings")}
             />
           </div>
         )}

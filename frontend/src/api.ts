@@ -38,7 +38,58 @@ export interface Profile {
   threshold_pace_run: number | null; // sec/km
   css_swim: number | null; // sec/100m
   weekly_hours_target: number | null;
+  body_weight_kg: number | null;
+  gel_carb_g: number | null; // carbs per gel (default 25)
+  sweat_rate_l_h: number | null; // measured override, else estimated
+  gi_tolerance: string | null; // "low" | "medium" | "high"
   updated_at: string | null;
+}
+
+export interface WorkoutFueling {
+  needed: boolean;
+  duration_s: number;
+  note?: string;
+  intensity?: string;
+  carb_g_h?: number;
+  carb_total_g?: number;
+  mtc_required?: boolean;
+  gel_carb_g?: number;
+  gels_per_hour?: number;
+  gels_total?: number;
+  high_carb_gels_total?: number;
+  sweat_rate_l_h?: number | null;
+  fluid_ml_h?: number | null;
+  fluid_total_ml?: number | null;
+  sodium_mg_h?: number | null;
+  sodium_total_mg?: number | null;
+  recovery_carb_g?: number;
+}
+
+export interface RaceDayItem {
+  phase: string;
+  offset_min?: number;
+  label: string;
+  carbs_g: number | null;
+  fluid_ml: number | null;
+  sodium_mg: number | null;
+  phase_duration_s?: number;
+  notes: string | null;
+}
+export interface RaceDayPlan {
+  race: { name: string | null; date: string | null; distance: string | null };
+  summary: string;
+  gel_carb_g: number;
+  items: RaceDayItem[];
+  llm_used: boolean;
+  adjustments: string[];
+}
+export interface DailyNutrition {
+  body_weight_kg: number | null;
+  weekly_hours?: number;
+  daily_carb_g: number | null;
+  pre_race?: { meal_3h_g: number; snack_1h_g: number };
+  recovery_carb_g?: number;
+  note?: string;
 }
 
 export interface AthleteResponse {
@@ -283,6 +334,12 @@ export const api = {
   workoutFitUrl: (id: number) => `/api/export/workout/${id}.fit`,
   workoutZwoUrl: (id: number) => `/api/export/workout/${id}.zwo`,
   workoutItwUrl: (id: number) => `/api/export/workout/${id}.itw`,
+  workoutFueling: (id: number) =>
+    getJSON<{ workout_id: number; fueling: WorkoutFueling }>(`/api/nutrition/workout/${id}`),
+  nutritionDaily: () => getJSON<DailyNutrition>("/api/nutrition/daily"),
+  raceDayNutrition: () => getJSON<RaceDayPlan>("/api/nutrition/race-day"),
+  regenerateRaceDayNutrition: () =>
+    send<RaceDayPlan>("/api/nutrition/race-day/regenerate", "POST"),
 };
 
 // ── Strava OAuth error copy (codes set by the backend callback redirect) ────────

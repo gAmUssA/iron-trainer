@@ -78,6 +78,33 @@ SEASON_SCHEMA = {
 }
 
 
+NUTRITION_ITEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "phase": {
+            "type": "string",
+            "enum": ["pre_race", "swim", "t1", "bike", "t2", "run", "post_race"],
+        },
+        "offset_min": {"type": "integer"},
+        "label": {"type": "string"},
+        "carbs_g": {"type": ["integer", "null"]},
+        "fluid_ml": {"type": ["integer", "null"]},
+        "sodium_mg": {"type": ["integer", "null"]},
+        "notes": {"type": ["string", "null"]},
+    },
+    "required": ["phase", "label", "notes"],
+}
+
+NUTRITION_PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "items": {"type": "array", "items": NUTRITION_ITEM_SCHEMA},
+    },
+    "required": ["summary", "items"],
+}
+
+
 class LLMUnavailable(Exception):
     pass
 
@@ -159,3 +186,34 @@ def generate_week_workouts(week: dict, profile: dict, context: dict) -> list[dic
         max_tokens=8000,
     )
     return out.get("workouts", [])
+
+
+def generate_race_day_nutrition(
+    profile: dict, race: dict, readiness: dict, fueling_targets: dict
+) -> dict:
+    """Ask the LLM for a concrete race-day fueling timeline, using the
+    deterministic targets as the prior. Returns {summary, items}; the caller
+    merges/validates it. Raises LLMUnavailable when the LLM can't be used."""
+    s = get_settings()
+    system = (
+        "You are an expert sports nutritionist for IRONMAN 70.3 and 140.6 racing. "
+        "You are given deterministic, physiology-based fueling targets (carbs, "
+        "fluid, sodium per leg) computed from the athlete's body weight, projected "
+        "splits and the research literature. Treat those numbers as a firm prior: "
+        "produce a concrete timeline (pre-race meal, pre-race snack, swim, T1, bike, "
+        "T2, run, recovery) with specific times (offset_min relative to the swim "
+        "start, negative before the gun), real product suggestions, and amounts. "
+        "Stay within the given per-hour rates — never exceed 120 g carbs/h or "
+        "1000 mL/h, and use a glucose:fructose blend above 60 g/h. Output via the tool."
+    )
+    user = (
+        f"Athlete profile: {json.dumps(profile)}\n"
+        f"Race: {json.dumps(race)}\n"
+        f"Projected splits / readiness: {json.dumps(readiness)}\n\n"
+        f"Deterministic fueling prior to follow:\n{json.dumps(fueling_targets)}\n\n"
+        "Return a concrete race-day fueling timeline."
+    )
+    out = _call_tool(
+        s.planner_model, system, user, "race_day_nutrition", NUTRITION_PLAN_SCHEMA, max_tokens=4000
+    )
+    return {"summary": out.get("summary"), "items": out.get("items") or []}

@@ -6,6 +6,7 @@ import {
   type PlanResponse,
   type ReconcileResult,
   type WeekCompliance,
+  type WorkoutFueling,
 } from "../api";
 
 function fmtDur(s: number | null): string {
@@ -166,31 +167,9 @@ export function PlanView({
                   <div className="week-body">
                     <div className="week-note">{w.focus}</div>
                     <div className="sessions">
-                      {sessionsFor(w.week_start).map((wo) => {
-                        const sp = SPORT[wo.sport] ?? { color: "#9aa0ac", label: wo.sport.toUpperCase() };
-                        const st = STATUS[wo.status ?? "planned"] ?? STATUS.planned;
-                        return (
-                          <div className="session" key={wo.id}>
-                            <span className={`session-status ${st.cls}`} title={wo.status ?? "planned"}>{st.mark}</span>
-                            <span className="sport-badge" style={{ color: sp.color, borderColor: sp.color, border: `1px solid ${sp.color}` }}>{sp.label}</span>
-                            <span className="session-date">{wo.date.slice(5)}</span>
-                            <span className="session-title">
-                              {wo.intensity === "test" && (
-                                <span className="sport-badge" style={{ color: "var(--accent)", border: "1px solid var(--accent)", marginRight: 6 }}>TEST</span>
-                              )}
-                              {wo.title}
-                            </span>
-                            <span className="session-meta">{fmtDur(wo.duration_s)} · {wo.intensity} · {wo.planned_tss} TSS</span>
-                            <span className="session-dl">
-                              <a href={api.workoutFitUrl(wo.id)} title="Garmin Connect → Workouts → Import (all sports)">.fit</a>
-                              {(wo.sport === "Bike" || wo.sport === "Brick") && (
-                                <a href={api.workoutZwoUrl(wo.id)} title="TrainingPeaks → Workout Library → Workout Import (bike)">.zwo</a>
-                              )}
-                              <a href={api.workoutItwUrl(wo.id)} title="Apple Watch → open in the Iron Trainer helper app">.itw</a>
-                            </span>
-                          </div>
-                        );
-                      })}
+                      {sessionsFor(w.week_start).map((wo) => (
+                        <SessionRow key={wo.id} wo={wo} />
+                      ))}
                     </div>
                   </div>
                 )}
@@ -200,5 +179,91 @@ export function PlanView({
         </div>
       )}
     </div>
+  );
+}
+
+function SessionRow({ wo }: { wo: PlannedWorkout }) {
+  const sp = SPORT[wo.sport] ?? { color: "#9aa0ac", label: wo.sport.toUpperCase() };
+  const st = STATUS[wo.status ?? "planned"] ?? STATUS.planned;
+  const [open, setOpen] = useState(false);
+  const [fueling, setFueling] = useState<WorkoutFueling | null>(null);
+  const [loading, setLoading] = useState(false);
+  // Anything ≥45 min is worth showing a fueling card for.
+  const fuelable = (wo.duration_s ?? 0) >= 45 * 60;
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && !fueling && !loading) {
+      setLoading(true);
+      try {
+        const r = await api.workoutFueling(wo.id);
+        setFueling(r.fueling);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }
+
+  return (
+    <>
+      <div className="session">
+        <span className={`session-status ${st.cls}`} title={wo.status ?? "planned"}>{st.mark}</span>
+        <span className="sport-badge" style={{ color: sp.color, borderColor: sp.color, border: `1px solid ${sp.color}` }}>{sp.label}</span>
+        <span className="session-date">{wo.date.slice(5)}</span>
+        <span className="session-title">
+          {wo.intensity === "test" && (
+            <span className="sport-badge" style={{ color: "var(--accent)", border: "1px solid var(--accent)", marginRight: 6 }}>TEST</span>
+          )}
+          {wo.title}
+        </span>
+        <span className="session-meta">{fmtDur(wo.duration_s)} · {wo.intensity} · {wo.planned_tss} TSS</span>
+        <span className="session-dl">
+          {fuelable && (
+            <button className="fuel-toggle" onClick={toggle} title="Fueling plan for this session">
+              🍌{open ? " ▴" : " ▾"}
+            </button>
+          )}
+          <a href={api.workoutFitUrl(wo.id)} title="Garmin Connect → Workouts → Import (all sports)">.fit</a>
+          {(wo.sport === "Bike" || wo.sport === "Brick") && (
+            <a href={api.workoutZwoUrl(wo.id)} title="TrainingPeaks → Workout Library → Workout Import (bike)">.zwo</a>
+          )}
+          <a href={api.workoutItwUrl(wo.id)} title="Apple Watch → open in the Iron Trainer helper app">.itw</a>
+        </span>
+      </div>
+      {open && (
+        <div className="fuel-card">
+          {loading && <span className="muted small">Loading fueling…</span>}
+          {fueling && !fueling.needed && (
+            <span className="muted small">{fueling.note ?? "No in-session fueling needed."}</span>
+          )}
+          {fueling && fueling.needed && (
+            <div className="fuel-grid">
+              <div className="fuel-metric">
+                <span className="n">{fueling.carb_g_h} g/h</span>
+                <span className="lbl">carbs · {fueling.carb_total_g} g total{fueling.mtc_required ? " · glucose:fructose blend" : ""}</span>
+              </div>
+              <div className="fuel-metric">
+                <span className="n">{fueling.gels_per_hour}/h</span>
+                <span className="lbl">gels ({fueling.gel_carb_g} g) · {fueling.gels_total} total{fueling.high_carb_gels_total ? ` · or ${fueling.high_carb_gels_total} high-carb` : ""}</span>
+              </div>
+              {fueling.fluid_ml_h != null ? (
+                <div className="fuel-metric">
+                  <span className="n">{fueling.fluid_ml_h} mL/h</span>
+                  <span className="lbl">fluid · {fueling.fluid_total_ml} mL total</span>
+                </div>
+              ) : null}
+              {fueling.sodium_mg_h != null ? (
+                <div className="fuel-metric">
+                  <span className="n">{fueling.sodium_mg_h} mg/h</span>
+                  <span className="lbl">sodium · {fueling.sodium_total_mg} mg total</span>
+                </div>
+              ) : null}
+            </div>
+          )}
+          {fueling?.note && fueling.needed && <div className="muted small">{fueling.note}</div>}
+        </div>
+      )}
+    </>
   );
 }

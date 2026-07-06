@@ -251,6 +251,10 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
   const [runPace, setRunPace] = useState(fmtPace(profile.threshold_pace_run));
   const [css, setCss] = useState(fmtPace(profile.css_swim));
   const [hours, setHours] = useState(profile.weekly_hours_target?.toString() ?? "");
+  const [weight, setWeight] = useState(profile.body_weight_kg?.toString() ?? "");
+  const [gelCarb, setGelCarb] = useState(profile.gel_carb_g?.toString() ?? "");
+  const [sweat, setSweat] = useState(profile.sweat_rate_l_h?.toString() ?? "");
+  const [gi, setGi] = useState(profile.gi_tolerance ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -265,6 +269,10 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
         threshold_pace_run: parsePace(runPace),
         css_swim: parsePace(css),
         weekly_hours_target: hours ? parseFloat(hours) : null,
+        body_weight_kg: weight ? parseFloat(weight) : null,
+        gel_carb_g: gelCarb ? parseFloat(gelCarb) : null,
+        sweat_rate_l_h: sweat ? parseFloat(sweat) : null,
+        gi_tolerance: gi || null,
       });
       onSaved();
       setSaved(true);
@@ -298,6 +306,27 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
             <span className="dot" />Saved — zones &amp; projection recomputed
           </span>
         )}
+      </div>
+
+      <div className="card-title" style={{ marginTop: 26 }}>Nutrition</div>
+      <div className="card-sub">
+        Body weight is the only required input — it drives hydration, sodium and daily-carb targets.
+        Everything else has sensible defaults.
+        {weight ? ` (~${(parseFloat(weight) * 2.2046).toFixed(0)} lb)` : ""}
+      </div>
+      <div className="thr-grid">
+        <Field label="Body weight (kg)" value={weight} onChange={setWeight} placeholder="e.g. 70" />
+        <Field label="Carbs per gel (g)" value={gelCarb} onChange={setGelCarb} placeholder="default 25" />
+        <Field label="Measured sweat rate (L/h)" value={sweat} onChange={setSweat} placeholder="optional" />
+        <label className="field">
+          <span>GI tolerance</span>
+          <select value={gi} onChange={(e) => setGi(e.target.value)}>
+            <option value="">default (medium)</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+        </label>
       </div>
     </div>
   );
