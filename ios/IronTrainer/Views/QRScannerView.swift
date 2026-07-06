@@ -69,6 +69,14 @@ private func isAllowedPairingServer(_ url: URL) -> Bool {
 
 private func isLocalDevHost(_ host: String) -> Bool {
     let h = host.lowercased()
-    return h == "localhost" || h == "127.0.0.1" || h.hasSuffix(".local")
-        || h.hasPrefix("192.168.") || h.hasPrefix("10.")
+    if h == "localhost" || h == "::1" || h.hasSuffix(".local") { return true }
+    // Private (RFC 1918) or loopback IPv4 — must be a NUMERIC address; a DNS name
+    // like "10.evil.com" must not qualify, so parse strict dotted-quad octets.
+    let parts = h.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count == 4 else { return false }
+    let octets = parts.compactMap { UInt8($0) }
+    guard octets.count == 4 else { return false }
+    return octets[0] == 127 || octets[0] == 10
+        || (octets[0] == 192 && octets[1] == 168)
+        || (octets[0] == 172 && (16...31).contains(octets[1]))
 }

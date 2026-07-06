@@ -47,7 +47,13 @@ struct IronTrainerApp: App {
     }
 
     private func pair(server: URL, code: String) async {
-        try? await auth.signIn(server: server, code: code)
+        do {
+            try await auth.signIn(server: server, code: code)
+        } catch {
+            // Failed pairing must not fall through to a plan refresh against the
+            // previously stored server/bearer — that reads as a silent success.
+            return
+        }
         if let s = auth.serverURL, let b = auth.bearer {
             await model.loadPlan(from: PlanNetworkSource(baseURL: s, bearer: b))
         }

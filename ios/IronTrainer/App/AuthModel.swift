@@ -52,7 +52,7 @@ final class AuthModel: ObservableObject {
             var req = URLRequest(url: server.appending(path: "/api/device/tokens"))
             req.httpMethod = "DELETE"
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            Task.detached { _ = try? await URLSession.shared.data(for: req) }
+            Task { _ = try? await URLSession.shared.data(for: req) }
         }
         Keychain.delete(tokenAccount)
         UserDefaults.standard.removeObject(forKey: serverKey)

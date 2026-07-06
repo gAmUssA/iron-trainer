@@ -235,8 +235,9 @@ function parsePace(text: string): number | null {
   const t = text.trim();
   if (!t) return null;
   if (t.includes(":")) {
-    const [m, s] = t.split(":");
-    return parseInt(m, 10) * 60 + parseInt(s, 10);
+    const match = /^(\d+):([0-5]\d)$/.exec(t); // strict m:ss — "4:99" must fail, not normalize
+    if (!match) return NaN;
+    return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
   }
   return parseFloat(t);
 }
