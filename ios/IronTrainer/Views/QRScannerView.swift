@@ -47,11 +47,28 @@ struct QRScannerView: UIViewControllerRepresentable {
 }
 
 /// Parse `irontrainer://pair?server=<enc>&code=<code>` into (serverURL, code).
+/// The link/QR can come from anywhere (any web page can fire the custom scheme),
+/// so the server URL must be https — plain http only for local development hosts.
 func parsePairingPayload(_ s: String) -> (URL, String)? {
     guard let comps = URLComponents(string: s),
           comps.scheme == "irontrainer", comps.host == "pair",
           let server = comps.queryItems?.first(where: { $0.name == "server" })?.value,
           let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
-          let url = URL(string: server) else { return nil }
+          let url = URL(string: server),
+          isAllowedPairingServer(url) else { return nil }
     return (url, code)
+}
+
+private func isAllowedPairingServer(_ url: URL) -> Bool {
+    switch url.scheme?.lowercased() {
+    case "https": return true
+    case "http": return isLocalDevHost(url.host ?? "")
+    default: return false
+    }
+}
+
+private func isLocalDevHost(_ host: String) -> Bool {
+    let h = host.lowercased()
+    return h == "localhost" || h == "127.0.0.1" || h.hasSuffix(".local")
+        || h.hasPrefix("192.168.") || h.hasPrefix("10.")
 }

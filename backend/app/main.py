@@ -30,10 +30,23 @@ from .routers import (
 log = get_logger("app")
 
 
+def enforce_secure_config(s) -> None:
+    """Refuse to serve multi-user auth with the known default session secret —
+    session cookies are signed with it and carry the athlete id, so anyone could
+    forge a session for any athlete. Unlike a DB failure at startup, this must
+    NOT serve: fail the deploy loudly."""
+    if s.auth_required and s.session_secret == "dev-insecure-change-me":
+        raise RuntimeError(
+            "AUTH_REQUIRED=true but SESSION_SECRET is the insecure default. "
+            "Set a strong SESSION_SECRET before enabling multi-user auth."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
     s = get_settings()
+    enforce_secure_config(s)
     log.info(
         "Iron Trainer %s starting — db=%s, auth_required=%s, allowlist=%d id(s)",
         __version__,

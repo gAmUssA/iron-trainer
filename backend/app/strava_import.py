@@ -174,20 +174,31 @@ def _parse_tcx(data: bytes) -> dict:
 
 _PARSERS = {".fit": _parse_fit, ".gpx": _parse_gpx, ".tcx": _parse_tcx}
 
+# Decompression-bomb guard: no single member (nor its gzip payload) may expand
+# beyond this. Real per-activity files are a few MB; activities.csv tens of MB.
+MAX_MEMBER_BYTES = 100 * 1024 * 1024
 
-def _parse_activity_file(zf: zipfile.ZipFile, filename: str) -> dict | None:
+
+def _parse_activity_file(zf: zipfile.ZipFile, names: set[str], filename: str) -> dict | None:
     """Decompress (if .gz) + parse one activities/ file → stream-derived metrics."""
     name = filename.lstrip("/")
-    if name not in zf.namelist():
+    if name not in names:
         # The CSV Filename sometimes omits/adds the activities/ prefix.
         alt = name if name.startswith("activities/") else f"activities/{name}"
-        if alt in zf.namelist():
+        if alt in names:
             name = alt
         else:
             return None
+    if zf.getinfo(name).file_size > MAX_MEMBER_BYTES:
+        log.warning("Skipping %s: member exceeds %d bytes.", name, MAX_MEMBER_BYTES)
+        return None  # falls back to the CSV summary, like any unparseable file
     raw = zf.read(name)
     if name.endswith(".gz"):
-        raw = gzip.decompress(raw)
+        with gzip.GzipFile(fileobj=io.BytesIO(raw)) as gz:
+            raw = gz.read(MAX_MEMBER_BYTES + 1)
+        if len(raw) > MAX_MEMBER_BYTES:
+            log.warning("Skipping %s: gzip payload exceeds %d bytes.", name, MAX_MEMBER_BYTES)
+            return None
         name = name[:-3]
     ext = name[name.rfind(".") :].lower()
     parser = _PARSERS.get(ext)
@@ -200,9 +211,12 @@ def parse_archive(zip_path: str) -> list[dict]:
     """Parse a Strava bulk-export ZIP into Strava-API-shaped activity dicts."""
     activities: list[dict] = []
     with zipfile.ZipFile(zip_path) as zf:
-        csv_name = next((n for n in zf.namelist() if n.endswith("activities.csv")), None)
+        names = set(zf.namelist())
+        csv_name = next((n for n in names if n.endswith("activities.csv")), None)
         if csv_name is None:
             raise ValueError("No activities.csv found — is this a Strava data export ZIP?")
+        if zf.getinfo(csv_name).file_size > MAX_MEMBER_BYTES:
+            raise ValueError("activities.csv is implausibly large — refusing to import.")
         text = zf.read(csv_name).decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(io.StringIO(text))
         parsed = enriched = failed = 0
@@ -214,7 +228,7 @@ def parse_archive(zip_path: str) -> list[dict]:
             fname = act.pop("_filename", "")
             if fname:
                 try:
-                    extra = _parse_activity_file(zf, fname)
+                    extra = _parse_activity_file(zf, names, fname)
                     if extra:
                         act.update(extra)
                         enriched += 1

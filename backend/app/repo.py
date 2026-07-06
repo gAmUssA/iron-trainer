@@ -111,6 +111,7 @@ def disconnect_strava() -> dict:
     with get_session() as s:
         acts = s.execute(delete(Activity).where(Activity.athlete_id == aid)).rowcount
         metrics = s.execute(delete(MetricDaily).where(MetricDaily.athlete_id == aid)).rowcount
+        devices = s.execute(delete(DeviceToken).where(DeviceToken.athlete_id == aid)).rowcount
         a = s.get(Athlete, aid)
         if a is not None:
             a.strava_access_token = None
@@ -120,7 +121,15 @@ def disconnect_strava() -> dict:
             a.name = None  # name came from Strava
             a.updated_at = _now_iso()
             s.add(a)
-    return {"deleted_activities": acts or 0, "deleted_metrics": metrics or 0}
+    return {"deleted_activities": acts or 0, "deleted_metrics": metrics or 0,
+            "revoked_devices": devices or 0}
+
+
+def revoke_device_tokens() -> int:
+    """Revoke every paired device (bearer token) for the current athlete."""
+    aid = current_athlete_id()
+    with get_session() as s:
+        return s.execute(delete(DeviceToken).where(DeviceToken.athlete_id == aid)).rowcount or 0
 
 
 def _hash_token(token: str) -> str:

@@ -40,6 +40,16 @@ def logout(request: Request) -> dict:
     return {"ok": True}
 
 
+@router.delete("/device/tokens")
+def revoke_device_tokens() -> dict:
+    """Revoke all paired devices (bearer tokens) for the logged-in athlete. Called
+    by the iOS app on sign-out; also available to cut off a lost device."""
+    aid = auth.current_athlete_id()
+    n = repo.revoke_device_tokens()
+    log.info("Athlete %s revoked %d device token(s).", aid, n)
+    return {"revoked": n}
+
+
 @router.post("/device/pairing-code")
 def device_pairing_code(body: PairingCodeRequest | None = None) -> dict:
     """Mint a short-lived pairing code for the logged-in athlete (the web UI shows
