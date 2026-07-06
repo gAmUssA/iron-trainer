@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import analysis, repo
 
@@ -29,16 +30,18 @@ _PUBLIC = (
 
 
 class ProfileUpdate(BaseModel):
-    ftp: float | None = None
-    threshold_hr: int | None = None
-    max_hr: int | None = None
-    threshold_pace_run: float | None = None
-    css_swim: float | None = None
-    weekly_hours_target: float | None = None
-    body_weight_kg: float | None = None
-    gel_carb_g: float | None = None
-    sweat_rate_l_h: float | None = None
-    gi_tolerance: str | None = None
+    # Bounds are generous sanity limits, not physiology: they exist so a typo
+    # can't poison downstream math (negative weight → negative carb targets).
+    ftp: float | None = Field(None, gt=0, lt=1000)
+    threshold_hr: int | None = Field(None, gt=60, lt=250)
+    max_hr: int | None = Field(None, gt=60, lt=250)
+    threshold_pace_run: float | None = Field(None, gt=90, lt=1200)  # sec/km
+    css_swim: float | None = Field(None, gt=40, lt=600)  # sec/100m
+    weekly_hours_target: float | None = Field(None, gt=0, lt=60)
+    body_weight_kg: float | None = Field(None, gt=25, lt=250)
+    gel_carb_g: float | None = Field(None, gt=5, lt=120)
+    sweat_rate_l_h: float | None = Field(None, gt=0, lt=5)
+    gi_tolerance: Literal["low", "medium", "high"] | None = None
 
 
 @router.get("")

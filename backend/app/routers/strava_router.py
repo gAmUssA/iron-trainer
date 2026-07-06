@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import secrets
-import shutil
 import tempfile
 from urllib.parse import urlencode
 
@@ -18,6 +17,8 @@ from ..logging_config import get_logger
 
 router = APIRouter(prefix="/api/strava", tags=["strava"])
 log = get_logger("strava")
+
+MAX_UPLOAD_BYTES = 2 * 1024**3  # 2 GB — well above any real Strava export
 
 
 def _redirect(**params: str) -> RedirectResponse:
@@ -109,7 +110,14 @@ def import_archive(file: UploadFile) -> dict:
     auth.current_athlete_id()  # 401 if auth_required and not logged in
     tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
     try:
-        shutil.copyfileobj(file.file, tmp)  # stream upload to disk (don't hold GBs in RAM)
+        # Stream upload to disk (don't hold GBs in RAM), counting bytes so a
+        # runaway upload can't fill the container's disk.
+        written = 0
+        while chunk := file.file.read(1 << 20):
+            written += len(chunk)
+            if written > MAX_UPLOAD_BYTES:
+                raise HTTPException(413, "Archive exceeds the 2 GB upload limit.")
+            tmp.write(chunk)
         tmp.close()
         return services.import_archive(tmp.name)
     except ValueError as e:

@@ -229,18 +229,28 @@ export function ConnectCard({
   );
 }
 
+// Returns NaN for non-empty text that doesn't parse — save() refuses NaN instead
+// of silently sending garbage (JSON.stringify would turn NaN into null).
 function parsePace(text: string): number | null {
-  if (!text.trim()) return null;
-  if (text.includes(":")) {
-    const [m, s] = text.split(":");
-    return parseInt(m, 10) * 60 + parseInt(s, 10);
+  const t = text.trim();
+  if (!t) return null;
+  if (t.includes(":")) {
+    const match = /^(\d+):([0-5]\d)$/.exec(t); // strict m:ss — "4:99" must fail, not normalize
+    if (!match) return NaN;
+    return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
   }
-  return parseFloat(text);
+  return parseFloat(t);
+}
+function parseNum(text: string, int = false): number | null {
+  const t = text.trim();
+  if (!t) return null;
+  return int ? parseInt(t, 10) : parseFloat(t);
 }
 function fmtPace(sec: number | null): string {
   if (!sec) return "";
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
+  const total = Math.round(sec); // round first so :60 can't appear
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
@@ -257,26 +267,36 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
   const [gi, setGi] = useState(profile.gi_tolerance ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   async function save() {
+    const body = {
+      ftp: parseNum(ftp),
+      threshold_hr: parseNum(thr, true),
+      max_hr: parseNum(maxhr, true),
+      threshold_pace_run: parsePace(runPace),
+      css_swim: parsePace(css),
+      weekly_hours_target: parseNum(hours),
+      body_weight_kg: parseNum(weight),
+      gel_carb_g: parseNum(gelCarb),
+      sweat_rate_l_h: parseNum(sweat),
+      gi_tolerance: gi || null,
+    };
+    const bad = Object.values(body).some((v) => typeof v === "number" && !Number.isFinite(v));
+    if (bad) {
+      setSaveError("Check the highlighted formats — numbers only, paces as m:ss.");
+      return;
+    }
     setSaving(true);
     setSaved(false);
+    setSaveError(null);
     try {
-      await api.updateProfile({
-        ftp: ftp ? parseFloat(ftp) : null,
-        threshold_hr: thr ? parseInt(thr, 10) : null,
-        max_hr: maxhr ? parseInt(maxhr, 10) : null,
-        threshold_pace_run: parsePace(runPace),
-        css_swim: parsePace(css),
-        weekly_hours_target: hours ? parseFloat(hours) : null,
-        body_weight_kg: weight ? parseFloat(weight) : null,
-        gel_carb_g: gelCarb ? parseFloat(gelCarb) : null,
-        sweat_rate_l_h: sweat ? parseFloat(sweat) : null,
-        gi_tolerance: gi || null,
-      });
+      await api.updateProfile(body);
       onSaved();
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2400);
+    } catch (e) {
+      setSaveError(`Save failed: ${e}`);
     } finally {
       setSaving(false);
     }
@@ -306,6 +326,7 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
             <span className="dot" />Saved — zones &amp; projection recomputed
           </span>
         )}
+        {saveError && <span className="hint">{saveError}</span>}
       </div>
 
       <div className="card-title" style={{ marginTop: 26 }}>Nutrition</div>

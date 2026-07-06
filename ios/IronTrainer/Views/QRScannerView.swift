@@ -47,11 +47,36 @@ struct QRScannerView: UIViewControllerRepresentable {
 }
 
 /// Parse `irontrainer://pair?server=<enc>&code=<code>` into (serverURL, code).
+/// The link/QR can come from anywhere (any web page can fire the custom scheme),
+/// so the server URL must be https — plain http only for local development hosts.
 func parsePairingPayload(_ s: String) -> (URL, String)? {
     guard let comps = URLComponents(string: s),
           comps.scheme == "irontrainer", comps.host == "pair",
           let server = comps.queryItems?.first(where: { $0.name == "server" })?.value,
           let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
-          let url = URL(string: server) else { return nil }
+          let url = URL(string: server),
+          isAllowedPairingServer(url) else { return nil }
     return (url, code)
+}
+
+private func isAllowedPairingServer(_ url: URL) -> Bool {
+    switch url.scheme?.lowercased() {
+    case "https": return true
+    case "http": return isLocalDevHost(url.host ?? "")
+    default: return false
+    }
+}
+
+private func isLocalDevHost(_ host: String) -> Bool {
+    let h = host.lowercased()
+    if h == "localhost" || h == "::1" || h.hasSuffix(".local") { return true }
+    // Private (RFC 1918) or loopback IPv4 — must be a NUMERIC address; a DNS name
+    // like "10.evil.com" must not qualify, so parse strict dotted-quad octets.
+    let parts = h.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count == 4 else { return false }
+    let octets = parts.compactMap { UInt8($0) }
+    guard octets.count == 4 else { return false }
+    return octets[0] == 127 || octets[0] == 10
+        || (octets[0] == 192 && octets[1] == 168)
+        || (octets[0] == 172 && (16...31).contains(octets[1]))
 }

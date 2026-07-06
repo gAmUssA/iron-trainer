@@ -87,8 +87,19 @@ export default function App() {
     setCompliance(comp.weeks);
   }, []);
 
-  const reload = useCallback(async () => {
-    await Promise.all([api.status().then(setStatus), loadData()]);
+  // Post-action refreshes (sync, save, plan changes) are fire-and-forget from the
+  // child components, so errors must be caught HERE or they vanish as unhandled
+  // rejections and the UI silently keeps stale data.
+  const safeLoad = useCallback(() => {
+    loadData()
+      .then(() => setError(null))
+      .catch((e) => setError(String(e)));
+  }, [loadData]);
+
+  const reload = useCallback(() => {
+    Promise.all([api.status().then(setStatus), loadData()])
+      .then(() => setError(null))
+      .catch((e) => setError(String(e)));
   }, [loadData]);
 
   useEffect(() => {
@@ -197,7 +208,7 @@ export default function App() {
           <div className="tab-panel">
             <div className="dash-top">
               {status && athlete && (
-                <ConnectCard status={status} athlete={athlete} onSynced={loadData} />
+                <ConnectCard status={status} athlete={athlete} onSynced={safeLoad} />
               )}
               {readiness && status && (
                 <ReadinessCard readiness={readiness} raceName={status.race.name} />
@@ -226,7 +237,7 @@ export default function App() {
               plan={plan}
               compliance={compliance}
               anthropicReady={status.anthropic_configured}
-              onChanged={loadData}
+              onChanged={safeLoad}
             />
           </div>
         )}
@@ -243,14 +254,14 @@ export default function App() {
 
         {tab === "tests" && (
           <div className="tab-panel">
-            <TestsView onChanged={loadData} />
+            <TestsView onChanged={safeLoad} />
           </div>
         )}
 
         {tab === "settings" && athlete && (
           <div className="tab-panel">
             {status && <RaceCard status={status} onChanged={reload} />}
-            <ProfileEditor profile={athlete.profile} onSaved={loadData} />
+            <ProfileEditor profile={athlete.profile} onSaved={safeLoad} />
           </div>
         )}
       </main>

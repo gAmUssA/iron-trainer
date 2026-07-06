@@ -360,13 +360,15 @@ export function stravaErrorMessage(code: string | null): string | null {
 // ── formatting helpers ────────────────────────────────────────────────────────
 export function paceKm(secPerKm: number | null): string {
   if (!secPerKm) return "—";
-  const m = Math.floor(secPerKm / 60);
-  const s = Math.round(secPerKm % 60);
+  const total = Math.round(secPerKm); // round first so :60 can't appear
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}/km`;
 }
 export function pace100(secPer100: number | null): string {
   if (!secPer100) return "—";
-  const m = Math.floor(secPer100 / 60);
-  const s = Math.round(secPer100 % 60);
+  const total = Math.round(secPer100);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}/100m`;
 }

@@ -46,6 +46,14 @@ final class AuthModel: ObservableObject {
     }
 
     func signOut() {
+        // Best-effort server-side revocation so the bearer token doesn't stay
+        // valid forever; local state is cleared regardless of the outcome.
+        if let server = serverURL, let token = bearer {
+            var req = URLRequest(url: server.appending(path: "/api/device/tokens"))
+            req.httpMethod = "DELETE"
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            Task { _ = try? await URLSession.shared.data(for: req) }
+        }
         Keychain.delete(tokenAccount)
         UserDefaults.standard.removeObject(forKey: serverKey)
         UserDefaults.standard.removeObject(forKey: nameKey)

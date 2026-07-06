@@ -297,7 +297,7 @@ def compute_race_day_plan(profile: dict, race: dict, readiness: dict | None = No
         "sodium_mg": round(bike_sodium_h * bike_h) if bike_sodium_h else None,
         "notes": (
             f"{bike_carb_h:.0f} g/h — one {gel_g:.0f} g gel every "
-            f"{max(round(60 * gel_g / bike_carb_h), 15)} min"
+            f"{max(round(60 * gel_g / bike_carb_h), 15) if bike_carb_h else 60} min"
             + (" (glucose:fructose blend above 60 g/h)" if needs_mtc(bike_carb_h) else "")
             + ". The bike is where most of the eating happens."
         ),
@@ -351,34 +351,84 @@ def compute_race_day_plan(profile: dict, race: dict, readiness: dict | None = No
 # ── Safety validation ─────────────────────────────────────────────────────────
 
 
+# Absolute per-item ceilings for phases with no duration, where hourly rates
+# don't apply (transitions are a minute or two; meals are single sittings).
+_TRANSITION_PHASES = {"t1", "t2"}
+_TRANSITION_MAX_CARB_G = 80.0
+_TRANSITION_MAX_FLUID_ML = 500.0
+_MEAL_MAX_CARB_G = 300.0  # pre/post-race items; 2.5 g/kg tops out below this
+_MEAL_MAX_FLUID_ML = 1000.0
+
+
 def validate_fueling(plan: dict) -> tuple[dict, list[str]]:
     """Clamp unsafe fueling values; return (corrected_plan, adjustments).
 
     Bounds: carbs <= 120 g/h; fluid <= 1000 mL/h; plain fluid > 750 mL/h needs
     sodium alongside. Mirrors planning/validator.py: the LLM proposes, this
     disposes.
+
+    Rates are checked per PHASE, summed across the phase's items — the LLM may
+    split a leg into several timeline entries, each individually under the cap
+    while their sum is not. Items in phases with no duration (transitions,
+    pre/post-race meals) get absolute per-item ceilings instead.
     """
     notes: list[str] = []
     out = dict(plan)
     items = [dict(i) for i in plan.get("items", [])]
+
+    # A phase's duration is defined by any of its items carrying phase_duration_s.
+    phase_dur_h: dict[str, float] = {}
     for i in items:
-        phase, label = i.get("phase"), i.get("label") or i.get("phase")
-        dur_h = _phase_hours(i)
-        if dur_h and i.get("carbs_g"):
-            rate = i["carbs_g"] / dur_h
-            if rate > MAX_CARB_G_H:
-                i["carbs_g"] = round(MAX_CARB_G_H * dur_h)
-                notes.append(f"{label}: carbs capped at {MAX_CARB_G_H:.0f} g/h.")
-            if rate > MTC_THRESHOLD_G_H and "fructose" not in (i.get("notes") or "").lower():
-                i["notes"] = ((i.get("notes") or "") + " Use a glucose:fructose blend above 60 g/h.").strip()
-        if dur_h and i.get("fluid_ml"):
-            rate = i["fluid_ml"] / dur_h
-            if rate > MAX_FLUID_ML_H:
-                i["fluid_ml"] = round(MAX_FLUID_ML_H * dur_h)
-                notes.append(f"{label}: fluid capped at {MAX_FLUID_ML_H:.0f} mL/h (hyponatremia risk).")
-            elif rate > PLAIN_WATER_SAFE_ML_H and not i.get("sodium_mg"):
-                notes.append(f"{label}: >750 mL/h fluid without sodium — add electrolytes.")
-        _ = phase
+        d = _phase_hours(i)
+        if d and i.get("phase") and i["phase"] not in phase_dur_h:
+            phase_dur_h[i["phase"]] = d
+
+    # 1) Phases with a duration: rate-check the phase totals, scale members to fit.
+    for phase, dur_h in phase_dur_h.items():
+        members = [i for i in items if i.get("phase") == phase]
+
+        carbs = sum(i.get("carbs_g") or 0 for i in members)
+        if carbs > MAX_CARB_G_H * dur_h:
+            scale = (MAX_CARB_G_H * dur_h) / carbs
+            for i in members:
+                if i.get("carbs_g"):
+                    i["carbs_g"] = round(i["carbs_g"] * scale)
+            notes.append(f"{phase}: carbs capped at {MAX_CARB_G_H:.0f} g/h.")
+            carbs = MAX_CARB_G_H * dur_h
+        if carbs / dur_h > MTC_THRESHOLD_G_H:
+            for i in members:
+                if i.get("carbs_g") and "fructose" not in (i.get("notes") or "").lower():
+                    i["notes"] = ((i.get("notes") or "")
+                                  + " Use a glucose:fructose blend above 60 g/h.").strip()
+
+        fluid = sum(i.get("fluid_ml") or 0 for i in members)
+        if fluid > MAX_FLUID_ML_H * dur_h:
+            scale = (MAX_FLUID_ML_H * dur_h) / fluid
+            for i in members:
+                if i.get("fluid_ml"):
+                    i["fluid_ml"] = round(i["fluid_ml"] * scale)
+            notes.append(f"{phase}: fluid capped at {MAX_FLUID_ML_H:.0f} mL/h (hyponatremia risk).")
+            fluid = MAX_FLUID_ML_H * dur_h
+        if fluid / dur_h > PLAIN_WATER_SAFE_ML_H and not any(i.get("sodium_mg") for i in members):
+            notes.append(f"{phase}: >750 mL/h fluid without sodium — add electrolytes.")
+
+    # 2) Duration-less items: absolute ceilings so a rogue amount can't hide
+    #    where no rate check applies.
+    for i in items:
+        phase = i.get("phase")
+        if phase in phase_dur_h or phase == "swim":
+            continue
+        label = i.get("label") or phase
+        is_transition = phase in _TRANSITION_PHASES
+        carb_cap = _TRANSITION_MAX_CARB_G if is_transition else _MEAL_MAX_CARB_G
+        fluid_cap = _TRANSITION_MAX_FLUID_ML if is_transition else _MEAL_MAX_FLUID_ML
+        if (i.get("carbs_g") or 0) > carb_cap:
+            i["carbs_g"] = round(carb_cap)
+            notes.append(f"{label}: carbs capped at {carb_cap:.0f} g.")
+        if (i.get("fluid_ml") or 0) > fluid_cap:
+            i["fluid_ml"] = round(fluid_cap)
+            notes.append(f"{label}: fluid capped at {fluid_cap:.0f} mL.")
+
     out["items"] = items
     return out, notes
 
