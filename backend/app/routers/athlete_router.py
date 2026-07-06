@@ -20,6 +20,10 @@ _PUBLIC = (
     "threshold_pace_run",
     "css_swim",
     "weekly_hours_target",
+    "body_weight_kg",
+    "gel_carb_g",
+    "sweat_rate_l_h",
+    "gi_tolerance",
     "updated_at",
 )
 
@@ -31,6 +35,10 @@ class ProfileUpdate(BaseModel):
     threshold_pace_run: float | None = None
     css_swim: float | None = None
     weekly_hours_target: float | None = None
+    body_weight_kg: float | None = None
+    gel_carb_g: float | None = None
+    sweat_rate_l_h: float | None = None
+    gi_tolerance: str | None = None
 
 
 @router.get("")

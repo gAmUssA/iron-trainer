@@ -13,13 +13,36 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from .. import dashboards, reconcile as recon, repo
+from .. import dashboards, nutrition, reconcile as recon, repo
 from ..logging_config import get_logger
 from . import llm, template
 from .template import monday_of
 from .validator import validate_season, validate_week_workouts
 
 log = get_logger("planning")
+
+
+def _nutrition_profile() -> dict:
+    a = repo.get_athlete()
+    return {
+        "body_weight_kg": a.get("body_weight_kg"),
+        "gel_carb_g": a.get("gel_carb_g"),
+        "sweat_rate_l_h": a.get("sweat_rate_l_h"),
+    }
+
+
+def _apply_fueling(workouts: list[dict], profile: dict) -> None:
+    """Append a one-line fueling note to every workout that warrants fueling
+    (>~45 min). Mutates the workout descriptions in place so it flows through to
+    export files and the plan UI."""
+    for wo in workouts:
+        fueling = nutrition.compute_workout_fueling(wo, profile)
+        wo["fueling"] = fueling
+        note = nutrition.fueling_note(fueling)
+        if note:
+            base = (wo.get("description") or "").rstrip()
+            if note not in base:
+                wo["description"] = f"{base}\n{note}".strip()
 
 
 def _form_flag(tsb: float | None) -> str:
@@ -80,10 +103,12 @@ def generate_plan(*, use_llm: bool = True, today: date | None = None) -> dict:
     plan_id = repo.save_plan(season)
 
     # Expand every week with the template so the plan is complete & exportable.
+    fuel_profile = _nutrition_profile()
     all_workouts: list[dict] = []
     for wk in season["weeks"]:
         workouts = template.expand_week(wk, profile)
         workouts, _ = validate_week_workouts(workouts)
+        _apply_fueling(workouts, fuel_profile)
         all_workouts.extend(workouts)
     saved = repo.save_workouts(plan_id, all_workouts)
     log.info("Plan %d created: %s, %d weeks, %d workouts, %d safety adjustment(s).",
@@ -124,6 +149,7 @@ def replan_week(*, week_start: str, use_llm: bool = True) -> dict:
         workouts = template.expand_week(week, profile)
 
     workouts, notes = validate_week_workouts(workouts)
+    _apply_fueling(workouts, _nutrition_profile())
     week_end = (datetime.fromisoformat(week_start).date() + timedelta(days=6)).isoformat()
     n = repo.replace_week_workouts(plan["id"], week_start, week_end, workouts)
     return {"week_start": week_start, "llm_used": llm_used, "workouts": n, "notes": notes}

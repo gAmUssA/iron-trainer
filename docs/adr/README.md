@@ -31,3 +31,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0006](0006-display-units-preference.md) | Display units preference (miles/km + human-readable durations) | Accepted |
 | [0007](0007-strava-compliance.md) | Strava OAuth UX hardening + brand/policy compliance | Accepted |
 | [0008](0008-strava-bulk-import.md) | Strava bulk-export (GDPR archive) importer | Accepted |
+| [0009](0009-nutrition-and-fueling.md) | Nutrition & Fueling (per-workout, daily & race-day fueling, LLM-enhanced) | Accepted |

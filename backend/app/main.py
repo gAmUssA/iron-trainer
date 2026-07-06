@@ -20,6 +20,7 @@ from .routers import (
     athlete_router,
     auth_router,
     export_router,
+    nutrition_router,
     plan_router,
     races_router,
     strava_router,
@@ -78,6 +79,7 @@ app.include_router(strava_router.router)
 app.include_router(athlete_router.router)
 app.include_router(analytics_router.router)
 app.include_router(plan_router.router)
+app.include_router(nutrition_router.router)
 app.include_router(export_router.router)
 app.include_router(races_router.router)
 app.include_router(auth_router.router)

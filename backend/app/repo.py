@@ -180,7 +180,10 @@ def athlete_id_for_bearer(token: str) -> int | None:
 
 def save_profile(profile: dict) -> None:
     """Persist inferred/edited thresholds for the current athlete."""
-    fields = ["ftp", "threshold_hr", "max_hr", "threshold_pace_run", "css_swim", "weekly_hours_target"]
+    fields = [
+        "ftp", "threshold_hr", "max_hr", "threshold_pace_run", "css_swim", "weekly_hours_target",
+        "body_weight_kg", "gel_carb_g", "sweat_rate_l_h", "gi_tolerance",
+    ]
     with get_session() as s:
         a = s.get(Athlete, current_athlete_id())
         if a is None:

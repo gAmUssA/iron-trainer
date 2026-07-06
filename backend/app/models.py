@@ -50,6 +50,11 @@ class Athlete(SQLModel, table=True):
     threshold_pace_run: float | None = None
     css_swim: float | None = None
     weekly_hours_target: float | None = None
+    # Nutrition profile (manual entry; body weight is the only required new input).
+    body_weight_kg: float | None = None
+    gel_carb_g: float | None = None  # carbs per gel (default 25 when unset)
+    sweat_rate_l_h: float | None = None  # measured sweat-rate override (else estimated)
+    gi_tolerance: str | None = None  # "low" | "medium" | "high"
     # Selected race (denormalised effective race; becomes per-user with multi-user).
     race_id: int | None = Field(default=None, foreign_key="race.id", ondelete="SET NULL")
     race_name: str | None = None

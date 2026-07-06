@@ -387,6 +387,87 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
   outline: none;
 }
 .field input:focus { border-color: var(--accent); }
+.field select {
+  width: 100%;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  padding: 11px 13px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  outline: none;
+}
+.field select:focus { border-color: var(--accent); }
+
+/* ── Fueling card (per-workout) ── */
+.fuel-toggle {
+  font-size: 11px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.fuel-toggle:hover { border-color: var(--accent); }
+.fuel-card {
+  background: var(--card);
+  padding: 12px 16px 14px 42px;
+  animation: fadein 0.2s ease both;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fuel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.fuel-metric { display: flex; flex-direction: column; gap: 2px; }
+.fuel-metric .n { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--accent); }
+.fuel-metric .lbl { font-size: 11px; color: var(--muted); line-height: 1.4; }
+
+/* ── Nutrition tab ── */
+.nut-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.nut-stat { display: flex; flex-direction: column; gap: 3px; }
+.nut-stat .n { font-family: var(--mono); font-size: 24px; font-weight: 700; color: var(--accent); }
+.nut-stat .lbl { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.nut-adjustments {
+  margin: 12px 0 4px;
+  padding: 10px 14px 10px 30px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.nut-timeline { display: flex; flex-direction: column; margin-top: 18px; }
+.nut-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 4px;
+  border-top: 1px solid var(--hair);
+}
+.nut-item:first-child { border-top: none; }
+.nut-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex: none; }
+.nut-time { font-family: var(--mono); font-size: 12px; color: #8a909c; width: 54px; flex: none; margin-top: 2px; }
+.nut-body { flex: 1; min-width: 0; }
+.nut-line { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.nut-label { font-size: 14px; font-weight: 600; }
+.nut-amounts { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
+.nut-notes { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+@media (max-width: 640px) {
+  .fuel-card { padding-left: 16px; }
+}
 
 .race-select {
   width: 100%;
