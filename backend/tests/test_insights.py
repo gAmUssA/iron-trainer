@@ -123,3 +123,45 @@ def test_freshness():
     f = ins.freshness(acts, today=TODAY)
     assert f == {"last_activity": "2026-06-29", "days_stale": 7}
     assert ins.freshness([], today=TODAY)["days_stale"] is None
+
+
+# ── Copilot follow-ups (PR #11) ───────────────────────────────────────────────
+
+
+def test_rolling_mean_sliding_window_matches_naive():
+    import random
+
+    rng = random.Random(7)
+    pts = []
+    d = TODAY - timedelta(days=120)
+    while d <= TODAY:
+        if rng.random() < 0.6:
+            pts.append({"date": d.isoformat(),
+                        "power": rng.uniform(150, 300) if rng.random() < 0.9 else None})
+        d += timedelta(days=1)
+
+    def naive(points, key, window_days=28):
+        out = []
+        for p in points:
+            dd = date.fromisoformat(p["date"])
+            lo = dd - timedelta(days=window_days - 1)
+            vals = [q[key] for q in points
+                    if q.get(key) is not None and lo <= date.fromisoformat(q["date"]) <= dd]
+            if vals:
+                out.append({"date": p["date"], "value": round(sum(vals) / len(vals), 1)})
+        return out
+
+    assert ins.rolling_mean(pts, "power") == naive(pts, "power")
+
+
+def test_steady_boundary_is_inclusive():
+    assert ins._verdict(1.5, higher_is_better=True) == "steady"
+    assert ins._verdict(-1.5, higher_is_better=False) == "steady"
+    assert ins._verdict(1.6, higher_is_better=True) == "improving"
+
+
+def test_ctl_trajectory_skips_unparseable_dates():
+    rows = [{"date": "garbage", "ctl": 40},
+            {"date": TODAY.isoformat(), "ctl": 50}]
+    t = ins.ctl_trajectory(rows, None, today=TODAY)
+    assert t is not None and t["current"] == 50

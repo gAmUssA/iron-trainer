@@ -40,17 +40,29 @@ def _monday(d: date) -> date:
 
 
 def rolling_mean(points: list[dict], key: str, window_days: int = ROLLING_DAYS) -> list[dict]:
-    """Trailing mean over the previous `window_days` for each point (dates ISO)."""
+    """Trailing mean over the previous `window_days` for each point (dates ISO).
+
+    Single-pass sliding window (points arrive date-ordered from sport_trends),
+    so a multi-year history doesn't turn this O(n²)."""
+    parsed = [
+        (date.fromisoformat(p["date"]), p["date"], p.get(key))
+        for p in points
+    ]
     out: list[dict] = []
-    for p in points:
-        d = date.fromisoformat(p["date"])
+    window: list[tuple[date, float]] = []  # (date, value) inside the current window
+    total = 0.0
+    start = 0  # window head index into `window`
+    for d, iso, val in parsed:
+        if val is not None:
+            window.append((d, float(val)))
+            total += float(val)
         lo = d - timedelta(days=window_days - 1)
-        vals = [
-            q[key] for q in points
-            if q.get(key) is not None and lo <= date.fromisoformat(q["date"]) <= d
-        ]
-        if vals:
-            out.append({"date": p["date"], "value": round(sum(vals) / len(vals), 1)})
+        while start < len(window) and window[start][0] < lo:
+            total -= window[start][1]
+            start += 1
+        n = len(window) - start
+        if n > 0:
+            out.append({"date": iso, "value": round(total / n, 1)})
     return out
 
 
@@ -85,7 +97,7 @@ def slope_pct(points: list[dict], key: str, days: int = SLOPE_DAYS,
 def _verdict(change_pct: float | None, *, higher_is_better: bool) -> str:
     if change_pct is None:
         return "insufficient data"
-    if abs(change_pct) < STEADY_PCT:
+    if abs(change_pct) <= STEADY_PCT:  # ±1.5% inclusive reads as steady
         return "steady"
     improving = change_pct > 0 if higher_is_better else change_pct < 0
     return "improving" if improving else "declining"
@@ -138,6 +150,8 @@ def intensity_mix(activities: list[dict], weeks: int = 12,
             continue
         if_v = a.get("intensity_factor")
         bucket = "unknown"
+        # IF 0.0 means compute_tss had nothing to grade the session on (the
+        # "none" method) — that's unknown intensity, deliberately not "easy".
         if if_v:
             for name, lo, hi in IF_BUCKETS:
                 if lo <= if_v < hi:
@@ -199,7 +213,7 @@ def ctl_trajectory(metrics: list[dict], race_date: date | None,
     if not metrics:
         return None
     today = today or date.today()
-    rows = [m for m in metrics if m.get("ctl") is not None]
+    rows = [m for m in metrics if m.get("ctl") is not None and _day(m.get("date"))]
     if not rows:
         return None
     current = float(rows[-1]["ctl"])

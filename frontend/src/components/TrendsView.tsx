@@ -130,7 +130,8 @@ function SportTrendChart({
             />
             <Tooltip
               contentStyle={ch.tooltip}
-              formatter={(v: number, name: string) => [fmt ? fmt(v) : v, name]}
+              formatter={(v, name) =>
+                [typeof v === "number" ? (fmt ? fmt(v) : v) : "—", name]}
             />
             <Line dataKey="session" name="session" stroke="none"
                   dot={{ r: 2.2, fill: color, fillOpacity: 0.45, strokeWidth: 0 }} isAnimationActive={false} />
@@ -164,7 +165,8 @@ function IntensityMixChart({ weeks }: { weeks: Trends["insights"]["intensity_wee
           <Bar dataKey="easy" stackId="i" fill={IF_COLORS.easy} />
           <Bar dataKey="endurance" stackId="i" fill={IF_COLORS.endurance} />
           <Bar dataKey="tempo" stackId="i" fill={IF_COLORS.tempo} />
-          <Bar dataKey="hard" stackId="i" fill={IF_COLORS.hard} radius={[2, 2, 0, 0]} />
+          <Bar dataKey="hard" stackId="i" fill={IF_COLORS.hard} />
+          <Bar dataKey="unknown" stackId="i" fill={IF_COLORS.unknown} radius={[2, 2, 0, 0]} />
         </ComposedChart>
       </ResponsiveContainer>
       <div className="chart-legend">
@@ -172,6 +174,7 @@ function IntensityMixChart({ weeks }: { weeks: Trends["insights"]["intensity_wee
         <span><span className="sw" style={{ background: IF_COLORS.endurance }} />Endurance 0.70–0.85</span>
         <span><span className="sw" style={{ background: IF_COLORS.tempo }} />Tempo 0.85–0.95</span>
         <span><span className="sw" style={{ background: IF_COLORS.hard }} />Hard ≥0.95</span>
+        <span><span className="sw" style={{ background: IF_COLORS.unknown }} />No IF data</span>
       </div>
     </div>
   );
