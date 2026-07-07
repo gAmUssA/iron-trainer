@@ -11,13 +11,14 @@ import {
   type WeekCompliance,
   type WeekVolume,
 } from "./api";
-import { PmcChart, ReadinessCard, TrendsChart, WeeklyVolumeChart } from "./components/Dashboards";
+import { PmcChart, ReadinessCard } from "./components/Dashboards";
 import { LoginScreen } from "./components/LoginScreen";
 import { NutritionView } from "./components/NutritionView";
 import { PlanView } from "./components/PlanView";
 import { RaceCard } from "./components/RaceCard";
 import { ConnectCard, ProfileEditor } from "./components/Setup";
 import { TestsView } from "./components/TestsView";
+import { TrendsView } from "./components/TrendsView";
 import { useTheme } from "./theme";
 import { useUnits } from "./units";
 import { maybeAutoStartTour, startTour } from "./tour";
@@ -224,10 +225,15 @@ export default function App() {
           </div>
         )}
 
-        {tab === "trends" && (
-          <div className="tab-panel grid-2">
-            <WeeklyVolumeChart weeks={weekly} />
-            {trends && <TrendsChart trends={trends} />}
+        {tab === "trends" && trends && (
+          <div className="tab-panel">
+            <TrendsView
+              trends={trends}
+              weekly={weekly}
+              pmc={pmc}
+              connected={athlete?.connected ?? false}
+              onSynced={safeLoad}
+            />
           </div>
         )}
 

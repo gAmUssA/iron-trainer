@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter
 
-from .. import dashboards, repo
+from .. import dashboards, insights, repo
 
 router = APIRouter(prefix="/api", tags=["analytics"])
 
@@ -23,8 +25,20 @@ def weekly(weeks: int = 16) -> dict:
 
 @router.get("/metrics/trends")
 def trends() -> dict:
-    """Per-sport progression: bike power, run pace, swim pace, HR efficiency."""
-    return dashboards.sport_trends(repo.list_activities())
+    """Per-sport progression points plus derived insights: rolling trendlines,
+    improving/declining verdicts, weekly intensity mix, PRs, the CTL race-day
+    trajectory, and data freshness."""
+    activities = repo.list_activities()
+    sport_points = dashboards.sport_trends(activities)
+    race = repo.effective_race()
+    try:
+        race_date = date.fromisoformat(str(race.get("date"))[:10])
+    except (ValueError, TypeError):
+        race_date = None
+    return {
+        **sport_points,
+        "insights": insights.build(activities, sport_points, repo.get_metrics(), race_date),
+    }
 
 
 @router.get("/metrics/readiness")

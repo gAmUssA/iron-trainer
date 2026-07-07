@@ -117,10 +117,50 @@ export interface WeekVolume {
   total_tss: number;
 }
 
+export interface RollingPoint {
+  date: string;
+  value: number;
+}
+export interface SportInsight {
+  metric: string; // which series the verdict was computed on (ef | power | pace)
+  change_pct: number | null; // % move over the 12-week regression window
+  verdict: "improving" | "declining" | "steady" | "insufficient data";
+  rolling: RollingPoint[]; // 28-day rolling mean of the charted metric
+  rolling_ef: RollingPoint[];
+}
+export interface IntensityWeek {
+  week_start: string;
+  easy: number;
+  endurance: number;
+  tempo: number;
+  hard: number;
+  unknown: number;
+}
+export interface PrEntry {
+  date: string;
+  name: string | null;
+  value: number;
+}
+export interface CtlTrajectory {
+  current: number;
+  ramp_per_week: number | null;
+  race_date?: string;
+  weeks_to_race?: number;
+  race_day_projection?: number;
+  projection?: { date: string; ctl: number }[];
+}
+export interface TrendInsights {
+  sports: Record<"Bike" | "Run" | "Swim", SportInsight>;
+  intensity_weeks: IntensityWeek[];
+  prs: Record<string, PrEntry | null>;
+  ctl_trajectory: CtlTrajectory | null;
+  freshness: { last_activity: string | null; days_stale: number | null };
+}
 export interface Trends {
   Bike: { date: string; power: number; hr: number | null; ef: number | null }[];
   Run: { date: string; pace: number; hr: number | null; ef: number | null }[];
   Swim: { date: string; pace: number; hr: number | null }[];
+  insights: TrendInsights;
 }
 
 export interface Leg {
