@@ -33,3 +33,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0008](0008-strava-bulk-import.md) | Strava bulk-export (GDPR archive) importer | Accepted |
 | [0009](0009-nutrition-and-fueling.md) | Nutrition & Fueling (per-workout, daily & race-day fueling, LLM-enhanced) | Accepted |
 | [0010](0010-security-hardening.md) | Security & robustness hardening from the full-stack review | Accepted |
+| [0011](0011-trends-insights.md) | Trends page: insights (trendlines, verdicts, intensity mix, CTL trajectory, PRs) | Accepted |
