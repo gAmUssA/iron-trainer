@@ -65,28 +65,34 @@ def device_pairing_code(body: PairingCodeRequest | None = None) -> dict:
 
 # Brute-force friction for the unauthenticated claim endpoint: pairing codes are
 # 32-bit with a 10-min TTL, so guessing needs millions of attempts — deny that
-# rate outright. In-process (single-worker deploy); failures only.
+# rate outright. Keyed per client so one bad actor (or fat-fingered code) can't
+# lock out everyone. In-process (single-worker deploy); failures only.
 _CLAIM_WINDOW_S = 60.0
 _CLAIM_MAX_FAILURES = 10
-_claim_failures: deque[float] = deque()
+_claim_failures: dict[str, deque[float]] = {}
 
 
-def _claim_throttled() -> bool:
+def _claim_throttled(client: str) -> bool:
     now = time.monotonic()
-    while _claim_failures and now - _claim_failures[0] > _CLAIM_WINDOW_S:
-        _claim_failures.popleft()
-    return len(_claim_failures) >= _CLAIM_MAX_FAILURES
+    q = _claim_failures.setdefault(client, deque())
+    while q and now - q[0] > _CLAIM_WINDOW_S:
+        q.popleft()
+    # Drop other clients' empty queues so the dict can't grow unbounded.
+    for k in [k for k, v in _claim_failures.items() if not v and k != client]:
+        del _claim_failures[k]
+    return len(q) >= _CLAIM_MAX_FAILURES
 
 
 @router.post("/device/claim")
-def device_claim(body: ClaimRequest) -> dict:
+def device_claim(body: ClaimRequest, request: Request) -> dict:
     """Exchange a pairing code for a long-lived bearer token. Unauthenticated —
     the code itself is the credential."""
-    if _claim_throttled():
+    client = request.client.host if request.client else "unknown"
+    if _claim_throttled(client):
         raise HTTPException(status_code=429, detail="Too many attempts — try again in a minute.")
     result = repo.claim_pairing_code(body.code.strip(), device_name=body.device_name)
     if result is None:
-        _claim_failures.append(time.monotonic())
+        _claim_failures[client].append(time.monotonic())
         log.warning("Rejected device claim with an invalid/expired pairing code.")
         raise HTTPException(status_code=400, detail="Invalid or expired pairing code.")
     log.info("Device %r paired to athlete %s.", body.device_name or "(unnamed)",

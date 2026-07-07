@@ -55,6 +55,7 @@ struct IronTrainerApp: App {
         }
     }
 
+    @MainActor
     private func pair(server: URL, code: String) async {
         do {
             try await auth.signIn(server: server, code: code)
