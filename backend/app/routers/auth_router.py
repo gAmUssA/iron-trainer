@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from collections import deque
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
@@ -60,12 +63,30 @@ def device_pairing_code(body: PairingCodeRequest | None = None) -> dict:
     return out
 
 
+# Brute-force friction for the unauthenticated claim endpoint: pairing codes are
+# 32-bit with a 10-min TTL, so guessing needs millions of attempts — deny that
+# rate outright. In-process (single-worker deploy); failures only.
+_CLAIM_WINDOW_S = 60.0
+_CLAIM_MAX_FAILURES = 10
+_claim_failures: deque[float] = deque()
+
+
+def _claim_throttled() -> bool:
+    now = time.monotonic()
+    while _claim_failures and now - _claim_failures[0] > _CLAIM_WINDOW_S:
+        _claim_failures.popleft()
+    return len(_claim_failures) >= _CLAIM_MAX_FAILURES
+
+
 @router.post("/device/claim")
 def device_claim(body: ClaimRequest) -> dict:
     """Exchange a pairing code for a long-lived bearer token. Unauthenticated —
     the code itself is the credential."""
+    if _claim_throttled():
+        raise HTTPException(status_code=429, detail="Too many attempts — try again in a minute.")
     result = repo.claim_pairing_code(body.code.strip(), device_name=body.device_name)
     if result is None:
+        _claim_failures.append(time.monotonic())
         log.warning("Rejected device claim with an invalid/expired pairing code.")
         raise HTTPException(status_code=400, detail="Invalid or expired pairing code.")
     log.info("Device %r paired to athlete %s.", body.device_name or "(unnamed)",

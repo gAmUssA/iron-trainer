@@ -12,6 +12,7 @@ struct IronTrainerApp: App {
     @StateObject private var model = ImportModel()
     @StateObject private var auth = AuthModel()
     @State private var pendingPairing: PendingPairing?
+    @State private var pairingError: String?
 
     var body: some Scene {
         WindowGroup {
@@ -43,6 +44,14 @@ struct IronTrainerApp: App {
                         secondaryButton: .cancel()
                     )
                 }
+                .alert("Pairing failed", isPresented: .init(
+                    get: { pairingError != nil },
+                    set: { if !$0 { pairingError = nil } }
+                )) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(pairingError ?? "")
+                }
         }
     }
 
@@ -51,7 +60,8 @@ struct IronTrainerApp: App {
             try await auth.signIn(server: server, code: code)
         } catch {
             // Failed pairing must not fall through to a plan refresh against the
-            // previously stored server/bearer — that reads as a silent success.
+            // previously stored server/bearer — and must not fail silently.
+            pairingError = error.localizedDescription
             return
         }
         if let s = auth.serverURL, let b = auth.bearer {

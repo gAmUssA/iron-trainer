@@ -50,8 +50,16 @@ enum WorkoutScheduling {
         var comps = cal.dateComponents([.year, .month, .day], from: date)
         if cal.isDateInToday(date) {
             // Today's 6am may already be past; schedule ~1h out so it's upcoming.
-            let soon = cal.dateComponents([.hour, .minute], from: Date.now.addingTimeInterval(3600))
-            comps.hour = soon.hour; comps.minute = soon.minute
+            // After 23:00, now+1h rolls into tomorrow while comps' day stays
+            // today — WorkoutScheduler silently ignores past times, so clamp to
+            // the last slot of today instead.
+            let soonDate = Date.now.addingTimeInterval(3600)
+            if cal.isDate(soonDate, inSameDayAs: date) {
+                let soon = cal.dateComponents([.hour, .minute], from: soonDate)
+                comps.hour = soon.hour; comps.minute = soon.minute
+            } else {
+                comps.hour = 23; comps.minute = 45
+            }
         } else {
             comps.hour = 6; comps.minute = 0
         }

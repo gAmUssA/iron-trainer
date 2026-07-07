@@ -56,7 +56,9 @@ def get_profile() -> dict:
 
 @router.put("/profile")
 def update_profile(update: ProfileUpdate) -> dict:
-    repo.save_profile(update.model_dump(exclude_none=True))
+    # exclude_unset (not exclude_none): a field the client explicitly sent as
+    # null clears the stored value; fields it didn't send stay untouched.
+    repo.save_profile(update.model_dump(exclude_unset=True))
     # Threshold changes alter TSS for every activity and thus the whole PMC.
     repo.recompute_tss()
     repo.rebuild_metrics()
@@ -68,7 +70,8 @@ def infer(apply: bool = False) -> dict:
     """Preview thresholds inferred from history; optionally persist them."""
     profile = analysis.infer_profile(repo.list_activities(), today=date.today())
     if apply:
-        repo.save_profile(profile.as_dict())
+        # Inference must never CLEAR a manually-set value it couldn't compute.
+        repo.save_profile({k: v for k, v in profile.as_dict().items() if v is not None})
         repo.recompute_tss()
         repo.rebuild_metrics()
     return {"inferred": profile.as_dict(), "applied": apply}

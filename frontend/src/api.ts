@@ -277,9 +277,27 @@ export interface GenerateResult {
   summary: string;
 }
 
+/** Build an error that carries the backend's reason (FastAPI `{"detail": ...}`),
+ * not just "400 Bad Request" — import/validation failures are actionable. */
+async function httpError(res: Response): Promise<Error> {
+  let detail = "";
+  try {
+    const text = await res.text();
+    try {
+      const parsed = JSON.parse(text);
+      detail = typeof parsed.detail === "string" ? parsed.detail : text;
+    } catch {
+      detail = text;
+    }
+  } catch {
+    /* body unreadable — fall through to statusText */
+  }
+  return new Error(`${res.status} ${(detail || res.statusText).slice(0, 300)}`);
+}
+
 async function getJSON<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: { Accept: "application/json" }, credentials: "include" });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw await httpError(res);
   return res.json() as Promise<T>;
 }
 
@@ -290,7 +308,7 @@ async function send<T>(path: string, method: string, body?: unknown): Promise<T>
     credentials: "include",
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw await httpError(res);
   return res.json() as Promise<T>;
 }
 
@@ -331,7 +349,8 @@ export const api = {
   me: () => getJSON<Me>("/api/me"),
   logout: () => send<{ ok: boolean }>("/api/auth/logout", "POST"),
   createPairingCode: () =>
-    send<{ code: string; expires_at: number }>("/api/device/pairing-code", "POST", {}),
+    send<{ code: string; expires_at: number; expires_in?: number }>(
+      "/api/device/pairing-code", "POST", {}),
   athlete: () => getJSON<AthleteResponse>("/api/athlete"),
   updateProfile: (p: Partial<Profile>) => send<AthleteResponse>("/api/athlete/profile", "PUT", p),
   sync: (full = false) => send<SyncResult>(`/api/strava/sync?full=${full}`, "POST"),
@@ -340,7 +359,7 @@ export const api = {
     const fd = new FormData();
     fd.append("file", file);
     const res = await fetch("/api/strava/import", { method: "POST", credentials: "include", body: fd });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    if (!res.ok) throw await httpError(res);
     return res.json() as Promise<ImportResult>;
   },
   disconnect: () =>
@@ -399,14 +418,15 @@ export function stravaErrorMessage(code: string | null): string | null {
 
 // ── formatting helpers ────────────────────────────────────────────────────────
 export function paceKm(secPerKm: number | null): string {
-  if (!secPerKm) return "—";
+  if (secPerKm == null || secPerKm <= 0) return "—"; // 0/negative pace is no pace
+
   const total = Math.round(secPerKm); // round first so :60 can't appear
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}/km`;
 }
 export function pace100(secPer100: number | null): string {
-  if (!secPer100) return "—";
+  if (secPer100 == null || secPer100 <= 0) return "—";
   const total = Math.round(secPer100);
   const m = Math.floor(total / 60);
   const s = total % 60;

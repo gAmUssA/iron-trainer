@@ -76,7 +76,8 @@ def seed_profile_if_empty(*, today: date | None = None) -> dict | None:
     if already:
         return None
     profile = analysis.infer_profile(repo.list_activities(), today=today or date.today())
-    repo.save_profile(profile.as_dict())
+    # Seeding fills blanks only — never write explicit Nones (which would clear).
+    repo.save_profile({k: v for k, v in profile.as_dict().items() if v is not None})
     # Re-cost activities now that thresholds exist.
     repo.recompute_tss()
     return profile.as_dict()

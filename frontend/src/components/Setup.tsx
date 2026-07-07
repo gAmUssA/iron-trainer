@@ -5,26 +5,25 @@ import { api, type AppStatus, type AthleteResponse, type Profile } from "../api"
 /** "Connect iOS app": mint a pairing code and show it as a QR the helper app scans. */
 function ConnectAppPairing() {
   const [code, setCode] = useState<string | null>(null);
-  const [expiresAt, setExpiresAt] = useState(0);
+  // Count down from the server's TTL locally — immune to client-clock skew,
+  // and seeded before render so a fresh code never flashes as "expired".
   const [left, setLeft] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!expiresAt) return;
-    const tick = () => setLeft(Math.max(0, Math.round(expiresAt - Date.now() / 1000)));
-    tick();
-    const t = setInterval(tick, 1000);
+    if (!code || left <= 0) return;
+    const t = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
     return () => clearInterval(t);
-  }, [expiresAt]);
+  }, [code, left > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function generate() {
     setBusy(true);
     setErr(null);
     try {
       const r = await api.createPairingCode();
+      setLeft(r.expires_in ?? Math.max(1, Math.round(r.expires_at - Date.now() / 1000)));
       setCode(r.code);
-      setExpiresAt(r.expires_at);
     } catch (e) {
       setErr(String(e));
     } finally {

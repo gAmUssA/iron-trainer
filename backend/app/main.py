@@ -109,10 +109,15 @@ def health(response: Response, deep: bool = False) -> dict:
             with get_engine().connect() as conn:
                 conn.execute(text("SELECT 1"))
             out["database"] = "ok"
-        except Exception as e:  # noqa: BLE001 - report any connectivity failure
+        except Exception:  # noqa: BLE001 - report any connectivity failure
+            import traceback
+
+            # Full error to the logs only — DB errors can echo the DSN's
+            # host/user/db name and this endpoint is unauthenticated.
+            log.error("Deep health check failed:\n%s", traceback.format_exc())
             out["status"] = "degraded"
             out["database"] = "error"
-            out["detail"] = str(e)[:200]
+            out["detail"] = "database unreachable — see server logs"
             response.status_code = 503
     return out
 
