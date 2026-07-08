@@ -11,7 +11,7 @@ struct WorkoutListView: View {
         List {
             Section {
                 ForEach(Array(workouts.enumerated()), id: \.offset) { _, w in
-                    Button { model.select(w) } label: { Row(workout: w) }
+                    NavigationLink(value: PlanRoute.workout(w)) { Row(workout: w) }
                         .buttonStyle(.plain)
                 }
             } footer: {

@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: high
 created_at: 2026-07-08T17:29:24Z
-updated_at: 2026-07-08T17:37:31Z
+updated_at: 2026-07-08T20:19:39Z
 ---
 
 PR #14 (feature/ios-today-widgets-glass) is green, twice Copilot-reviewed, and HELD awaiting Viktor's merge command. Contains: Today view with interval-profile chart, race-countdown + today's-workout widgets (new IronTrainerWidgets target + App Group), Liquid Glass pass. ADR 0012.
@@ -13,3 +13,5 @@ PR #14 (feature/ios-today-widgets-glass) is green, twice Copilot-reviewed, and H
 - [x] Viktor: merge PR #14 (merged as 06c46ea, 2026-07-08)
 - [x] fastlane beta → TestFlight: build 0.1.0 (202607081335) uploaded 2026-07-08; App Group auto-provisioned, entitlement verified on both binaries
 - [ ] On-device: widgets on home + lock screen, Send to Watch, widget refresh after in-app plan reload
+
+Phone test 2026-07-08: found 2 issues (no back button on workout detail; race widget blank white) — tracked in the phone-test-feedback bug bean. On-device validation continues after that fix ships.

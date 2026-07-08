@@ -24,7 +24,7 @@ struct TodayView: View {
                     Text("Today").font(.title3).fontWeight(.semibold)
                     WorkoutHeroCard(workout: hero)
                     ForEach(Array(todaysWorkouts.dropFirst().enumerated()), id: \.offset) { _, w in
-                        CompactWorkoutRow(workout: w) { model.select(w) }
+                        CompactWorkoutRow(workout: w)
                     }
                 } else {
                     RestDayCard(nextSession: nextSession())
@@ -32,7 +32,7 @@ struct TodayView: View {
 
                 if let tomorrow = tomorrowsWorkouts.first {
                     Text("Tomorrow").font(.headline).foregroundStyle(.secondary)
-                    CompactWorkoutRow(workout: tomorrow) { model.select(tomorrow) }
+                    CompactWorkoutRow(workout: tomorrow)
                 }
 
                 NavigationLink(value: PlanRoute.fullPlan) {
@@ -66,9 +66,12 @@ struct TodayView: View {
     }
 }
 
-/// Navigation route for the value-based push to the full plan list.
+/// Navigation routes for value-based pushes (full list, workout detail).
+/// Pushing — rather than swapping the root via ImportModel state — is what
+/// gives the detail screen a system back button.
 enum PlanRoute: Hashable {
     case fullPlan
+    case workout(ItwWorkout)
 }
 
 private struct RaceCountdownHeader: View {
@@ -133,13 +136,13 @@ private struct RestDayCard: View {
     }
 }
 
-/// A one-line workout row (extra sessions today, tomorrow's peek).
+/// A one-line workout row (extra sessions today, tomorrow's peek) that pushes
+/// the workout detail.
 struct CompactWorkoutRow: View {
     let workout: ItwWorkout
-    let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
+        NavigationLink(value: PlanRoute.workout(workout)) {
             HStack(spacing: 12) {
                 Image(systemName: SportStyle.icon(for: workout.sport))
                     .foregroundStyle(SportStyle.color(for: workout.sport))

@@ -19,6 +19,9 @@ struct SettingsView: View {
                     Section("Connected") {
                         LabeledContent("Server", value: auth.serverURL?.host() ?? "—")
                         if let n = auth.athleteName { LabeledContent("Athlete", value: n) }
+                        // Widget-data diagnostic: pinpoints whether a blank widget
+                        // means "app never wrote the snapshot" or a widget-side issue.
+                        LabeledContent("Widget data", value: widgetDataStatus)
                         Button("Sign out", role: .destructive) { auth.signOut() }
                     }
                 } else {
@@ -80,6 +83,11 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private var widgetDataStatus: String {
+        guard let snapshot = SharedStore.read() else { return "not written yet" }
+        return "updated " + snapshot.generatedAt.formatted(.relative(presentation: .named))
     }
 
     private func connect(server: String, code: String) async {

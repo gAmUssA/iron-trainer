@@ -5,7 +5,6 @@ import WorkoutKit
 /// line, and a one-tap Send to Watch. Scheduling here is LOCAL state — routing
 /// it through ImportModel would flip the global state and dismiss this screen.
 struct WorkoutHeroCard: View {
-    @EnvironmentObject private var model: ImportModel
     let workout: ItwWorkout
 
     private enum SendState: Equatable { case idle, sending, sent, failed(String) }
@@ -31,7 +30,7 @@ struct WorkoutHeroCard: View {
                     }
                 }
                 Spacer()
-                Button { model.select(workout) } label: {
+                NavigationLink(value: PlanRoute.workout(workout)) {
                     Image(systemName: "info.circle")
                 }
                 .accessibilityLabel("Workout details")

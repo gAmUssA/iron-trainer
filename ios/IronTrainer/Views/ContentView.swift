@@ -38,8 +38,13 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Iron Trainer")
-            .navigationDestination(for: PlanRoute.self) { _ in
-                WorkoutListView(workouts: model.lastPlan?.workouts ?? [])
+            .navigationDestination(for: PlanRoute.self) { route in
+                switch route {
+                case .fullPlan:
+                    WorkoutListView(workouts: model.lastPlan?.workouts ?? [])
+                case let .workout(w):
+                    WorkoutPreviewView(workout: w)
+                }
             }
             .onChange(of: model.state) {
                 // A state switch replaces the root — don't leave the pushed

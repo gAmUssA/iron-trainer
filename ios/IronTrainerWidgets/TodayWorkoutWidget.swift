@@ -7,7 +7,7 @@ struct TodayWorkoutWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "TodayWorkout", provider: SnapshotProvider()) { entry in
             TodayWorkoutView(entry: entry)
-                .containerBackground(for: .widget) { Color.clear }
+                .containerBackground(.background, for: .widget)
         }
         .configurationDisplayName("Today's Workout")
         .description("Your planned session for today.")

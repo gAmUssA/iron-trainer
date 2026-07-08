@@ -7,7 +7,7 @@ struct RaceCountdownWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "RaceCountdown", provider: SnapshotProvider()) { entry in
             RaceCountdownView(entry: entry)
-                .containerBackground(for: .widget) { Color.clear }
+                .containerBackground(.background, for: .widget)
         }
         .configurationDisplayName("Race Countdown")
         .description("Days until race day.")
