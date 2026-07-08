@@ -3,7 +3,6 @@ import SwiftUI
 /// The home screen once a plan is loaded: race countdown, today's session(s)
 /// with the interval profile, tomorrow's peek, and a link to the full plan.
 struct TodayView: View {
-    @EnvironmentObject private var model: ImportModel
     let plan: TrainingPlan
 
     private var todayKey: String { Self.isoDay(.now) }
