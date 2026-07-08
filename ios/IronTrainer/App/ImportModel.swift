@@ -52,12 +52,6 @@ final class ImportModel: ObservableObject {
         }
     }
 
-    /// Open a workout from the plan list in the date-picker preview.
-    func select(_ workout: ItwWorkout) {
-        lastWorkout = workout
-        state = .loaded(workout)
-    }
-
     /// Return to the plan list (e.g. after scheduling one workout).
     func backToPlan() {
         if let p = lastPlan { state = .loadedPlan(p) }
@@ -87,6 +81,7 @@ final class ImportModel: ObservableObject {
     }
 
     func schedule(_ itw: ItwWorkout, on date: Date) async {
+        lastWorkout = itw  // failure path returns to the preview to change date
         do {
             try await WorkoutScheduling.schedule(itw, on: date)
             let f = DateFormatter(); f.dateStyle = .medium

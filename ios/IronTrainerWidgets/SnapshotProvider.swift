@@ -49,15 +49,22 @@ struct SnapshotProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
         let snapshot = SharedStore.read()
+        guard let snapshot else {
+            // No data yet: a single already-past entry with .atEnd would make
+            // WidgetKit re-request immediately (throttled → blank widget).
+            // Check back later instead; the app also force-reloads on plan load.
+            let retry = Date.now.addingTimeInterval(15 * 60)
+            completion(Timeline(entries: [SnapshotEntry(date: .now, snapshot: nil)],
+                                policy: .after(retry)))
+            return
+        }
         var entries = [SnapshotEntry(date: .now, snapshot: snapshot)]
-        if snapshot != nil {
-            let cal = Calendar.current
-            var midnight = cal.startOfDay(for: .now)
-            for _ in 0..<7 {
-                guard let next = cal.date(byAdding: .day, value: 1, to: midnight) else { break }
-                midnight = next
-                entries.append(SnapshotEntry(date: midnight, snapshot: snapshot))
-            }
+        let cal = Calendar.current
+        var midnight = cal.startOfDay(for: .now)
+        for _ in 0..<7 {
+            guard let next = cal.date(byAdding: .day, value: 1, to: midnight) else { break }
+            midnight = next
+            entries.append(SnapshotEntry(date: midnight, snapshot: snapshot))
         }
         completion(Timeline(entries: entries, policy: .atEnd))
     }
