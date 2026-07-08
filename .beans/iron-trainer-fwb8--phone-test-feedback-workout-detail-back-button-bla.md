@@ -5,10 +5,14 @@ status: in-progress
 type: bug
 priority: high
 created_at: 2026-07-08T20:19:39Z
-updated_at: 2026-07-08T20:42:13Z
+updated_at: 2026-07-08T22:18:31Z
 ---
 
 From Viktor's on-device test of build 202607081335:
 - [x] Workout detail is now a NavigationStack push (PlanRoute.workout) — back button verified in simulator, returns to Today view.
 - [x] Widget fixes: adaptive .background container, no-data timeline .after(15m), Settings 'Widget data' diagnostic row. Device confirmation pending next TestFlight.
-- [ ] Rebuild, sim-verify, PR (hold for merge), TestFlight after merge
+- [x] PR #15 merged (4aff92a); TestFlight build 0.1.0 (202607081816) uploaded 2026-07-08
+
+## Summary of Changes
+
+Workout detail converted to a NavigationStack push (PlanRoute.workout) — system back button restored; ImportModel.select removed. Widget hardening: adaptive .background container, .after(15m) no-data timeline policy, Settings 'Widget data' diagnostic row. Shipped in TestFlight 202607081816; device confirmation of the widget render is the remaining open question (tracked on bean ny45's on-device checklist).
