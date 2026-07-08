@@ -24,21 +24,21 @@ Severity: 🔴 HIGH · 🟠 MEDIUM · 🟡 LOW · ⚪ INFO
   `signOut()` and `disconnect_strava()` leave `DeviceToken` rows valid forever.
   *Fix: `DELETE /api/device/tokens`, called from iOS sign-out; purge tokens in
   `disconnect_strava()`.* → fixed in `fix/review-hardening`
-- [ ] 🟡 **B4 — Unauthenticated `/api/device/claim` has no throttle** on 32-bit
+- [x] 🟡 **B4 — Unauthenticated `/api/device/claim` has no throttle** on 32-bit
   pairing codes (`repo.py:133`, `auth_router.py:53`). Infeasible to brute-force at
-  this scale, but zero friction. *Fix: simple attempt throttle or `token_hex(6)`.*
-- [ ] 🟡 **B5 — Thresholds can never be cleared.** `save_profile` (`repo.py:189`)
+  this scale, but zero friction. *Fix: simple attempt throttle or `token_hex(6)`.* → fixed in `fix/low-info-findings` (10 failures/min → 429)
+- [x] 🟡 **B5 — Thresholds can never be cleared.** `save_profile` (`repo.py:189`)
   skips `None`, so the UI's "Saved" is a silent no-op for emptied fields. Now also
-  covers the 4 nutrition fields. *Fix: distinguish absent vs explicit null.*
-- [ ] 🟡 **B6 — `/api/health?deep=1` echoes raw DB errors** (`main.py:100`) — DSN
+  covers the 4 nutrition fields. *Fix: distinguish absent vs explicit null.* → fixed in `fix/low-info-findings` (`exclude_unset`; inference/seeding filter Nones)
+- [x] 🟡 **B6 — `/api/health?deep=1` echoes raw DB errors** (`main.py:100`) — DSN
   shape (host/user/db) leaks on an unauthenticated endpoint. *Fix: generic detail,
-  log the real error.*
+  log the real error.* → fixed in `fix/low-info-findings`
 - [x] ⚪ **B7a — O(n²) `zf.namelist()` scan per CSV row** (`strava_import.py:181-184`).
   *Fix: build the name set once.* → fixed in `fix/review-hardening`
-- [ ] ⚪ **B7b — OAuth state not validated in local no-auth mode** (`strava_router.py:54`) —
-  localhost-only login CSRF; acceptable.
-- [ ] ⚪ **B7c — NP assumes 1 Hz and splices out recording gaps** (`metrics.py:27`);
-  FIT session NP wins when present, acceptable approximation.
+- [x] ⚪ **B7b — OAuth state not validated in local no-auth mode** (`strava_router.py:54`) —
+  localhost-only login CSRF; **accepted as-is** (single-user local mode).
+- [x] ⚪ **B7c — NP assumes 1 Hz and splices out recording gaps** (`metrics.py:27`);
+  FIT session NP wins when present, **accepted as-is** (documented approximation).
 
 ## iOS
 
@@ -48,12 +48,12 @@ Severity: 🔴 HIGH · 🟠 MEDIUM · 🟡 LOW · ⚪ INFO
   link/QR re-points the app to an attacker server. *Fix: require https (http for
   local/dev hosts only) + confirmation alert before switching servers when already
   signed in.* → fixed in `fix/review-hardening`
-- [ ] 🟡 **I2 — Deep-link pairing failures swallowed** (`IronTrainerApp.swift:18`
-  `try? await auth.signIn`). No feedback on expired code / offline server.
-- [ ] 🟡 **I3 — Scheduling "today" after 23:00 silently lands in the past.**
+- [x] 🟡 **I2 — Deep-link pairing failures swallowed** (`IronTrainerApp.swift:18`
+  `try? await auth.signIn`). No feedback on expired code / offline server. → fixed in `fix/low-info-findings` (alert on deep-link pairing failure)
+- [x] 🟡 **I3 — Scheduling "today" after 23:00 silently lands in the past.**
   `WorkoutScheduling.swift:51-54` — hour/minute roll past midnight but day stays
-  today; WorkoutScheduler ignores past dates silently.
-- [ ] ⚪ **I4 — Clean:** Keychain storage, `.itw` schema gating, pace→speed math all
+  today; WorkoutScheduler ignores past dates silently. → fixed in `fix/low-info-findings` (clamps to min(now+1h, 23:59) today)
+- [x] ⚪ **I4 — Clean:** Keychain storage, `.itw` schema gating, pace→speed math all
   verified correct. No action.
 
 ## Frontend
@@ -72,12 +72,12 @@ Severity: 🔴 HIGH · 🟠 MEDIUM · 🟡 LOW · ⚪ INFO
   with a visible error.* → fixed in `fix/review-hardening`
 - [x] 🟡 **F4 — CSRF posture of multipart import** — VERIFIED SAFE: session cookie is
   `SameSite=lax` (`main.py:65`). No change needed.
-- [ ] 🟡 **F5 — HTTP errors discard backend detail** (`api.ts:189-204`) — import
-  failures show "400 Bad Request" instead of the reason.
-- [ ] 🟡 **F6 — Pairing-code one-frame "expired" flash + client-clock skew**
-  (`Setup.tsx:8-35`).
-- [ ] ⚪ **F7 — Nits:** `paceKm(0)` falsy check; race countdown doesn't tick across
-  midnight; `doImport` file-read order verified correct.
+- [x] 🟡 **F5 — HTTP errors discard backend detail** (`api.ts:189-204`) — import
+  failures show "400 Bad Request" instead of the reason. → fixed in `fix/low-info-findings` (backend `detail` surfaced)
+- [x] 🟡 **F6 — Pairing-code one-frame "expired" flash + client-clock skew**
+  (`Setup.tsx:8-35`). → fixed in `fix/low-info-findings` (server `expires_in` countdown, seeded pre-render)
+- [x] ⚪ **F7 — Nits:** `paceKm(0)` falsy check; race countdown doesn't tick across
+  midnight; `doImport` file-read order verified correct. → `paceKm`/`pace100` now explicit `== null || <= 0`.
 
 ## Nutrition (PR #9)
 

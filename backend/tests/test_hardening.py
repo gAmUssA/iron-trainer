@@ -138,3 +138,96 @@ def test_profile_rejects_out_of_range_values():
         assert c.put("/api/athlete/profile", json={"gi_tolerance": "extreme"}).status_code == 422
         ok = c.put("/api/athlete/profile", json={"body_weight_kg": 74.5, "gi_tolerance": "high"})
         assert ok.status_code == 200
+
+
+# ── LOW/INFO follow-ups (B4/B5/B6) ────────────────────────────────────────────
+
+
+def test_claim_throttle_429_after_repeated_failures():
+    from app.routers import auth_router
+
+    auth_router._claim_failures.clear()
+    try:
+        with TestClient(app) as c:
+            for _ in range(auth_router._CLAIM_MAX_FAILURES):
+                assert c.post("/api/device/claim", json={"code": "wrong000"}).status_code == 400
+            r = c.post("/api/device/claim", json={"code": "wrong000"})
+            assert r.status_code == 429
+    finally:
+        auth_router._claim_failures.clear()  # don't poison other tests
+
+
+def test_profile_explicit_null_clears_but_absent_keeps():
+    with TestClient(app) as c:
+        c.put("/api/athlete/profile", json={"ftp": 250, "threshold_hr": 160})
+        # Absent field untouched, explicit null clears.
+        p = c.put("/api/athlete/profile", json={"ftp": None}).json()["profile"]
+        assert p["ftp"] is None
+        assert p["threshold_hr"] == 160
+
+
+def test_seed_never_clears_manual_thresholds():
+    from app import services
+
+    with TestClient(app) as c:
+        c.put("/api/athlete/profile", json={"css_swim": 105})
+    # No activities → inference yields all-None; must not clear the manual CSS.
+    services.seed_profile_if_empty()
+    with TestClient(app) as c:
+        assert c.get("/api/athlete").json()["profile"]["css_swim"] == 105
+
+
+def test_deep_health_hides_db_error_detail(monkeypatch):
+    from app import main as app_main
+
+    class BoomEngine:
+        def connect(self):
+            raise RuntimeError("connection to server at db.supabase.co, user postgres failed")
+
+    monkeypatch.setattr(app_main, "get_engine", lambda: BoomEngine())
+    with TestClient(app) as c:
+        r = c.get("/api/health?deep=1")
+    assert r.status_code == 503
+    body = r.json()
+    assert "supabase" not in str(body)
+    assert body["detail"] == "database unreachable — see server logs"
+
+
+def test_pairing_code_reports_expires_in():
+    aid = repo.find_or_create_athlete(666, "Sixth")
+    out = repo.create_pairing_code(aid, ttl_s=600)
+    assert out["expires_in"] == 600
+
+
+def test_claim_throttle_keys_on_forwarded_for_and_resets_on_success():
+    from app.routers import auth_router
+
+    auth_router._claim_failures.clear()
+    try:
+        with TestClient(app) as c:
+            # Failures from one forwarded client don't throttle another.
+            for _ in range(auth_router._CLAIM_MAX_FAILURES):
+                c.post("/api/device/claim", json={"code": "wrong000"},
+                       headers={"X-Forwarded-For": "203.0.113.7"})
+            blocked = c.post("/api/device/claim", json={"code": "wrong000"},
+                             headers={"X-Forwarded-For": "203.0.113.7"})
+            other = c.post("/api/device/claim", json={"code": "wrong000"},
+                           headers={"X-Forwarded-For": "198.51.100.9"})
+            assert blocked.status_code == 429
+            assert other.status_code == 400  # not throttled
+
+            # A successful claim clears the requester's failure history.
+            # (Fresh IP — 198.51.100.9 already carries a failure from above.)
+            aid = repo.find_or_create_athlete(777, "Seventh")
+            code = repo.create_pairing_code(aid)["code"]
+            for _ in range(auth_router._CLAIM_MAX_FAILURES - 1):
+                c.post("/api/device/claim", json={"code": "nope0000"},
+                       headers={"X-Forwarded-For": "192.0.2.5"})
+            ok = c.post("/api/device/claim", json={"code": code},
+                        headers={"X-Forwarded-For": "192.0.2.5"})
+            assert ok.status_code == 200
+            after = c.post("/api/device/claim", json={"code": "nope0000"},
+                           headers={"X-Forwarded-For": "192.0.2.5"})
+            assert after.status_code == 400  # fresh window, not 429
+    finally:
+        auth_router._claim_failures.clear()

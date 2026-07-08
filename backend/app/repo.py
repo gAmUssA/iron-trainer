@@ -144,7 +144,8 @@ def create_pairing_code(athlete_id: int, name: str | None = None, ttl_s: int = 6
     with get_session() as s:
         s.add(DeviceToken(athlete_id=athlete_id, name=name, pairing_code=code,
                           pairing_expires_at=expires_at, created_at=_now_iso()))
-    return {"code": code, "expires_at": expires_at}
+    # expires_in lets the web UI count down without trusting the client clock.
+    return {"code": code, "expires_at": expires_at, "expires_in": ttl_s}
 
 
 def claim_pairing_code(code: str, device_name: str | None = None) -> dict | None:
@@ -198,8 +199,11 @@ def save_profile(profile: dict) -> None:
         if a is None:
             return
         changed = False
+        # Key present = authoritative, INCLUDING an explicit None (clears the
+        # field). Callers that must never clear (inference/seeding) filter Nones
+        # out before calling.
         for f in fields:
-            if profile.get(f) is not None:
+            if f in profile:
                 setattr(a, f, profile[f])
                 changed = True
         if changed:
