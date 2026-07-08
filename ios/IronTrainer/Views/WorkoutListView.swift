@@ -39,7 +39,8 @@ private struct Row: View {
     let workout: ItwWorkout
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).foregroundStyle(.secondary).frame(width: 24)
+            Image(systemName: SportStyle.icon(for: workout.sport))
+                .foregroundStyle(SportStyle.color(for: workout.sport)).frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     if isTest {
@@ -64,15 +65,5 @@ private struct Row: View {
 
     private var isTest: Bool {
         (workout.title ?? "").localizedCaseInsensitiveContains("test")
-    }
-
-    private var icon: String {
-        switch workout.sport {
-        case "Swim": return "figure.pool.swim"
-        case "Bike", "Brick": return "figure.outdoor.cycle"
-        case "Run": return "figure.run"
-        case "Strength": return "figure.strengthtraining.traditional"
-        default: return "figure.mixed.cardio"
-        }
     }
 }

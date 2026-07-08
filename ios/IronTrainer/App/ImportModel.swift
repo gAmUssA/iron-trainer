@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 
 /// Drives the import → preview → schedule flow.
 @MainActor
@@ -7,7 +8,7 @@ final class ImportModel: ObservableObject {
         case empty
         case loading
         case loaded(ItwWorkout)
-        case loadedPlan([ItwWorkout])   // a fetched plan, pick one to schedule
+        case loadedPlan(TrainingPlan)   // a fetched plan → Today view
         case scheduled(String)          // human summary
         case failed(String)
     }
@@ -17,8 +18,8 @@ final class ImportModel: ObservableObject {
     /// The most recently loaded workout, kept so a failed schedule can return to
     /// the preview (to change the date) instead of dead-ending.
     private(set) var lastWorkout: ItwWorkout?
-    /// The most recently fetched plan, so we can return to the list.
-    private(set) var lastPlan: [ItwWorkout]?
+    /// The most recently fetched plan, so we can return to it.
+    private(set) var lastPlan: TrainingPlan?
 
     func importFrom(_ source: WorkoutSource) async {
         state = .loading
@@ -31,15 +32,21 @@ final class ImportModel: ObservableObject {
         }
     }
 
-    /// Fetch the whole plan from the backend and show it as a list.
+    /// Fetch the whole plan from the backend and show the Today view.
     func loadPlan(from source: PlanNetworkSource) async {
         state = .loading
         do {
-            let workouts = try await source.loadPlan()
-            lastPlan = workouts
-            state = workouts.isEmpty
-                ? .failed("No plan yet — generate one in the web app first.")
-                : .loadedPlan(workouts)
+            let plan = try await source.loadPlan()
+            lastPlan = plan
+            if plan.workouts.isEmpty {
+                state = .failed("No plan yet — generate one in the web app first.")
+            } else {
+                state = .loadedPlan(plan)
+                // Feed the widgets: precomputed 7-day snapshot into the App
+                // Group, then ask WidgetKit to rebuild timelines.
+                SharedStore.write(WidgetSnapshot.build(from: plan))
+                WidgetCenter.shared.reloadAllTimelines()
+            }
         } catch {
             state = .failed(error.localizedDescription)
         }

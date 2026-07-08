@@ -19,6 +19,7 @@ targets:
     platform: iOS
     sources:
       - path: IronTrainer
+      - path: Shared        # model + widget-snapshot code shared with the extension
     settings:
       base:
         INFOPLIST_FILE: IronTrainer/Resources/Info.plist
@@ -28,5 +29,21 @@ targets:
     dependencies:
       - sdk: WorkoutKit.framework
       - sdk: HealthKit.framework
+      - target: IronTrainerWidgets   # embeds the widget extension
     scheme:  # generate a *shared* scheme so fastlane/gym can find it
       testTargets: []
+  IronTrainerWidgets:
+    type: app-extension    # WidgetKit extension (NSExtensionPointIdentifier in its Info.plist)
+    platform: iOS
+    sources:
+      - path: IronTrainerWidgets
+      - path: Shared
+    settings:
+      base:
+        INFOPLIST_FILE: IronTrainerWidgets/Info.plist
+        CODE_SIGN_ENTITLEMENTS: IronTrainerWidgets/IronTrainerWidgets.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: io.gamov.irontrainer.helper.widgets
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework

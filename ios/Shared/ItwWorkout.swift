@@ -104,7 +104,7 @@ struct PlanFile: Codable {
     let plan: PlanMeta?
     let workouts: [ItwWorkout]
 
-    struct PlanMeta: Codable {
+    struct PlanMeta: Codable, Equatable {
         let raceName: String?
         let raceDate: String?
         let summary: String?
@@ -113,6 +113,17 @@ struct PlanFile: Codable {
             case raceName = "race_name"
             case raceDate = "race_date"
             case summary
+        }
+
+        /// The race date parsed with the same local-calendar rule as
+        /// `ItwWorkout.plannedDate`, so countdown math agrees with today-matching.
+        var raceDay: Date? {
+            guard let raceDate else { return nil }
+            let parts = raceDate.split(separator: "-").compactMap { Int($0) }
+            guard parts.count == 3 else { return nil }
+            var comps = DateComponents()
+            comps.year = parts[0]; comps.month = parts[1]; comps.day = parts[2]
+            return Calendar.current.date(from: comps)
         }
     }
 
@@ -129,4 +140,10 @@ struct PlanFile: Codable {
         }
         return file
     }
+}
+
+/// A fetched plan with its race metadata — what the app state machine carries.
+struct TrainingPlan: Equatable {
+    let meta: PlanFile.PlanMeta?
+    let workouts: [ItwWorkout]
 }

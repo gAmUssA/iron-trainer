@@ -6,9 +6,10 @@ struct ContentView: View {
     @EnvironmentObject private var auth: AuthModel
     @State private var showingPicker = false
     @State private var showingSettings = false
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 switch model.state {
                 case .empty:
@@ -20,8 +21,8 @@ struct ContentView: View {
                     ProgressView("Loading…")
                 case let .loaded(workout):
                     WorkoutPreviewView(workout: workout)
-                case let .loadedPlan(workouts):
-                    WorkoutListView(workouts: workouts)
+                case let .loadedPlan(plan):
+                    TodayView(plan: plan)
                 case let .scheduled(message):
                     ResultState(systemImage: "checkmark.circle.fill",
                                 tint: .green, message: message,
@@ -37,15 +38,26 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Iron Trainer")
+            .navigationDestination(for: PlanRoute.self) { _ in
+                WorkoutListView(workouts: model.lastPlan?.workouts ?? [])
+            }
+            .onChange(of: model.state) {
+                // A state switch replaces the root — don't leave the pushed
+                // full-plan list lingering over the new screen.
+                path = NavigationPath()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Settings")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if auth.isSignedIn {
                         Button { loadPlan() } label: { Image(systemName: "arrow.clockwise") }
+                            .accessibilityLabel("Refresh plan")
                     }
                     Button { showingPicker = true } label: { Image(systemName: "doc.badge.plus") }
+                        .accessibilityLabel("Import workout file")
                 }
             }
             .fileImporter(isPresented: $showingPicker,
