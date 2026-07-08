@@ -23,13 +23,13 @@ private struct RaceCountdownView: View {
         if let days = entry.daysToRace {
             switch family {
             case .accessoryInline:
-                Text("\(shortName) — \(days) days")
+                Text(inlineText(days: days))
             case .accessoryCircular:
                 VStack(spacing: 0) {
-                    Text("\(days)")
+                    Text(days >= 0 ? "\(days)" : "🏁")
                         .font(.system(.title2, design: .rounded).weight(.bold))
                         .monospacedDigit()
-                    Text("days").font(.caption2)
+                    Text(days >= 0 ? dayWord(days) : "done").font(.caption2)
                 }
             default:
                 VStack(alignment: .leading, spacing: 4) {
@@ -37,12 +37,13 @@ private struct RaceCountdownView: View {
                         .font(.caption)
                         .foregroundStyle(SportStyle.accent)
                     Spacer(minLength: 0)
-                    Text(days > 0 ? "\(days)" : "GO!")
+                    Text(days > 0 ? "\(days)" : days == 0 ? "GO!" : "🏁")
                         .font(.system(size: 44, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(SportStyle.accent)
                         .minimumScaleFactor(0.5)
-                    Text(days > 0 ? "days to go" : "race day")
+                    Text(days > 0 ? "\(dayWord(days)) to go"
+                         : days == 0 ? "race day" : "raced \(-days) \(dayWord(-days)) ago")
                         .font(.caption).foregroundStyle(.secondary)
                     Text(entry.snapshot?.raceName ?? "")
                         .font(.caption2).foregroundStyle(.tertiary)
@@ -54,6 +55,14 @@ private struct RaceCountdownView: View {
             NoDataView(family: family)
         }
     }
+
+    private func inlineText(days: Int) -> String {
+        if days > 0 { return "\(shortName) — \(days) \(dayWord(days))" }
+        if days == 0 { return "\(shortName) — race day!" }
+        return "\(shortName) — raced \(-days) \(dayWord(-days)) ago"
+    }
+
+    private func dayWord(_ n: Int) -> String { abs(n) == 1 ? "day" : "days" }
 
     private var shortName: String {
         entry.snapshot?.raceName?.replacingOccurrences(of: "IRONMAN", with: "IM") ?? "Race"

@@ -10,15 +10,14 @@ struct WorkoutProfileChart: View {
 
     var body: some View {
         GeometryReader { geo in
-            let totalWeight = max(segments.reduce(0) { $0 + $1.weight }, 1)
             let spacing: CGFloat = 1.5
             let available = geo.size.width - spacing * CGFloat(max(segments.count - 1, 0))
+            let fracs = Self.widthFractions(for: segments)
             HStack(alignment: .bottom, spacing: spacing) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
-                    let frac = max(seg.weight / totalWeight, 0.03) // short recoveries stay visible
+                ForEach(Array(segments.enumerated()), id: \.offset) { i, seg in
                     RoundedRectangle(cornerRadius: 2.5)
                         .fill(fill(for: seg))
-                        .frame(width: max(available * frac, 3),
+                        .frame(width: available * fracs[i],
                                height: geo.size.height * barHeight(for: seg))
                 }
             }
@@ -26,6 +25,16 @@ struct WorkoutProfileChart: View {
         }
         .frame(height: height)
         .accessibilityLabel("Workout intensity profile, \(segments.count) steps")
+    }
+
+    /// Width fractions summing to exactly 1: clamp each bar to a 3% minimum so
+    /// short recoveries stay visible, then renormalize so many tiny steps can't
+    /// overflow the available width.
+    static func widthFractions(for segments: [ProfileSegment]) -> [CGFloat] {
+        let totalWeight = max(segments.reduce(0) { $0 + $1.weight }, 1)
+        let clamped = segments.map { max($0.weight / totalWeight, 0.03) }
+        let sum = clamped.reduce(0, +)
+        return clamped.map { CGFloat($0 / sum) }
     }
 
     private func barHeight(for seg: ProfileSegment) -> CGFloat {
