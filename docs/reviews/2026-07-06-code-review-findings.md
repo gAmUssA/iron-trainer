@@ -52,7 +52,7 @@ Severity: 🔴 HIGH · 🟠 MEDIUM · 🟡 LOW · ⚪ INFO
   `try? await auth.signIn`). No feedback on expired code / offline server. → fixed in `fix/low-info-findings` (alert on deep-link pairing failure)
 - [x] 🟡 **I3 — Scheduling "today" after 23:00 silently lands in the past.**
   `WorkoutScheduling.swift:51-54` — hour/minute roll past midnight but day stays
-  today; WorkoutScheduler ignores past dates silently. → fixed in `fix/low-info-findings` (clamps to 23:45 today)
+  today; WorkoutScheduler ignores past dates silently. → fixed in `fix/low-info-findings` (clamps to min(now+1h, 23:59) today)
 - [x] ⚪ **I4 — Clean:** Keychain storage, `.itw` schema gating, pace→speed math all
   verified correct. No action.
 

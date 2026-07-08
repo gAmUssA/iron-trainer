@@ -52,10 +52,11 @@ enum WorkoutScheduling {
             // Today's 6am may already be past; schedule ~1h out so it's upcoming.
             // After 23:00, now+1h rolls into tomorrow while comps' day stays
             // today — WorkoutScheduler silently ignores past times, so clamp to
-            // the last minute of today (min(now+1h, 23:59) is always in the
-            // future except in the final seconds of the day).
+            // the last minute of today. Inside 23:59 itself the minute-granular
+            // slot is inherently already started; "today" is over for scheduling
+            // purposes and that final-minute sliver is accepted.
             let soonDate = Date.now.addingTimeInterval(3600)
-            let lastToday = cal.date(bySettingHour: 23, minute: 59, second: 0, of: date) ?? date
+            let lastToday = cal.date(bySettingHour: 23, minute: 59, second: 59, of: date) ?? date
             let soon = cal.dateComponents([.hour, .minute], from: min(soonDate, lastToday))
             comps.hour = soon.hour; comps.minute = soon.minute
         } else {

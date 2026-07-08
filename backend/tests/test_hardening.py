@@ -197,3 +197,37 @@ def test_pairing_code_reports_expires_in():
     aid = repo.find_or_create_athlete(666, "Sixth")
     out = repo.create_pairing_code(aid, ttl_s=600)
     assert out["expires_in"] == 600
+
+
+def test_claim_throttle_keys_on_forwarded_for_and_resets_on_success():
+    from app.routers import auth_router
+
+    auth_router._claim_failures.clear()
+    try:
+        with TestClient(app) as c:
+            # Failures from one forwarded client don't throttle another.
+            for _ in range(auth_router._CLAIM_MAX_FAILURES):
+                c.post("/api/device/claim", json={"code": "wrong000"},
+                       headers={"X-Forwarded-For": "203.0.113.7"})
+            blocked = c.post("/api/device/claim", json={"code": "wrong000"},
+                             headers={"X-Forwarded-For": "203.0.113.7"})
+            other = c.post("/api/device/claim", json={"code": "wrong000"},
+                           headers={"X-Forwarded-For": "198.51.100.9"})
+            assert blocked.status_code == 429
+            assert other.status_code == 400  # not throttled
+
+            # A successful claim clears the requester's failure history.
+            # (Fresh IP — 198.51.100.9 already carries a failure from above.)
+            aid = repo.find_or_create_athlete(777, "Seventh")
+            code = repo.create_pairing_code(aid)["code"]
+            for _ in range(auth_router._CLAIM_MAX_FAILURES - 1):
+                c.post("/api/device/claim", json={"code": "nope0000"},
+                       headers={"X-Forwarded-For": "192.0.2.5"})
+            ok = c.post("/api/device/claim", json={"code": code},
+                        headers={"X-Forwarded-For": "192.0.2.5"})
+            assert ok.status_code == 200
+            after = c.post("/api/device/claim", json={"code": "nope0000"},
+                           headers={"X-Forwarded-For": "192.0.2.5"})
+            assert after.status_code == 400  # fresh window, not 429
+    finally:
+        auth_router._claim_failures.clear()
