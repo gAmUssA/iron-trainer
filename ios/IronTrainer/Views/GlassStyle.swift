@@ -6,12 +6,13 @@ extension View {
     /// prominent Liquid Glass style; before that it falls back to bordered-prominent
     /// (which itself adapts to glass when available). Reserve for *one* primary
     /// action per screen — tinting/emphasising everything destroys hierarchy.
+    /// Pass the brand accent as `tint` for the app's main CTA.
     @ViewBuilder
-    func primaryActionButtonStyle() -> some View {
+    func primaryActionButtonStyle(tint: Color? = nil) -> some View {
         if #available(iOS 26.0, *) {
-            self.buttonStyle(.glassProminent)
+            self.buttonStyle(.glassProminent).tint(tint)
         } else {
-            self.buttonStyle(.borderedProminent)
+            self.buttonStyle(.borderedProminent).tint(tint)
         }
     }
 }

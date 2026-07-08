@@ -55,16 +55,19 @@ struct NetworkSource: WorkoutSource {
     }
 }
 
-/// Fetch the whole plan: GET /api/export/plan.itw (bearer-authenticated) → workouts.
+/// Fetch the whole plan: GET /api/export/plan.itw (bearer-authenticated).
 struct PlanNetworkSource {
     let baseURL: URL
     let bearer: String
     var session: URLSession = .shared
 
-    func loadPlan() async throws -> [ItwWorkout] {
+    /// Returns workouts AND the plan meta (race name/date) — the Today view and
+    /// widgets need the meta the old API silently discarded.
+    func loadPlan() async throws -> TrainingPlan {
         let url = baseURL.appending(path: "/api/export/plan.itw")
         let (data, resp) = try await session.data(for: authedRequest(url, bearer: bearer))
         if let h = resp as? HTTPURLResponse, h.statusCode != 200 { throw NetworkError.http(h.statusCode) }
-        return try PlanFile.decode(from: data).workouts
+        let file = try PlanFile.decode(from: data)
+        return TrainingPlan(meta: file.plan, workouts: file.workouts)
     }
 }
