@@ -3,7 +3,13 @@ import SwiftUI
 /// The home screen once a plan is loaded: race countdown, today's session(s)
 /// with the interval profile, tomorrow's peek, and a link to the full plan.
 struct TodayView: View {
+    @EnvironmentObject private var auth: AuthModel
+    @EnvironmentObject private var model: ImportModel
     let plan: TrainingPlan
+
+    private enum CheckinState: Equatable { case idle, running, failed(String) }
+    @State private var checkinState: CheckinState = .idle
+    @State private var story: [String]?
 
     private var todayKey: String { Self.isoDay(.now) }
     private var tomorrowKey: String {
@@ -47,8 +53,54 @@ struct TodayView: View {
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
+
+                if auth.isSignedIn {
+                    Button(action: runCheckin) {
+                        HStack {
+                            Label(checkinState == .running ? "Checking in…" : "Weekly Check-in",
+                                  systemImage: "checkmark.arrow.trianglehead.counterclockwise")
+                            Spacer()
+                            if checkinState == .running {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "chevron.right")
+                                    .font(.caption).foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(14)
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(checkinState == .running)
+                    if case let .failed(msg) = checkinState {
+                        Text("Check-in failed: \(msg)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             }
             .padding()
+        }
+        .sheet(isPresented: .init(get: { story != nil }, set: { if !$0 { story = nil } })) {
+            CheckinStorySheet(lines: story ?? [])
+        }
+    }
+
+    /// Same loop as the web card: the backend syncs, reconciles and replans,
+    /// then we re-fetch the plan (which also rewrites the widget snapshot).
+    private func runCheckin() {
+        guard let server = auth.serverURL, let bearer = auth.bearer else { return }
+        checkinState = .running
+        Task {
+            do {
+                let source = PlanNetworkSource(baseURL: server, bearer: bearer)
+                let result = try await source.checkin()
+                await model.refreshPlanQuietly(from: source)  // plan + widgets, no .loading flash
+                story = result.story
+                checkinState = .idle
+            } catch {
+                checkinState = .failed(error.localizedDescription)
+            }
         }
     }
 
@@ -62,6 +114,29 @@ struct TodayView: View {
     static func isoDay(_ date: Date) -> String {
         let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+}
+
+/// The check-in story, straight from the backend — same lines the web card shows.
+private struct CheckinStorySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let lines: [String]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    Label(line, systemImage: "checkmark.circle")
+                        .font(.subheadline)
+                }
+            }
+            .navigationTitle("Weekly Check-in")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
