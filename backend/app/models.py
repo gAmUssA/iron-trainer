@@ -105,6 +105,9 @@ class Plan(SQLModel, table=True):
     status: str | None = "active"
     summary: str | None = None
     weeks_json: str | None = None
+    # The weekly-hours target the plan was generated for — lets the UI flag a
+    # stale plan when the athlete later changes their target.
+    base_weekly_hours: float | None = None
     created_at: str | None = None
 
 

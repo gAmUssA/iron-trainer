@@ -95,6 +95,7 @@ export interface DailyNutrition {
 export interface AthleteResponse {
   connected: boolean;
   profile: Profile;
+  plan_weeks_refreshed?: number; // future weeks re-derived after a threshold change
 }
 
 export interface PmcDay {
@@ -265,7 +266,12 @@ export interface ReconcileResult {
   form_flag: string;
 }
 export interface PlanResponse {
-  plan: { id: number; summary: string; weeks: PlanWeek[] } | null;
+  plan: {
+    id: number;
+    summary: string;
+    weeks: PlanWeek[];
+    base_weekly_hours?: number | null; // hours target the plan was generated for
+  } | null;
   workouts: PlannedWorkout[];
 }
 export interface GenerateResult {

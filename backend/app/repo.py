@@ -473,6 +473,7 @@ def save_plan(season: dict) -> int:
         p = Plan(
             athlete_id=aid, race_name=season.get("race_name"), race_date=season.get("race_date"),
             status="active", summary=season.get("summary"),
+            base_weekly_hours=season.get("base_weekly_hours"),
             weeks_json=json.dumps(season.get("weeks", [])), created_at=_now_iso(),
         )
         s.add(p)

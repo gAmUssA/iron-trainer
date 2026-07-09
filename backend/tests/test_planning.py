@@ -96,3 +96,85 @@ def test_generate_plan_without_llm(monkeypatch):
     assert len(workouts) == result["workouts"]
     # Steps round-trip through storage.
     assert any(w["steps"] for w in workouts)
+
+
+def test_plan_records_base_weekly_hours_for_staleness_hint():
+    """Changing weekly hours must be detectable against the active plan
+    (the plan itself is intentionally untouched until regeneration)."""
+    from starlette.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as c:
+        c.put("/api/athlete/profile", json={"weekly_hours_target": 6})
+        c.post("/api/plan/generate?use_llm=false")
+        plan = c.get("/api/plan").json()["plan"]
+        assert plan["base_weekly_hours"] == 6.0
+
+        # Saving new hours does NOT touch the plan — the mismatch is the signal.
+        c.put("/api/athlete/profile", json={"weekly_hours_target": 10})
+        plan = c.get("/api/plan").json()["plan"]
+        assert plan["base_weekly_hours"] == 6.0
+
+        c.post("/api/plan/generate?use_llm=false")
+        plan = c.get("/api/plan").json()["plan"]
+        assert plan["base_weekly_hours"] == 10.0
+
+
+def test_threshold_change_refreshes_future_workout_targets():
+    """Improving fitness must flow into future prescriptions automatically —
+    without touching the current week or completion history."""
+    from starlette.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as c:
+        c.put("/api/athlete/profile", json={"ftp": 200, "threshold_pace_run": 330})
+        c.post("/api/plan/generate?use_llm=false")
+        before = c.get("/api/plan").json()["workouts"]
+
+        def future_bike_powers(workouts):
+            from datetime import date, timedelta
+            next_monday = (date.today() + timedelta(days=7 - date.today().weekday())).isoformat()
+            out = []
+            for w in workouts:
+                if w["sport"] == "Bike" and (w["date"] or "") >= next_monday:
+                    for s in w["steps"]:
+                        t = s.get("target") or {}
+                        if t.get("type") == "power" and t.get("high"):
+                            out.append(t["high"])
+            return out
+
+        p_before = future_bike_powers(before)
+        assert p_before, "expected future bike power targets in the plan"
+
+        r = c.put("/api/athlete/profile", json={"ftp": 250}).json()
+        assert r.get("plan_weeks_refreshed", 0) > 0
+
+        after = c.get("/api/plan").json()["workouts"]
+        p_after = future_bike_powers(after)
+        # FTP +25% → power targets scale up.
+        assert max(p_after) > max(p_before)
+
+        # Saving a non-target field must NOT churn the plan.
+        r2 = c.put("/api/athlete/profile", json={"weekly_hours_target": 8}).json()
+        assert "plan_weeks_refreshed" not in r2 or r2["plan_weeks_refreshed"] == 0
+
+
+def test_threshold_refresh_never_touches_current_week():
+    from datetime import date, timedelta
+
+    from starlette.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as c:
+        c.put("/api/athlete/profile", json={"ftp": 200})
+        c.post("/api/plan/generate?use_llm=false")
+        next_monday = (date.today() + timedelta(days=7 - date.today().weekday())).isoformat()
+        before_ids = {w["id"] for w in c.get("/api/plan").json()["workouts"]
+                      if (w["date"] or "") < next_monday}
+        c.put("/api/athlete/profile", json={"ftp": 260})
+        after_ids = {w["id"] for w in c.get("/api/plan").json()["workouts"]
+                     if (w["date"] or "") < next_monday}
+        assert before_ids == after_ids  # current-week rows untouched (ids stable)

@@ -127,6 +127,23 @@ export default function App() {
     window.location.reload();
   }
 
+  // The plan records the weekly-hours target it was generated for; changing the
+  // target does NOT rebuild the plan (that would discard completion history), so
+  // surface the mismatch and point at Generate instead.
+  const planBaseHours = plan?.plan?.base_weekly_hours;
+  const targetHours = athlete?.profile.weekly_hours_target;
+  const hoursMismatch =
+    planBaseHours != null && targetHours != null && Math.abs(planBaseHours - targetHours) > 0.05;
+  const hoursBanner = hoursMismatch ? (
+    <div className="card stale-banner" role="status">
+      <span>
+        ⚠️ Your plan was built for <b>{planBaseHours} h/week</b>, but your target is now{" "}
+        <b>{targetHours} h/week</b>. Regenerate the plan (Training Plan tab) to apply it — note
+        this replaces the current plan and its completion history.
+      </span>
+    </div>
+  ) : null;
+
   // Login gate (only when the server requires auth and nobody is signed in).
   if (status && status.auth_required && !status.authenticated) {
     return <LoginScreen status={status} notice={stravaNotice} />;
@@ -239,6 +256,7 @@ export default function App() {
 
         {tab === "plan" && status && plan && (
           <div className="tab-panel">
+            {hoursBanner}
             <PlanView
               plan={plan}
               compliance={compliance}
@@ -266,6 +284,7 @@ export default function App() {
 
         {tab === "settings" && athlete && (
           <div className="tab-panel">
+            {hoursBanner}
             {status && <RaceCard status={status} onChanged={reload} />}
             <ProfileEditor profile={athlete.profile} onSaved={safeLoad} />
           </div>
