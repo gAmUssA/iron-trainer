@@ -585,3 +585,14 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 }
 .zone-name { font-size: 13px; color: var(--muted); }
 .zone-range { font-size: 13px; }
+
+/* ── Weekly check-in ─────────────────────────────────────────────────────── */
+.checkin-story {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+}
+.checkin-story li::marker { color: var(--accent); }

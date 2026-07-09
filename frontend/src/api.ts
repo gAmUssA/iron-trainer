@@ -259,6 +259,14 @@ export interface RecentCompliance {
   skipped_sessions: number;
   planned_sessions: number;
 }
+export interface CheckinResult {
+  status?: "ok" | "no_plan";
+  story: string[];
+  synced: { fetched: number; total: number } | null;
+  tests_due?: { slug: string; name: string; sport: string; days_ago: number | null }[];
+  next_week?: { week_start: string; hours_before: number; hours_after: number };
+  key_sessions?: { date: string; sport: string; title: string; duration_s: number | null }[];
+}
 export interface ReconcileResult {
   matched: { completed: number; skipped: number; upcoming: number };
   compliance: RecentCompliance;
@@ -394,6 +402,7 @@ export const api = {
     send<{ race: { name: string; date: string } }>("/api/athlete/race", "PUT", body),
   plan: () => getJSON<PlanResponse>("/api/plan"),
   generatePlan: (useLlm = true) => send<GenerateResult>(`/api/plan/generate?use_llm=${useLlm}`, "POST"),
+  checkin: () => send<CheckinResult>("/api/plan/checkin", "POST"),
   reconcile: (weeksAhead = 1) =>
     send<ReconcileResult>(`/api/plan/reconcile?weeks_ahead=${weeksAhead}`, "POST"),
   compliance: () =>

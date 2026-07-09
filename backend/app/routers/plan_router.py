@@ -32,6 +32,13 @@ def replan_week(week_start: str, use_llm: bool = Query(True)) -> dict:
         raise HTTPException(400, str(e)) from e
 
 
+@router.post("/checkin")
+def checkin(use_llm: bool = Query(True)) -> dict:
+    """One-tap weekly check-in: sync → reconcile → replan next week → test-due
+    nudges, with a narrative `story` of what changed and why."""
+    return service.weekly_checkin(use_llm=use_llm)
+
+
 @router.post("/reconcile")
 def reconcile(
     weeks_ahead: int = Query(1, ge=1, le=4, description="How many upcoming weeks to re-plan"),
