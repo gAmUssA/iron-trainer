@@ -9,9 +9,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from .. import analysis, repo
+from ..logging_config import get_logger
 from ..planning import service as planning_service
 
 router = APIRouter(prefix="/api/athlete", tags=["athlete"])
+log = get_logger("athlete")
 
 _PUBLIC = (
     "strava_athlete_id",
@@ -74,8 +76,14 @@ def update_profile(update: ProfileUpdate) -> dict:
     out = get_profile()
     # New thresholds → refresh FUTURE workout targets (never past/current week),
     # so the plan keeps up with improving fitness without a full regenerate.
+    # Best-effort: the profile save above is already committed, so a refresh
+    # failure must not turn a successful save into a 500.
     if any(k in changes and changes[k] != before.get(k) for k in _TARGET_FIELDS):
-        out["plan_weeks_refreshed"] = planning_service.refresh_future_plan_targets()
+        try:
+            out["plan_weeks_refreshed"] = planning_service.refresh_future_plan_targets()
+        except Exception:  # noqa: BLE001 — log and degrade to "nothing refreshed"
+            log.exception("Future-target refresh failed after profile update.")
+            out["plan_weeks_refreshed"] = 0
     return out
 
 
