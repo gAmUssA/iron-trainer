@@ -8,7 +8,7 @@ from typing import Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from .. import analysis, repo
+from .. import analysis, repo, zones
 from ..logging_config import get_logger
 from ..planning import service as planning_service
 
@@ -84,6 +84,17 @@ def update_profile(update: ProfileUpdate) -> dict:
         except Exception:  # noqa: BLE001 — log and degrade to "nothing refreshed"
             log.exception("Future-target refresh failed after profile update.")
             out["plan_weeks_refreshed"] = 0
+    return out
+
+
+@router.get("/zones")
+def get_zones() -> dict:
+    """HR training zones computed from the athlete's thresholds (LTHR-based;
+    %max-HR fallback). Pure derivation — nothing stored."""
+    a = repo.get_athlete()
+    out = zones.hr_zones(a.get("threshold_hr"), a.get("max_hr"))
+    out["threshold_hr"] = a.get("threshold_hr")
+    out["max_hr"] = a.get("max_hr")
     return out
 
 

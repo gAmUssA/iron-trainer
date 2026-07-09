@@ -35,3 +35,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0010](0010-security-hardening.md) | Security & robustness hardening from the full-stack review | Accepted |
 | [0011](0011-trends-insights.md) | Trends page: insights (trendlines, verdicts, intensity mix, CTL trajectory, PRs) | Accepted |
 | [0012](0012-ios-today-view-widgets-liquid-glass.md) | iOS Today view, WidgetKit widgets & Liquid Glass pass | Accepted |
+| [0013](0013-hr-zones.md) | HR zones: calculator, zone-based prescriptions, AI planner integration | Accepted |

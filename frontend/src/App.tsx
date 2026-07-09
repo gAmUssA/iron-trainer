@@ -16,7 +16,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { NutritionView } from "./components/NutritionView";
 import { PlanView } from "./components/PlanView";
 import { RaceCard } from "./components/RaceCard";
-import { ConnectCard, ProfileEditor } from "./components/Setup";
+import { ConnectCard, ProfileEditor, ZonesCard } from "./components/Setup";
 import { TestsView } from "./components/TestsView";
 import { TrendsView } from "./components/TrendsView";
 import { useTheme } from "./theme";
@@ -287,6 +287,7 @@ export default function App() {
             {hoursBanner}
             {status && <RaceCard status={status} onChanged={reload} />}
             <ProfileEditor profile={athlete.profile} onSaved={safeLoad} />
+            <ZonesCard thresholdHr={athlete.profile.threshold_hr} maxHr={athlete.profile.max_hr} />
           </div>
         )}
       </main>
