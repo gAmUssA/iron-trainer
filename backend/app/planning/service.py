@@ -127,6 +127,42 @@ def generate_plan(*, use_llm: bool = True, today: date | None = None) -> dict:
     }
 
 
+def refresh_future_plan_targets(*, today: date | None = None) -> int:
+    """Re-derive workout targets for every FUTURE week of the active plan from
+    the athlete's CURRENT thresholds (and re-cost fueling), so the plan keeps
+    up as fitness improves. Strictly future weeks only: past and current-week
+    workouts — and their completed/matched history — are never touched. Week
+    volumes/phases are preserved (that's the plan); only the prescriptions
+    inside the workouts move with the new thresholds.
+
+    Note: a week previously hand-replanned by the LLM is re-expanded from the
+    deterministic template here — acceptable, since reconcile replans upcoming
+    weeks anyway. Returns the number of weeks refreshed."""
+    plan = repo.get_active_plan()
+    if not plan:
+        return 0
+    today = today or date.today()
+    profile = {
+        k: repo.get_athlete().get(k)
+        for k in ("ftp", "threshold_hr", "max_hr", "threshold_pace_run", "css_swim")
+    }
+    fuel_profile = _nutrition_profile()
+    current_week_start = monday_of(today).isoformat()
+    refreshed = 0
+    for week in plan["weeks"]:
+        if week["week_start"] <= current_week_start:
+            continue  # never touch history or the in-flight week
+        workouts = template.expand_week(week, profile)
+        workouts, _ = validate_week_workouts(workouts)
+        _apply_fueling(workouts, fuel_profile)
+        week_end = (datetime.fromisoformat(week["week_start"]).date() + timedelta(days=6)).isoformat()
+        repo.replace_week_workouts(plan["id"], week["week_start"], week_end, workouts)
+        refreshed += 1
+    if refreshed:
+        log.info("Refreshed targets for %d future week(s) from current thresholds.", refreshed)
+    return refreshed
+
+
 def replan_week(*, week_start: str, use_llm: bool = True) -> dict:
     plan = repo.get_active_plan()
     if not plan:

@@ -266,6 +266,7 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
   const [gi, setGi] = useState(profile.gi_tolerance ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   async function save() {
@@ -290,10 +291,15 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
     setSaved(false);
     setSaveError(null);
     try {
-      await api.updateProfile(body);
+      const res = await api.updateProfile(body);
       onSaved();
+      setSavedNote(
+        res.plan_weeks_refreshed
+          ? `Saved — upcoming workouts re-targeted (${res.plan_weeks_refreshed} weeks)`
+          : null
+      );
       setSaved(true);
-      window.setTimeout(() => setSaved(false), 2400);
+      window.setTimeout(() => setSaved(false), 3600);
     } catch (e) {
       setSaveError(`Save failed: ${e}`);
     } finally {
@@ -322,7 +328,7 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
         </button>
         {saved && (
           <span className="saved-note">
-            <span className="dot" />Saved — zones &amp; projection recomputed
+            <span className="dot" />{savedNote ?? "Saved — zones & projection recomputed"}
           </span>
         )}
         {saveError && <span className="hint">{saveError}</span>}

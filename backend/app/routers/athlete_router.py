@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from .. import analysis, repo
+from ..planning import service as planning_service
 
 router = APIRouter(prefix="/api/athlete", tags=["athlete"])
 
@@ -54,15 +55,28 @@ def get_profile() -> dict:
     }
 
 
+# Fields that drive workout prescriptions — changing any of these means future
+# planned workouts should be re-derived so the plan tracks improving fitness.
+_TARGET_FIELDS = ("ftp", "threshold_hr", "max_hr", "threshold_pace_run", "css_swim",
+                  "body_weight_kg", "gel_carb_g", "sweat_rate_l_h")
+
+
 @router.put("/profile")
 def update_profile(update: ProfileUpdate) -> dict:
     # exclude_unset (not exclude_none): a field the client explicitly sent as
     # null clears the stored value; fields it didn't send stay untouched.
-    repo.save_profile(update.model_dump(exclude_unset=True))
+    changes = update.model_dump(exclude_unset=True)
+    before = repo.get_athlete()
+    repo.save_profile(changes)
     # Threshold changes alter TSS for every activity and thus the whole PMC.
     repo.recompute_tss()
     repo.rebuild_metrics()
-    return get_profile()
+    out = get_profile()
+    # New thresholds → refresh FUTURE workout targets (never past/current week),
+    # so the plan keeps up with improving fitness without a full regenerate.
+    if any(k in changes and changes[k] != before.get(k) for k in _TARGET_FIELDS):
+        out["plan_weeks_refreshed"] = planning_service.refresh_future_plan_targets()
+    return out
 
 
 @router.post("/infer")

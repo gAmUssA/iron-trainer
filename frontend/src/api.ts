@@ -95,6 +95,7 @@ export interface DailyNutrition {
 export interface AthleteResponse {
   connected: boolean;
   profile: Profile;
+  plan_weeks_refreshed?: number; // future weeks re-derived after a threshold change
 }
 
 export interface PmcDay {
