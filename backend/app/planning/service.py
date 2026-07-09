@@ -284,7 +284,10 @@ def weekly_checkin(*, today: date | None = None, use_llm: bool = True) -> dict:
         names = ", ".join(d["name"] for d in due[:3])
         story.append(f"Fitness test{'s' if len(due) > 1 else ''} due: {names} (Tests tab).")
 
-    # 5. The week ahead's key sessions (biggest planned load first).
+    # 5. Key sessions across the athlete's actionable horizon: the REMAINDER of
+    #    the current week plus the just-replanned week. Deliberately not limited
+    #    to the replanned week — a mid-week check-in should still surface this
+    #    Saturday's long ride even though that week is never replanned.
     week_ahead = [w for w in repo.get_workouts(plan["id"])
                   if today.isoformat() <= (w.get("date") or "") <= next_sunday]
     key = sorted(week_ahead, key=lambda w: w.get("planned_tss") or 0, reverse=True)[:2]

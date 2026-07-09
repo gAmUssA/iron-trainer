@@ -263,7 +263,19 @@ export interface CheckinResult {
   status?: "ok" | "no_plan";
   story: string[];
   synced: { fetched: number; total: number } | null;
-  tests_due?: { slug: string; name: string; sport: string; days_ago: number | null }[];
+  reconcile?: {
+    matched: { completed: number; skipped: number; upcoming: number };
+    compliance: RecentCompliance;
+    weeks_replanned: string[];
+    form_flag: string;
+  };
+  tests_due?: {
+    slug: string;
+    name: string;
+    sport: string;
+    last_tested: string | null;
+    days_ago: number | null;
+  }[];
   next_week?: { week_start: string; hours_before: number; hours_after: number };
   key_sessions?: { date: string; sport: string; title: string; duration_s: number | null }[];
 }
