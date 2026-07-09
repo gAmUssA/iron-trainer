@@ -50,10 +50,15 @@ def hr_zones(threshold_hr: int | None, max_hr: int | None = None) -> dict:
         hi = round(base * hi_f)
         if max_hr:
             hi = min(hi, int(max_hr))
+        # low ≥ 1 so a Z1 floor of 0 can't read as "missing" to falsy checks
+        # downstream, and never above a max_hr-capped high (inconsistent
+        # thresholds must not produce inverted ranges).
+        lo = max(1, round(base * lo_f))
+        lo = min(lo, hi)
         zones.append({
             "zone": key,
             "name": name,
-            "low": round(base * lo_f),
+            "low": lo,
             "high": hi,
         })
     return {"basis": basis, "zones": zones}

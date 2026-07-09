@@ -74,3 +74,12 @@ def test_plan_keeps_power_pace_when_thresholds_present():
         assert run_main["target"]["type"] == "pace"
         # Zone label still annotates the description alongside power/pace targets.
         assert any("Z" in (w["description"] or "") for w in workouts)
+
+
+def test_zone_lows_positive_and_never_inverted():
+    # Z1 low must not be 0 (falsy checks downstream would drop the target)…
+    z1 = zones.hr_zones(160)["zones"][0]
+    assert z1["low"] >= 1
+    # …and an inconsistent LTHR/max-HR pair must not invert any range.
+    for z in zones.hr_zones(160, 130)["zones"]:
+        assert z["low"] <= z["high"]

@@ -232,7 +232,7 @@ def _hr_target(intensity: str, profile: dict) -> dict:
     """HR-zone target for athletes without FTP / threshold pace."""
     hr = zones.hr_range_for_intensity(intensity, profile.get("threshold_hr"), profile.get("max_hr"))
     if hr is None:
-        return {"type": "open", "unit": None, "low": None, "high": None}
+        return {"type": "open", "unit": "", "low": None, "high": None}  # matches fitness_tests
     return {"type": "hr", "unit": "bpm", "low": hr[0], "high": hr[1]}
 
 
