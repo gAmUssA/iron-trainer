@@ -54,7 +54,10 @@ struct TodayView: View {
                 }
                 .buttonStyle(.plain)
 
-                if auth.isSignedIn {
+                // Gate on what runCheckin actually needs: Keychain can hold a
+                // token while UserDefaults lost the server URL (seen live when
+                // reinstalling) — don't render a button that can't run.
+                if auth.isSignedIn && auth.serverURL != nil {
                     Button(action: runCheckin) {
                         HStack {
                             Label(checkinState == .running ? "Checking in…" : "Weekly Check-in",
@@ -88,8 +91,12 @@ struct TodayView: View {
 
     /// Same loop as the web card: the backend syncs, reconciles and replans,
     /// then we re-fetch the plan (which also rewrites the widget snapshot).
+    @MainActor
     private func runCheckin() {
-        guard let server = auth.serverURL, let bearer = auth.bearer else { return }
+        guard let server = auth.serverURL, let bearer = auth.bearer else {
+            checkinState = .failed("Not connected — re-pair in Settings.")
+            return
+        }
         checkinState = .running
         Task {
             do {
