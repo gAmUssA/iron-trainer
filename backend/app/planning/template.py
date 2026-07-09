@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from .. import zones
+
 # Fraction of weekly volume per sport (typical 70.3 distribution).
 SPORT_SPLIT = {"Swim": 0.20, "Bike": 0.50, "Run": 0.30}
 
@@ -142,7 +144,7 @@ def expand_week(week: dict, profile: dict) -> list[dict]:
                 "date": wd.isoformat(),
                 "sport": sport,
                 "title": title,
-                "description": f"{title} — {intensity}.",
+                "description": _describe(title, intensity, profile),
                 "intensity": intensity,
                 "duration_s": dur_s,
                 "distance_m": distance,
@@ -151,6 +153,18 @@ def expand_week(week: dict, profile: dict) -> list[dict]:
             }
         )
     return workouts
+
+
+def _describe(title: str, intensity: str, profile: dict) -> str:
+    """Workout description with the HR zone spelled out ("Z2 · HR 132–145 bpm")
+    so zone guidance shows up in the web app, the iOS app, and every export."""
+    zone = zones.zone_label(intensity)
+    hr = zones.hr_range_for_intensity(intensity, profile.get("threshold_hr"), profile.get("max_hr"))
+    if zone and hr:
+        return f"{title} — {intensity} ({zone} · HR {hr[0]}–{hr[1]} bpm)."
+    if zone:
+        return f"{title} — {intensity} ({zone})."
+    return f"{title} — {intensity}."
 
 
 def _if_for(intensity: str) -> float:
@@ -171,8 +185,13 @@ def _build_steps(sport: str, intensity: str, dur_s: int, profile: dict) -> tuple
 
     if sport == "Bike":
         ftp = profile.get("ftp")
-        target = _range_target("power", BIKE_PCT_FTP[intensity], base=ftp, unit="W")
-        easy = _range_target("power", BIKE_PCT_FTP["endurance"], base=ftp, unit="W")
+        if ftp:
+            target = _range_target("power", BIKE_PCT_FTP[intensity], base=ftp, unit="W")
+            easy = _range_target("power", BIKE_PCT_FTP["endurance"], base=ftp, unit="W")
+        else:
+            # No power meter data — prescribe by heart-rate zone instead.
+            target = _hr_target(intensity, profile)
+            easy = _hr_target("endurance", profile)
         steps = [
             {"type": "warmup", "duration_s": warm, "target": easy},
             {"type": "steady", "duration_s": main, "target": target},
@@ -182,8 +201,12 @@ def _build_steps(sport: str, intensity: str, dur_s: int, profile: dict) -> tuple
 
     if sport == "Run":
         thr = profile.get("threshold_pace_run")
-        target = _range_target("pace", RUN_PACE_FACTOR[intensity], base=thr, unit="sec_per_km")
-        easy = _range_target("pace", RUN_PACE_FACTOR["endurance"], base=thr, unit="sec_per_km")
+        if thr:
+            target = _range_target("pace", RUN_PACE_FACTOR[intensity], base=thr, unit="sec_per_km")
+            easy = _range_target("pace", RUN_PACE_FACTOR["endurance"], base=thr, unit="sec_per_km")
+        else:
+            target = _hr_target(intensity, profile)
+            easy = _hr_target("endurance", profile)
         steps = [
             {"type": "warmup", "duration_s": warm, "target": easy},
             {"type": "steady", "duration_s": main, "target": target},
@@ -203,6 +226,14 @@ def _build_steps(sport: str, intensity: str, dur_s: int, profile: dict) -> tuple
     ]
     distance = _est_distance_swim(dur_s, css, intensity)
     return steps, distance
+
+
+def _hr_target(intensity: str, profile: dict) -> dict:
+    """HR-zone target for athletes without FTP / threshold pace."""
+    hr = zones.hr_range_for_intensity(intensity, profile.get("threshold_hr"), profile.get("max_hr"))
+    if hr is None:
+        return {"type": "open", "unit": None, "low": None, "high": None}
+    return {"type": "hr", "unit": "bpm", "low": hr[0], "high": hr[1]}
 
 
 def _range_target(kind: str, factors: tuple[float, float], *, base: float | None, unit: str) -> dict:

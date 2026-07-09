@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 
 from ..config import get_settings
+from .. import zones
 
 STEP_SCHEMA = {
     "type": "object",
@@ -145,8 +146,10 @@ def adjust_season(template_season: dict, profile: dict, fitness: dict) -> dict:
         "is_recovery to suit the athlete. Respect a progressive build with recovery "
         "weeks and a 2-week taper. Output via the tool."
     )
+    hr = zones.hr_zones(profile.get("threshold_hr"), profile.get("max_hr"))
     user = (
         f"Athlete thresholds: {json.dumps(profile)}\n"
+        f"Athlete HR zones ({hr.get('basis') or 'unknown'} basis): {json.dumps(hr.get('zones'))}\n"
         f"Recent fitness (CTL/ATL/TSB & weekly volume): {json.dumps(fitness)}\n\n"
         f"Starting plan skeleton to adapt:\n{json.dumps(template_season)}\n\n"
         "Return an adjusted season for this specific athlete."
@@ -164,16 +167,22 @@ def generate_week_workouts(week: dict, profile: dict, context: dict) -> list[dic
         "You are an expert IRONMAN 70.3 coach. Design one week of concrete, "
         "structured swim/bike/run workouts with warmup/main/cooldown steps and "
         "explicit power (W / %FTP), pace (sec/km or sec/100m) or HR targets derived "
-        "from the athlete's thresholds. Total duration should match the week's "
+        "from the athlete's thresholds. Anchor every session's intensity to the "
+        "athlete's HR zones (Z1 recovery … Z5 VO2max, provided in the context) and "
+        "name the zone in the workout description (e.g. 'Z2 endurance ride'); when "
+        "power/pace data is missing for a sport, prescribe the step targets as HR "
+        "ranges from those zones. Total duration should match the week's "
         "target_hours. Adapt to the athlete's current state in the context: if "
         "form_flag is 'fatigued' (very negative TSB), cut intensity and volume and "
         "favor recovery; if they've been under-completing (low completion_rate or "
         "load_ratio < 1), ease the progression; if 'fresh' and compliant, you may "
         "progress. Output via the tool."
     )
+    hr = zones.hr_zones(profile.get("threshold_hr"), profile.get("max_hr"))
     user = (
         f"Week: {json.dumps(week)}\n"
         f"Athlete thresholds: {json.dumps(profile)}\n"
+        f"Athlete HR zones ({hr.get('basis') or 'unknown'} basis): {json.dumps(hr.get('zones'))}\n"
         f"Context (recent compliance/form): {json.dumps(context)}\n\n"
         "Return the week's workouts."
     )

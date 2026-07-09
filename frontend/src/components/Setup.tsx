@@ -1,6 +1,6 @@
 import { type ChangeEvent, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { api, type AppStatus, type AthleteResponse, type Profile } from "../api";
+import { api, type AppStatus, type AthleteResponse, type HrZones, type Profile } from "../api";
 
 /** "Connect iOS app": mint a pairing code and show it as a QR the helper app scans. */
 function ConnectAppPairing() {
@@ -353,6 +353,53 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
             <option value="high">high</option>
           </select>
         </label>
+      </div>
+    </div>
+  );
+}
+
+/** HR-zone calculator: pure derivation of the saved thresholds, refetched
+ * whenever LTHR / max HR change. Z1–Z5 are the same vocabulary the planner
+ * uses in workout descriptions. */
+export function ZonesCard({ thresholdHr, maxHr }: { thresholdHr: number | null; maxHr: number | null }) {
+  const [zones, setZones] = useState<HrZones | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.zones().then((z) => { if (alive) setZones(z); }).catch(() => {});
+    return () => { alive = false; };
+  }, [thresholdHr, maxHr]);
+
+  if (!zones) return null;
+  if (!zones.zones.length) {
+    return (
+      <div className="card" style={{ maxWidth: 760 }}>
+        <div className="card-title">Heart-Rate Zones</div>
+        <div className="card-sub">
+          Set your Threshold HR (or Max HR) above and the five training zones are computed
+          automatically — the planner prescribes workouts in these zones.
+        </div>
+      </div>
+    );
+  }
+  const zoneColors = ["#4ade80", "#38bdf8", "#ffb454", "#fb923c", "#f87171"];
+  return (
+    <div className="card" style={{ maxWidth: 760 }}>
+      <div className="card-title">Heart-Rate Zones</div>
+      <div className="card-sub">
+        {zones.basis === "lthr"
+          ? `From your threshold HR of ${zones.threshold_hr} bpm (Coggan LTHR model).`
+          : `Estimated from your max HR of ${zones.max_hr} bpm — set a threshold HR (LTHR test) for sharper zones.`}
+        {" "}The plan's Z1–Z5 labels refer to these ranges.
+      </div>
+      <div className="zone-table">
+        {zones.zones.map((z, i) => (
+          <div className="zone-row" key={z.zone}>
+            <span className="zone-chip" style={{ background: zoneColors[i] }}>{z.zone}</span>
+            <span className="zone-name">{z.name}</span>
+            <span className="zone-range mono">{z.low}–{z.high} bpm</span>
+          </div>
+        ))}
       </div>
     </div>
   );

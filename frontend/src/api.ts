@@ -350,6 +350,19 @@ export interface TestPrefill {
   inputs: Record<string, number | null>;
 }
 
+export interface HrZone {
+  zone: string;
+  name: string;
+  low: number;
+  high: number;
+}
+export interface HrZones {
+  basis: "lthr" | "max_hr" | null;
+  zones: HrZone[];
+  threshold_hr: number | null;
+  max_hr: number | null;
+}
+
 export const api = {
   status: () => getJSON<AppStatus>("/api/status"),
   me: () => getJSON<Me>("/api/me"),
@@ -358,6 +371,7 @@ export const api = {
     send<{ code: string; expires_at: number; expires_in?: number }>(
       "/api/device/pairing-code", "POST", {}),
   athlete: () => getJSON<AthleteResponse>("/api/athlete"),
+  zones: () => getJSON<HrZones>("/api/athlete/zones"),
   updateProfile: (p: Partial<Profile>) => send<AthleteResponse>("/api/athlete/profile", "PUT", p),
   sync: (full = false) => send<SyncResult>(`/api/strava/sync?full=${full}`, "POST"),
   dedup: (fetch = true) => send<DedupResult>(`/api/strava/dedup?fetch=${fetch}`, "POST"),
