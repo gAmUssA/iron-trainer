@@ -193,6 +193,117 @@ def replan_week(*, week_start: str, use_llm: bool = True) -> dict:
     return {"week_start": week_start, "llm_used": llm_used, "workouts": n, "notes": notes}
 
 
+def weekly_checkin(*, today: date | None = None, use_llm: bool = True) -> dict:
+    """The one-tap adaptive loop: sync Strava (best-effort) → match actuals →
+    re-plan next week from compliance + form → surface due fitness tests and the
+    upcoming key sessions — with a human-readable story of what changed and why.
+    Composes existing machinery; deliberately adds no new state."""
+    from .. import fitness_tests, services  # lazy: services is a peer module
+
+    today = today or date.today()
+    story: list[str] = []
+    out: dict = {}
+
+    # 1. Sync — best-effort; a missing connection or Strava hiccup must not
+    #    block the rest of the loop (local data still reconciles fine).
+    try:
+        sync = services.run_sync(full=False)
+        out["synced"] = {"fetched": sync["fetched"], "total": sync["total_activities"]}
+        story.append(
+            f"Synced {sync['fetched']} new activit{'y' if sync['fetched'] == 1 else 'ies'} from Strava."
+            if sync["fetched"] else "Strava sync: nothing new since last time."
+        )
+    except services.NotConnected:
+        out["synced"] = None
+        story.append("Strava not connected — using local data.")
+    except Exception as e:  # noqa: BLE001 — network/API errors degrade, not abort
+        log.warning("Check-in sync failed: %s", e)
+        out["synced"] = None
+        story.append("Strava sync failed — continuing with local data.")
+
+    plan = repo.get_active_plan()
+    if not plan:
+        out["status"] = "no_plan"
+        story.append("No active plan — generate one on the Training Plan tab first.")
+        out["story"] = story
+        return out
+
+    # Snapshot next week's planned hours BEFORE the replan, for the delta story.
+    next_monday = (monday_of(today) + timedelta(days=7)).isoformat()
+    next_sunday = (monday_of(today) + timedelta(days=13)).isoformat()
+
+    def _week_hours() -> float:
+        wos = repo.get_workouts(plan["id"])
+        secs = sum((w.get("duration_s") or 0) for w in wos
+                   if next_monday <= (w.get("date") or "") <= next_sunday)
+        return round(secs / 3600, 1)
+
+    before_h = _week_hours()
+
+    # 2 + 3. Match actuals + replan the upcoming week.
+    rec = reconcile(today=today, weeks_ahead=1, use_llm=use_llm)
+    after_h = _week_hours()
+    out["reconcile"] = {k: rec[k] for k in ("matched", "compliance", "weeks_replanned", "form_flag")}
+    out["next_week"] = {"week_start": next_monday, "hours_before": before_h, "hours_after": after_h}
+
+    comp = rec["compliance"]
+    if comp.get("planned_sessions"):
+        pct = round((comp.get("completion_rate") or 0) * 100)
+        story.append(
+            f"Last 3 weeks: {comp['completed_sessions']} of {comp['planned_sessions']} "
+            f"sessions completed ({pct}%)."
+        )
+    flag = rec["form_flag"]
+    tsb = (repo.get_metrics() or [{}])[-1].get("tsb")
+    if flag != "unknown":
+        story.append(f"Form: {flag}" + (f" (TSB {tsb:+.0f})." if tsb is not None else "."))
+    if rec["weeks_replanned"]:
+        delta = after_h - before_h
+        if abs(delta) >= 0.2:
+            verb = "stepped up" if delta > 0 else "eased"
+            story.append(
+                f"Week of {next_monday}: replanned — {verb} from {before_h}h to {after_h}h."
+            )
+        else:
+            story.append(f"Week of {next_monday}: replanned at {after_h}h (volume unchanged).")
+
+    # 4. Fitness tests due (drives the thresholds that drive everything else).
+    last = repo.last_tested_by_sport()
+    due = []
+    for t in fitness_tests.catalog():
+        sport = t["sport"]
+        last_date = last.get(sport)
+        days_ago = None
+        if last_date:
+            days_ago = (today - date.fromisoformat(last_date[:10])).days
+        if last_date is None or days_ago >= fitness_tests.RETEST_DAYS:
+            due.append({"slug": t["slug"], "name": t["name"], "sport": sport,
+                        "last_tested": last_date, "days_ago": days_ago})
+    out["tests_due"] = due
+    if due:
+        names = ", ".join(d["name"] for d in due[:3])
+        story.append(f"Fitness test{'s' if len(due) > 1 else ''} due: {names} (Tests tab).")
+
+    # 5. Key sessions across the athlete's actionable horizon: the REMAINDER of
+    #    the current week plus the just-replanned week. Deliberately not limited
+    #    to the replanned week — a mid-week check-in should still surface this
+    #    Saturday's long ride even though that week is never replanned.
+    week_ahead = [w for w in repo.get_workouts(plan["id"])
+                  if today.isoformat() <= (w.get("date") or "") <= next_sunday]
+    key = sorted(week_ahead, key=lambda w: w.get("planned_tss") or 0, reverse=True)[:2]
+    out["key_sessions"] = [
+        {"date": w["date"], "sport": w["sport"], "title": w["title"],
+         "duration_s": w.get("duration_s")} for w in key
+    ]
+    if key:
+        bits = [f"{w['title']} ({(w.get('duration_s') or 0) // 60} min) on {w['date']}" for w in key]
+        story.append("Key sessions ahead: " + "; ".join(bits) + ".")
+
+    out["status"] = "ok"
+    out["story"] = story
+    return out
+
+
 def reconcile(*, today: date | None = None, weeks_ahead: int = 1, use_llm: bool = True) -> dict:
     """Fold actual training back into the plan, then re-plan upcoming week(s).
 

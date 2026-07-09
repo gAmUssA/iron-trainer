@@ -178,3 +178,31 @@ def test_threshold_refresh_never_touches_current_week():
         after_ids = {w["id"] for w in c.get("/api/plan").json()["workouts"]
                      if (w["date"] or "") < next_monday}
         assert before_ids == after_ids  # current-week rows untouched (ids stable)
+
+
+def test_weekly_checkin_composes_the_loop():
+    """No Strava connection + template plan: check-in still reconciles, replans
+    next week, flags all fitness tests due, and narrates every step."""
+    from starlette.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as c:
+        # No plan yet → graceful no_plan status.
+        r = c.post("/api/plan/checkin?use_llm=false").json()
+        assert r["status"] == "no_plan"
+        assert any("No active plan" in line for line in r["story"])
+
+        c.put("/api/athlete/profile", json={"ftp": 228, "threshold_hr": 160,
+                                            "threshold_pace_run": 300, "weekly_hours_target": 7})
+        c.post("/api/plan/generate?use_llm=false")
+        r = c.post("/api/plan/checkin?use_llm=false").json()
+        assert r["status"] == "ok"
+        assert r["synced"] is None  # not connected — degraded gracefully
+        assert any("not connected" in line for line in r["story"])
+        assert r["reconcile"]["weeks_replanned"], "next week should be replanned"
+        assert r["next_week"]["hours_after"] > 0
+        # Never tested → all three protocols due.
+        assert {t["sport"] for t in r["tests_due"]} == {"Bike", "Run", "Swim"}
+        assert any("test" in line.lower() for line in r["story"])
+        assert r["key_sessions"], "upcoming key sessions listed"

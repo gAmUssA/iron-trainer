@@ -16,6 +16,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { NutritionView } from "./components/NutritionView";
 import { PlanView } from "./components/PlanView";
 import { RaceCard } from "./components/RaceCard";
+import { CheckinCard } from "./components/CheckinCard";
 import { ConnectCard, ProfileEditor, ZonesCard } from "./components/Setup";
 import { TestsView } from "./components/TestsView";
 import { TrendsView } from "./components/TrendsView";
@@ -232,6 +233,7 @@ export default function App() {
                 <ReadinessCard readiness={readiness} raceName={status.race.name} />
               )}
             </div>
+            {plan?.plan && <CheckinCard onDone={safeLoad} />}
             {pmc.length > 0 ? (
               <PmcChart days={pmc} />
             ) : (
