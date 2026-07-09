@@ -1,11 +1,11 @@
 ---
 # iron-trainer-fwb8
 title: 'Phone-test feedback: workout detail back button + blank race widget'
-status: in-progress
+status: completed
 type: bug
 priority: high
 created_at: 2026-07-08T20:19:39Z
-updated_at: 2026-07-08T22:18:31Z
+updated_at: 2026-07-09T01:48:34Z
 ---
 
 From Viktor's on-device test of build 202607081335:
