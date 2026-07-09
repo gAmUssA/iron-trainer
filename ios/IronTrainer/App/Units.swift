@@ -1,4 +1,4 @@
-import SwiftUI
+import Foundation
 
 /// Distance-unit preference for browsing the plan (the backend and .itw files
 /// stay metric; this is display-only). Swim paces stay per-100m in either mode —
@@ -15,9 +15,10 @@ enum DistanceUnit: String, CaseIterable, Identifiable {
 }
 
 enum UnitFormat {
-    /// "12.5 km" / "7.8 mi" for run/bike; swim distances read best in meters.
+    /// "12.5 km" / "7.8 mi" for run/bike; swim distances and short efforts
+    /// (<800 m) read best in meters regardless of the preference.
     static func distance(meters: Double, unit: DistanceUnit, sport: String? = nil) -> String {
-        if sport == "Swim" { return "\(Int(meters)) m" }
+        if sport == "Swim" || meters < 800 { return "\(Int(meters)) m" }
         switch unit {
         case .km: return String(format: "%.1f km", meters / 1000)
         case .mi: return String(format: "%.1f mi", meters / DistanceUnit.metersPerMile)

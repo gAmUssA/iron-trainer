@@ -97,8 +97,6 @@ private struct StepRow: View {
     private var goalText: String {
         if let s = step.durationS { return "\(s / 60) min" }
         if let m = step.distanceM {
-            // Short efforts read best in meters regardless of unit preference.
-            if sport == "Swim" || m < 800 { return "\(Int(m)) m" }
             return UnitFormat.distance(meters: m, unit: unit, sport: sport)
         }
         return "open"

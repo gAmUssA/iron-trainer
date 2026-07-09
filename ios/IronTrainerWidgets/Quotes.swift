@@ -29,6 +29,6 @@ enum Quotes {
 
     static func ofTheDay(for date: Date) -> String {
         let day = Calendar.current.ordinality(of: .day, in: .year, for: date) ?? 1
-        return all[day % all.count]
+        return all[(day - 1) % all.count]  // Jan 1 → first quote
     }
 }
