@@ -8,14 +8,31 @@ struct WorkoutListView: View {
     @State private var working = false
 
     var body: some View {
-        List {
-            Section {
-                ForEach(Array(workouts.enumerated()), id: \.offset) { _, w in
-                    NavigationLink(value: PlanRoute.workout(w)) { Row(workout: w) }
-                        .buttonStyle(.plain)
+        ScrollViewReader { proxy in
+            List {
+                Section {
+                    ForEach(Array(workouts.enumerated()), id: \.offset) { i, w in
+                        NavigationLink(value: PlanRoute.workout(w)) { Row(workout: w) }
+                            .buttonStyle(.plain)
+                            .id(i)
+                    }
+                } footer: {
+                    Text("Tap a workout to pick a date, or schedule the next 7 days below.")
                 }
-            } footer: {
-                Text("Tap a workout to pick a date, or schedule the next 7 days below.")
+            }
+            .onAppear {
+                // Land on today's session (or the next upcoming one) instead of
+                // the top of a 70-workout plan. Chronological min (not first
+                // array hit) so ordering quirks can't send us to the wrong row,
+                // and deferred a runloop so List has laid out before we scroll.
+                let today = TodayView.isoDay(.now)
+                let target = workouts.enumerated()
+                    .filter { ($0.element.date ?? "") >= today }
+                    .min { ($0.element.date ?? "") < ($1.element.date ?? "") }
+                guard let idx = target?.offset, idx > 0 else { return }
+                DispatchQueue.main.async {
+                    withAnimation(nil) { proxy.scrollTo(idx, anchor: .top) }
+                }
             }
         }
         .navigationTitle("Your plan")

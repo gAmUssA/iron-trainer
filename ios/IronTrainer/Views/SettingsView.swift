@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var auth: AuthModel
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(DistanceUnit.storageKey) private var unit: DistanceUnit = .km
 
     @State private var serverText = ""
     @State private var code = ""
@@ -53,6 +54,17 @@ struct SettingsView: View {
                         }
                         .disabled(busy || serverText.isEmpty || code.isEmpty)
                     }
+                }
+
+                Section {
+                    Picker("Distance units", selection: $unit) {
+                        ForEach(DistanceUnit.allCases) { u in Text(u.label).tag(u) }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Units")
+                } footer: {
+                    Text("Applies to distances and run/bike paces when browsing the plan. Swim paces stay per 100 m.")
                 }
 
                 if let error {
