@@ -3,6 +3,7 @@ import SwiftUI
 /// Shows the parsed .itw workout and offers "Schedule to date".
 struct WorkoutPreviewView: View {
     @EnvironmentObject private var model: ImportModel
+    @AppStorage(DistanceUnit.storageKey) private var unit: DistanceUnit = .km
     let workout: ItwWorkout
     @State private var working = false
     @State private var scheduleDate: Date
@@ -24,6 +25,10 @@ struct WorkoutPreviewView: View {
                 LabeledContent("Sport", value: workout.sport ?? "—")
                 if let date = workout.date { LabeledContent("Planned", value: date) }
                 if let dur = workout.durationS { LabeledContent("Duration", value: format(seconds: dur)) }
+                if let dist = workout.distanceM {
+                    LabeledContent("Distance",
+                                   value: UnitFormat.distance(meters: dist, unit: unit, sport: workout.sport))
+                }
                 if let desc = workout.description, !desc.isEmpty {
                     Text(desc).font(.subheadline).foregroundStyle(.secondary)
                 }
@@ -46,7 +51,7 @@ struct WorkoutPreviewView: View {
 
             Section("Steps") {
                 ForEach(Array(workout.steps.enumerated()), id: \.offset) { _, step in
-                    StepRow(step: step)
+                    StepRow(step: step, sport: workout.sport, unit: unit)
                 }
             }
         }
@@ -73,6 +78,8 @@ struct WorkoutPreviewView: View {
 
 private struct StepRow: View {
     let step: ItwWorkout.Step
+    let sport: String?
+    let unit: DistanceUnit
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
@@ -89,7 +96,11 @@ private struct StepRow: View {
 
     private var goalText: String {
         if let s = step.durationS { return "\(s / 60) min" }
-        if let m = step.distanceM { return "\(Int(m)) m" }
+        if let m = step.distanceM {
+            // Short efforts read best in meters regardless of unit preference.
+            if sport == "Swim" || m < 800 { return "\(Int(m)) m" }
+            return UnitFormat.distance(meters: m, unit: unit, sport: sport)
+        }
         return "open"
     }
 
@@ -99,7 +110,10 @@ private struct StepRow: View {
         switch type {
         case "power": return "Power \(Int(lo))–\(Int(hi)) W"
         case "hr": return "HR \(Int(lo))–\(Int(hi)) bpm"
-        case "pace": return "Pace \(Int(lo))–\(Int(hi)) s/\(t.unit == "sec_per_100m" ? "100m" : "km")"
+        case "pace":
+            return t.unit == "sec_per_100m"
+                ? "Pace \(UnitFormat.swimPaceRange(lowSecPer100: lo, highSecPer100: hi))"
+                : "Pace \(UnitFormat.paceRange(lowSecPerKm: lo, highSecPerKm: hi, unit: unit))"
         default: return nil
         }
     }

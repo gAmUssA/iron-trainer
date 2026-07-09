@@ -10,8 +10,8 @@ struct RaceCountdownWidget: Widget {
                 .containerBackground(.background, for: .widget)
         }
         .configurationDisplayName("Race Countdown")
-        .description("Days until race day.")
-        .supportedFamilies([.systemSmall, .accessoryInline, .accessoryCircular])
+        .description("Days until race day, with a daily dose of motivation.")
+        .supportedFamilies([.systemSmall, .accessoryInline, .accessoryCircular, .accessoryRectangular])
     }
 }
 
@@ -31,6 +31,18 @@ private struct RaceCountdownView: View {
                         .monospacedDigit()
                     Text(days >= 0 ? dayWord(days) : "done").font(.caption2)
                 }
+            case .accessoryRectangular:
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(days > 0 ? "🏁 \(days) \(dayWord(days)) to go"
+                         : days == 0 ? "🏁 RACE DAY" : "🏁 Raced!")
+                        .font(.headline)
+                    Text(Quotes.ofTheDay(for: entry.date))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             default:
                 VStack(alignment: .leading, spacing: 4) {
                     Image(systemName: "flag.checkered")
