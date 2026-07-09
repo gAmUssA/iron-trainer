@@ -96,3 +96,26 @@ def test_generate_plan_without_llm(monkeypatch):
     assert len(workouts) == result["workouts"]
     # Steps round-trip through storage.
     assert any(w["steps"] for w in workouts)
+
+
+def test_plan_records_base_weekly_hours_for_staleness_hint():
+    """Changing weekly hours must be detectable against the active plan
+    (the plan itself is intentionally untouched until regeneration)."""
+    from starlette.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as c:
+        c.put("/api/athlete/profile", json={"weekly_hours_target": 6})
+        c.post("/api/plan/generate?use_llm=false")
+        plan = c.get("/api/plan").json()["plan"]
+        assert plan["base_weekly_hours"] == 6.0
+
+        # Saving new hours does NOT touch the plan — the mismatch is the signal.
+        c.put("/api/athlete/profile", json={"weekly_hours_target": 10})
+        plan = c.get("/api/plan").json()["plan"]
+        assert plan["base_weekly_hours"] == 6.0
+
+        c.post("/api/plan/generate?use_llm=false")
+        plan = c.get("/api/plan").json()["plan"]
+        assert plan["base_weekly_hours"] == 10.0

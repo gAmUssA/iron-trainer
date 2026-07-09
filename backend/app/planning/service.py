@@ -85,6 +85,7 @@ def generate_plan(*, use_llm: bool = True, today: date | None = None) -> dict:
 
     season = template.build_season(start=today, race_date=race_date, weekly_hours=weekly_hours)
     season["race_name"] = race_name
+    season["base_weekly_hours"] = weekly_hours  # recorded on the plan for staleness checks
 
     log.info("Generating plan for athlete %s: race=%r on %s, use_llm=%s",
              repo.get_athlete().get("id"), race_name, race_date, use_llm)
@@ -94,6 +95,7 @@ def generate_plan(*, use_llm: bool = True, today: date | None = None) -> dict:
             season = llm.adjust_season(season, profile, _fitness_summary())
             season["race_name"] = race_name
             season["race_date"] = race_date.isoformat()
+            season["base_weekly_hours"] = weekly_hours
             llm_used = True
         except llm.LLMUnavailable as e:
             log.warning("LLM unavailable, using deterministic template: %s", e)
