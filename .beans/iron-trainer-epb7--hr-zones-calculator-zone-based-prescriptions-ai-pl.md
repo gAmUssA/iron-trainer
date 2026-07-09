@@ -1,11 +1,11 @@
 ---
 # iron-trainer-epb7
 title: 'HR zones: calculator, zone-based prescriptions, AI planner integration'
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-07-09T13:47:46Z
-updated_at: 2026-07-09T13:52:35Z
+updated_at: 2026-07-09T14:38:48Z
 ---
 
 Viktor: use HR zones in workout planning (we have LTHR/max HR), feed zones to the AI planner, and add an HR-zone calculator.
@@ -14,4 +14,8 @@ Viktor: use HR zones in workout planning (we have LTHR/max HR), feed zones to th
 - [x] Template: HR-range step targets when FTP/run-pace missing (→ Watch HR alerts via existing iOS path); every description carries 'ZN · HR lo–hi bpm'; swim stays pace-only
 - [x] LLM prompts: zone table injected + instruction to anchor sessions to Z1–Z5 and name the zone
 - [x] ZonesCard on Thresholds tab (basis-aware copy, refetches on threshold change) — visually verified
-- [ ] Tests + ADR 0013 + PR (hold for merge)
+- [x] 8 tests (incl. Copilot regression cases), ADR 0013, PR #18 merged
+
+## Summary of Changes
+
+Coggan LTHR 5-zone model (max-HR fallback, clamped lows/caps) with calculator card on Thresholds; zone + bpm labels in every workout description; HR-range step targets when FTP/pace missing (feeds existing Watch HR-alert path); zone table + zone-anchoring instructions in both LLM prompts. ADR 0013.
