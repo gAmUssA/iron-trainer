@@ -70,4 +70,23 @@ struct PlanNetworkSource {
         let file = try PlanFile.decode(from: data)
         return TrainingPlan(meta: file.plan, workouts: file.workouts)
     }
+
+    /// Run the weekly check-in (sync → reconcile → replan) and return the
+    /// server-built story lines — the same narrative the web card shows.
+    /// Can take ~30s when the AI replans the week, so callers show progress.
+    func checkin() async throws -> CheckinStory {
+        let url = baseURL.appending(path: "/api/plan/checkin")
+        var req = authedRequest(url, bearer: bearer)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 90
+        let (data, resp) = try await session.data(for: req)
+        if let h = resp as? HTTPURLResponse, h.statusCode != 200 { throw NetworkError.http(h.statusCode) }
+        return try JSONDecoder().decode(CheckinStory.self, from: data)
+    }
+}
+
+/// The narrated result of a weekly check-in (subset of the API payload).
+struct CheckinStory: Decodable {
+    let status: String?
+    let story: [String]
 }

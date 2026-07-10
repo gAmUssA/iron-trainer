@@ -52,6 +52,17 @@ final class ImportModel: ObservableObject {
         }
     }
 
+    /// Re-fetch the plan WITHOUT flipping through .loading — used after a
+    /// check-in so the Today view (and any presented sheet) stays mounted.
+    /// Failures keep the current plan; the check-in already reported status.
+    func refreshPlanQuietly(from source: PlanNetworkSource) async {
+        guard let plan = try? await source.loadPlan(), !plan.workouts.isEmpty else { return }
+        lastPlan = plan
+        state = .loadedPlan(plan)
+        SharedStore.write(WidgetSnapshot.build(from: plan))
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     /// Return to the plan list (e.g. after scheduling one workout).
     func backToPlan() {
         if let p = lastPlan { state = .loadedPlan(p) }
