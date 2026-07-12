@@ -383,6 +383,54 @@ export interface HrZones {
   max_hr: number | null;
 }
 
+export interface JobInfo {
+  id: number;
+  kind: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  result: unknown;
+  error: string | null;
+  already_running?: boolean;
+}
+export interface JobsSummary {
+  latest: Record<string, JobInfo>;
+  active: Record<string, JobInfo>;
+}
+
+/** Poll a background job until it's terminal; resolve with its result or
+ * throw its error. Interval is gentle — these are 10s–minutes operations. */
+export async function pollJob<T>(jobId: number, intervalMs = 1500, timeoutMs = 10 * 60_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const job = await getJSON<JobInfo>(`/api/jobs/${jobId}`);
+    if (job.status === "succeeded") return job.result as T;
+    if (job.status === "failed") throw new Error(job.error ?? "operation failed");
+    if (Date.now() > deadline) throw new Error("operation timed out — check back later");
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+/** Start an async operation and wait for its result via job polling. */
+async function viaJob<T>(start: () => Promise<{ job: JobInfo }>): Promise<T> {
+  const { job } = await start();
+  return pollJob<T>(job.id);
+}
+
+/** "3 min ago" / "2 h ago" / "5 d ago" from an ISO timestamp. */
+export function timeAgo(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z").getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const min = Math.round(ms / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.round(h / 24)} d ago`;
+}
+
 export const api = {
   status: () => getJSON<AppStatus>("/api/status"),
   me: () => getJSON<Me>("/api/me"),
@@ -393,14 +441,19 @@ export const api = {
   athlete: () => getJSON<AthleteResponse>("/api/athlete"),
   zones: () => getJSON<HrZones>("/api/athlete/zones"),
   updateProfile: (p: Partial<Profile>) => send<AthleteResponse>("/api/athlete/profile", "PUT", p),
-  sync: (full = false) => send<SyncResult>(`/api/strava/sync?full=${full}`, "POST"),
-  dedup: (fetch = true) => send<DedupResult>(`/api/strava/dedup?fetch=${fetch}`, "POST"),
+  sync: (full = false) =>
+    viaJob<SyncResult>(() => send(`/api/strava/sync?full=${full}&async=1`, "POST")),
+  dedup: (fetch = true) =>
+    viaJob<DedupResult>(() => send(`/api/strava/dedup?fetch=${fetch}&async=1`, "POST")),
   importArchive: async (file: File): Promise<ImportResult> => {
     const fd = new FormData();
     fd.append("file", file);
-    const res = await fetch("/api/strava/import", { method: "POST", credentials: "include", body: fd });
+    const res = await fetch("/api/strava/import?async=1", {
+      method: "POST", credentials: "include", body: fd,
+    });
     if (!res.ok) throw await httpError(res);
-    return res.json() as Promise<ImportResult>;
+    const { job } = (await res.json()) as { job: JobInfo };
+    return pollJob<ImportResult>(job.id);
   },
   disconnect: () =>
     send<{ deauthorized: boolean; deleted_activities: number; deleted_metrics: number; message: string }>(
@@ -413,8 +466,9 @@ export const api = {
   setRace: (body: { race_id?: number; name?: string; race_date?: string; distance?: string }) =>
     send<{ race: { name: string; date: string } }>("/api/athlete/race", "PUT", body),
   plan: () => getJSON<PlanResponse>("/api/plan"),
-  generatePlan: (useLlm = true) => send<GenerateResult>(`/api/plan/generate?use_llm=${useLlm}`, "POST"),
-  checkin: () => send<CheckinResult>("/api/plan/checkin", "POST"),
+  generatePlan: (useLlm = true) =>
+    viaJob<GenerateResult>(() => send(`/api/plan/generate?use_llm=${useLlm}&async=1`, "POST")),
+  checkin: () => viaJob<CheckinResult>(() => send("/api/plan/checkin?async=1", "POST")),
   reconcile: (weeksAhead = 1) =>
     send<ReconcileResult>(`/api/plan/reconcile?weeks_ahead=${weeksAhead}`, "POST"),
   compliance: () =>
@@ -439,7 +493,9 @@ export const api = {
   nutritionDaily: () => getJSON<DailyNutrition>("/api/nutrition/daily"),
   raceDayNutrition: () => getJSON<RaceDayPlan>("/api/nutrition/race-day"),
   regenerateRaceDayNutrition: () =>
-    send<RaceDayPlan>("/api/nutrition/race-day/regenerate", "POST"),
+    viaJob<RaceDayPlan>(() => send("/api/nutrition/race-day/regenerate?async=1", "POST")),
+  job: (id: number) => getJSON<JobInfo>(`/api/jobs/${id}`),
+  jobsSummary: () => getJSON<JobsSummary>("/api/jobs/summary"),
 };
 
 // ── Strava OAuth error copy (codes set by the backend callback redirect) ────────

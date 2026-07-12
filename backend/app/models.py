@@ -181,3 +181,24 @@ class FitnessTestResult(SQLModel, table=True):
     result_json: str | None = None   # computed thresholds, e.g. {"ftp": 238}
     applied: bool = False
     created_at: str | None = None
+
+
+class Job(SQLModel, table=True):
+    """A background operation (Strava sync/import, Claude plan generation, …).
+
+    Status: queued → running → succeeded | failed. The row is the source of
+    truth — worker threads are in-process, so a restart orphans nothing except
+    rows the startup sweep marks failed("interrupted by restart").
+    """
+
+    __tablename__ = "job"
+
+    id: int | None = Field(default=None, primary_key=True)
+    athlete_id: int = Field(foreign_key="athlete.id", ondelete="CASCADE", index=True)
+    kind: str  # sync | import | dedup | generate_plan | checkin | nutrition_regen
+    status: str  # queued | running | succeeded | failed
+    created_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    result_json: str | None = None
+    error: str | None = None

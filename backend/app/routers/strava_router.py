@@ -11,7 +11,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request, UploadFile
 from fastapi.responses import RedirectResponse
 
-from .. import auth, repo, services, strava
+from .. import auth, jobs, repo, services, strava
 from ..config import get_settings
 from ..logging_config import get_logger
 
@@ -104,11 +104,15 @@ def disconnect() -> dict:
 
 
 @router.post("/import")
-def import_archive(file: UploadFile) -> dict:
+def import_archive(
+    file: UploadFile,
+    run_async: bool = Query(False, alias="async"),
+) -> dict:
     """Bulk-load history from a user's uploaded Strava GDPR export ZIP. Athlete-scoped;
     works without a live API connection (bypasses the rate-limit/athlete cap)."""
-    auth.current_athlete_id()  # 401 if auth_required and not logged in
+    aid = auth.current_athlete_id()  # 401 if auth_required and not logged in
     tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    uploaded = False
     try:
         # Stream upload to disk (don't hold GBs in RAM), counting bytes so a
         # runaway upload can't fill the container's disk.
@@ -119,18 +123,37 @@ def import_archive(file: UploadFile) -> dict:
                 raise HTTPException(413, "Archive exceeds the 2 GB upload limit.")
             tmp.write(chunk)
         tmp.close()
+        uploaded = True
+        if run_async:
+            # The job owns the temp file now — it unlinks in its own finally.
+            def _job() -> dict:
+                try:
+                    return services.import_archive(tmp.name)
+                finally:
+                    try:
+                        os.unlink(tmp.name)
+                    except OSError:
+                        pass
+            return {"job": jobs.submit("import", _job, athlete_id=aid)}
         return services.import_archive(tmp.name)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     finally:
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
+        if not (run_async and uploaded):
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
 
 
 @router.post("/sync")
-def sync(full: bool = Query(False, description="Full history backfill vs incremental")) -> dict:
+def sync(
+    full: bool = Query(False, description="Full history backfill vs incremental"),
+    run_async: bool = Query(False, alias="async"),
+) -> dict:
+    if run_async:
+        aid = auth.current_athlete_id()
+        return {"job": jobs.submit("sync", lambda: services.run_sync(full=full), athlete_id=aid)}
     try:
         return services.run_sync(full=full)
     except services.NotConnected as e:
@@ -141,6 +164,7 @@ def sync(full: bool = Query(False, description="Full history backfill vs increme
 def dedup(
     fetch: bool = Query(True, description="Look up device names from Strava (Apple Watch / Edge)"),
     limit: int = Query(100, description="Max device lookups this run (resumable)"),
+    run_async: bool = Query(False, alias="async"),
 ) -> dict:
     """Re-run activity de-duplication on the existing data (no full re-sync).
 
@@ -153,6 +177,13 @@ def dedup(
             token = services.valid_access_token()
         except services.NotConnected as e:
             raise HTTPException(409, str(e)) from e
-    stats = services.deduplicate(token=token, fetch_details=fetch, max_fetches=limit or None)
-    stats["metrics_days"] = repo.rebuild_metrics()
-    return stats
+
+    def _dedup() -> dict:
+        stats = services.deduplicate(token=token, fetch_details=fetch, max_fetches=limit or None)
+        stats["metrics_days"] = repo.rebuild_metrics()
+        return stats
+
+    if run_async:
+        aid = auth.current_athlete_id()
+        return {"job": jobs.submit("dedup", _dedup, athlete_id=aid)}
+    return _dedup()

@@ -7,9 +7,9 @@ which is always run back through the safety validator.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
-from .. import dashboards, nutrition, repo
+from .. import auth, dashboards, jobs, nutrition, repo
 from ..logging_config import get_logger
 from ..planning import llm
 
@@ -79,10 +79,7 @@ def race_day() -> dict:
     return nutrition.compute_race_day_plan(_profile(), repo.effective_race(), _readiness())
 
 
-@router.post("/race-day/regenerate")
-def race_day_regenerate() -> dict:
-    """Re-generate the race-day timeline with the LLM, falling back to the
-    deterministic plan when the LLM is unavailable. Always safety-validated."""
+def _regenerate_race_day() -> dict:
     profile, race, readiness = _profile(), repo.effective_race(), _readiness()
     base = nutrition.compute_race_day_plan(profile, race, readiness)
     try:
@@ -94,3 +91,13 @@ def race_day_regenerate() -> dict:
         log.warning("LLM unavailable for race-day nutrition, using deterministic plan: %s", e)
         base["adjustments"] = ["LLM unavailable — showing the deterministic plan."] + base.get("adjustments", [])
         return base
+
+
+@router.post("/race-day/regenerate")
+def race_day_regenerate(run_async: bool = Query(False, alias="async")) -> dict:
+    """Re-generate the race-day timeline with the LLM, falling back to the
+    deterministic plan when the LLM is unavailable. Always safety-validated."""
+    if run_async:
+        aid = auth.current_athlete_id()
+        return {"job": jobs.submit("nutrition_regen", _regenerate_race_day, athlete_id=aid)}
+    return _regenerate_race_day()
