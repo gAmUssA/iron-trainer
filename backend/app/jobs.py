@@ -27,6 +27,12 @@ log = get_logger("jobs")
 
 KINDS = ("sync", "import", "dedup", "generate_plan", "checkin", "nutrition_regen")
 
+# Serializes the check-then-create in submit(): without it, two simultaneous
+# submits of the same kind both see "no active job" and both start threads —
+# double Claude spend / double Strava calls. Process-wide is sufficient: the
+# app runs a single worker, and jobs are per-(athlete, kind) rows underneath.
+_submit_lock = threading.Lock()
+
 
 def submit(kind: str, fn: Callable[[], dict], *, athlete_id: int) -> dict:
     """Run `fn` in a background thread, tracked as a job row.
@@ -35,11 +41,11 @@ def submit(kind: str, fn: Callable[[], dict], *, athlete_id: int) -> dict:
     running returns the existing job with `already_running: True` instead of
     doing duplicate (and rate-limited) work.
     """
-    existing = repo.active_job(kind)
-    if existing:
-        return {**existing, "already_running": True}
-
-    job = repo.create_job(kind)
+    with _submit_lock:
+        existing = repo.active_job(kind)
+        if existing:
+            return {**existing, "already_running": True}
+        job = repo.create_job(kind)
     thread = threading.Thread(
         target=_run, args=(job["id"], athlete_id, fn),
         name=f"job-{kind}-{job['id']}", daemon=True,

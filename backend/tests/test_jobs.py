@@ -34,6 +34,10 @@ def test_async_generate_plan_and_poll():
 
 
 def test_duplicate_submit_returns_existing_job(monkeypatch):
+    """Sequential AND simultaneous duplicate submits must run the work once —
+    the simultaneous case exercises the submit lock (check-then-create race)."""
+    import concurrent.futures
+
     from app.planning import service as psvc
 
     started = {"n": 0}
@@ -45,12 +49,48 @@ def test_duplicate_submit_returns_existing_job(monkeypatch):
 
     monkeypatch.setattr(psvc, "generate_plan", slow_generate)
     with TestClient(app) as c:
-        first = c.post("/api/plan/generate?async=1").json()["job"]
-        second = c.post("/api/plan/generate?async=1").json()["job"]
-        assert second["id"] == first["id"]
-        assert second.get("already_running") is True
-        _wait_terminal(c, first["id"])
-    assert started["n"] == 1
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            futs = [ex.submit(lambda: c.post("/api/plan/generate?async=1").json()["job"])
+                    for _ in range(2)]
+            a, b = [f.result() for f in futs]
+        assert a["id"] == b["id"]
+        assert a.get("already_running") or b.get("already_running")
+        _wait_terminal(c, a["id"])
+        # And the plain sequential case:
+        third = c.post("/api/plan/generate?async=1").json()["job"]
+        _wait_terminal(c, third["id"])
+    assert started["n"] == 2  # two distinct jobs ran; the racing pair ran ONCE
+
+
+def test_async_import_conflicts_instead_of_discarding_upload():
+    """A second import while one runs must 409 — not silently poll the old job
+    while the new archive is dropped on the floor."""
+    import io
+    import zipfile
+
+    from app import auth as auth_mod
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("activities.csv", "Activity ID\n")
+    with TestClient(app) as c:
+        # Create the blocker AFTER startup — the lifespan sweep (correctly)
+        # fails any queued/running rows that predate the boot.
+        tok = auth_mod.set_current_athlete_id(1)
+        try:
+            blocker = repo.create_job("import")  # simulate an in-flight import
+        finally:
+            auth_mod.reset_current_athlete_id(tok)
+        r = c.post("/api/strava/import?async=1",
+                   files={"file": ("export.zip", buf.getvalue(), "application/zip")})
+        assert r.status_code == 409
+        assert "already running" in r.json()["detail"]
+
+    tok = auth_mod.set_current_athlete_id(1)
+    try:
+        repo.set_job_status(blocker["id"], "failed", error="test cleanup")
+    finally:
+        auth_mod.reset_current_athlete_id(tok)
 
 
 def test_sync_job_records_not_connected_failure():

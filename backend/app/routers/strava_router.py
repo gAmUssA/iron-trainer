@@ -134,7 +134,17 @@ def import_archive(
                         os.unlink(tmp.name)
                     except OSError:
                         pass
-            return {"job": jobs.submit("import", _job, athlete_id=aid)}
+            job = jobs.submit("import", _job, athlete_id=aid)
+            if job.get("already_running"):
+                # Our closure never runs: clean up the upload and say so —
+                # returning the older job would silently discard this archive.
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
+                raise HTTPException(
+                    409, "An import is already running — wait for it to finish, then retry.")
+            return {"job": job}
         return services.import_archive(tmp.name)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e

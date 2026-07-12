@@ -400,13 +400,24 @@ export interface JobsSummary {
 }
 
 /** Poll a background job until it's terminal; resolve with its result or
- * throw its error. Interval is gentle — these are 10s–minutes operations. */
+ * throw its error. Interval is gentle — these are 10s–minutes operations —
+ * and a few dropped polls must not fail an operation that's still running
+ * server-side (one blip over a 10-minute loop is near-certain). */
 export async function pollJob<T>(jobId: number, intervalMs = 1500, timeoutMs = 10 * 60_000): Promise<T> {
   const deadline = Date.now() + timeoutMs;
+  let misses = 0;
   for (;;) {
-    const job = await getJSON<JobInfo>(`/api/jobs/${jobId}`);
-    if (job.status === "succeeded") return job.result as T;
-    if (job.status === "failed") throw new Error(job.error ?? "operation failed");
+    try {
+      const job = await getJSON<JobInfo>(`/api/jobs/${jobId}`);
+      misses = 0;
+      if (job.status === "succeeded") return job.result as T;
+      if (job.status === "failed") throw new Error(job.error ?? "operation failed");
+    } catch (e) {
+      if (e instanceof Error && !e.message.startsWith("Failed to fetch") && /^[45]\d\d /.test(e.message)) {
+        throw e; // a definitive HTTP answer (404/500) — not a transient blip
+      }
+      if (++misses > 4) throw e; // 4 consecutive network failures — give up
+    }
     if (Date.now() > deadline) throw new Error("operation timed out — check back later");
     await new Promise((r) => setTimeout(r, intervalMs));
   }
