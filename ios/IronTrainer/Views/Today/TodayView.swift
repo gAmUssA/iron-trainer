@@ -87,10 +87,13 @@ struct TodayView: View {
         .sheet(isPresented: .init(get: { story != nil }, set: { if !$0 { story = nil } })) {
             CheckinStorySheet(lines: story ?? [])
         }
+        .task { await resumeActiveCheckin() }
     }
 
     /// Same loop as the web card: the backend syncs, reconciles and replans,
     /// then we re-fetch the plan (which also rewrites the widget snapshot).
+    /// checkin() submits a background job and polls it — short requests that
+    /// survive backgrounding, instead of one fragile 90s connection.
     @MainActor
     private func runCheckin() {
         guard let server = auth.serverURL, let bearer = auth.bearer else {
@@ -108,6 +111,29 @@ struct TodayView: View {
             } catch {
                 checkinState = .failed(error.localizedDescription)
             }
+        }
+    }
+
+    /// A check-in might already be running — started on the web, or here
+    /// before the app was killed. Re-attach and present its story instead of
+    /// pretending nothing is happening.
+    @MainActor
+    private func resumeActiveCheckin() async {
+        guard checkinState == .idle,
+              let server = auth.serverURL, let bearer = auth.bearer else { return }
+        let source = PlanNetworkSource(baseURL: server, bearer: bearer)
+        guard let jobID = await source.activeCheckinJobID() else { return }
+        guard checkinState == .idle else { return }  // user tapped meanwhile
+        checkinState = .running
+        do {
+            let result = try await source.pollCheckinJob(id: jobID)
+            await model.refreshPlanQuietly(from: source)
+            story = result.story
+            checkinState = .idle
+        } catch is CancellationError {
+            checkinState = .idle  // left the screen — the job continues server-side
+        } catch {
+            checkinState = .failed(error.localizedDescription)
         }
     }
 
