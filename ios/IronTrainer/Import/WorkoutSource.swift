@@ -71,17 +71,73 @@ struct PlanNetworkSource {
         return TrainingPlan(meta: file.plan, workouts: file.workouts)
     }
 
-    /// Run the weekly check-in (sync → reconcile → replan) and return the
-    /// server-built story lines — the same narrative the web card shows.
-    /// Can take ~30s when the AI replans the week, so callers show progress.
+    /// Run the weekly check-in as a background JOB and poll it home. Holding
+    /// one request open for the whole ~30s LLM replan was fragile on a phone —
+    /// backgrounding the app or a cellular blip killed the connection while
+    /// the server kept working. Submit + short polls survive both.
     func checkin() async throws -> CheckinStory {
-        let url = baseURL.appending(path: "/api/plan/checkin")
-        var req = authedRequest(url, bearer: bearer)
+        var comps = URLComponents(url: baseURL.appending(path: "/api/plan/checkin"),
+                                  resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "async", value: "1")]
+        var req = authedRequest(comps.url!, bearer: bearer)
         req.httpMethod = "POST"
-        req.timeoutInterval = 90
         let (data, resp) = try await session.data(for: req)
         if let h = resp as? HTTPURLResponse, h.statusCode != 200 { throw NetworkError.http(h.statusCode) }
-        return try JSONDecoder().decode(CheckinStory.self, from: data)
+        let envelope = try JSONDecoder().decode(JobEnvelope.self, from: data)
+        return try await pollCheckinJob(id: envelope.job.id)
+    }
+
+    /// Poll a check-in job to a terminal state (2s interval, 10min cap).
+    /// Mirrors the web's tolerance: a few dropped polls are fine — one blip
+    /// must not fail a job that's still running server-side. Definitive
+    /// answers (401/403/404) fail fast. Cancellation-cooperative via
+    /// Task.sleep, so leaving the screen stops the loop cleanly.
+    func pollCheckinJob(id: Int) async throws -> CheckinStory {
+        let deadline = Date.now.addingTimeInterval(10 * 60)
+        var misses = 0
+        while true {
+            do {
+                let url = baseURL.appending(path: "/api/jobs/\(id)")
+                let (data, resp) = try await session.data(for: authedRequest(url, bearer: bearer))
+                if let h = resp as? HTTPURLResponse, h.statusCode != 200 {
+                    if [401, 403, 404].contains(h.statusCode) { throw NetworkError.http(h.statusCode) }
+                    throw TransientPollError()  // 5xx/429 → counts toward the miss budget
+                }
+                misses = 0
+                let job = try JSONDecoder().decode(CheckinJob.self, from: data)
+                switch job.status {
+                case "succeeded":
+                    guard let story = job.result else { throw NetworkError.http(500) }
+                    return story
+                case "failed":
+                    throw CheckinFailed(message: job.error ?? "check-in failed")
+                default:
+                    break  // queued / running — keep polling
+                }
+            } catch is TransientPollError {
+                misses += 1
+                if misses > 4 { throw NetworkError.http(503) }
+            } catch let e as URLError {
+                misses += 1  // offline blip / app was suspended mid-request
+                if misses > 4 { throw e }
+            }
+            guard Date.now < deadline else {
+                throw CheckinFailed(message: "Check-in timed out — pull to refresh later.")
+            }
+            try await Task.sleep(for: .seconds(2))
+        }
+    }
+
+    /// The id of a check-in job that's already running for this athlete
+    /// (started on the web, or before the app was killed) — lets the Today
+    /// view re-attach instead of showing nothing.
+    func activeCheckinJobID() async -> Int? {
+        let url = baseURL.appending(path: "/api/jobs/summary")
+        guard let (data, resp) = try? await session.data(for: authedRequest(url, bearer: bearer)),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let summary = try? JSONDecoder().decode(JobsSummary.self, from: data)
+        else { return nil }
+        return summary.active["checkin"]?.id
     }
 }
 
@@ -90,3 +146,33 @@ struct CheckinStory: Decodable {
     let status: String?
     let story: [String]
 }
+
+// ── Job-API payloads (subset of fields the app needs) ────────────────────────
+
+struct JobEnvelope: Decodable {
+    let job: JobStatus
+}
+
+struct JobStatus: Decodable {
+    let id: Int
+    let status: String
+}
+
+/// A polled check-in job: `result` is the full check-in payload, which
+/// CheckinStory decodes (unknown keys ignored).
+struct CheckinJob: Decodable {
+    let status: String
+    let error: String?
+    let result: CheckinStory?
+}
+
+struct JobsSummary: Decodable {
+    let active: [String: JobStatus]
+}
+
+struct CheckinFailed: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+private struct TransientPollError: Error {}
