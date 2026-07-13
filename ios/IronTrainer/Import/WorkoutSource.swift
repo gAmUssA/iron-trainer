@@ -100,8 +100,13 @@ struct PlanNetworkSource {
                 let url = baseURL.appending(path: "/api/jobs/\(id)")
                 let (data, resp) = try await session.data(for: authedRequest(url, bearer: bearer))
                 if let h = resp as? HTTPURLResponse, h.statusCode != 200 {
-                    if [401, 403, 404].contains(h.statusCode) { throw NetworkError.http(h.statusCode) }
-                    throw TransientPollError()  // 5xx/429 → counts toward the miss budget
+                    // Any 4xx except 429 is a definitive answer about THIS
+                    // request (bad id, lost auth, validation) — fail fast.
+                    // 5xx and 429 are proxy/overload noise → miss budget.
+                    if (400...499).contains(h.statusCode) && h.statusCode != 429 {
+                        throw NetworkError.http(h.statusCode)
+                    }
+                    throw TransientPollError()
                 }
                 misses = 0
                 let job = try JSONDecoder().decode(CheckinJob.self, from: data)
