@@ -14,9 +14,7 @@ def summary() -> dict:
     """Latest terminal job per kind + any currently active jobs — powers the
     'Strava last called / plan last generated' UI."""
     auth.current_athlete_id()
-    active = {k: j for k in ("sync", "import", "dedup", "generate_plan", "checkin",
-                             "nutrition_regen") if (j := repo.active_job(k))}
-    return {"latest": repo.latest_jobs_by_kind(), "active": active}
+    return {"latest": repo.latest_jobs_by_kind(), "active": repo.active_jobs_by_kind()}
 
 
 @router.get("/{job_id}")

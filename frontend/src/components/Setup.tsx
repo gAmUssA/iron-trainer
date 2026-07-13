@@ -1,7 +1,8 @@
-import { type ChangeEvent, useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   api,
+  pollJob,
   timeAgo,
   type AppStatus,
   type AthleteResponse,
@@ -92,6 +93,24 @@ export function ConnectCard({
   // athlete is replaced on every app-wide refresh (sync/check-in/etc.), so it
   // doubles as the "something happened, re-read job history" signal.
   useEffect(refreshJobs, [athlete]);
+
+  // A page load mid-job must still observe completion: watch every active job
+  // (any kind) to its end, then refresh the app — without this, the
+  // "running in background" line lingers and the data stays stale forever.
+  const watched = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    for (const j of Object.values(jobs?.active ?? {})) {
+      if (watched.current.has(j.id)) continue;
+      watched.current.add(j.id);
+      pollJob(j.id)
+        .catch(() => {})
+        .finally(() => {
+          watched.current.delete(j.id);
+          refreshJobs();
+          onSynced();
+        });
+    }
+  }, [jobs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Newest Strava-touching call across sync/import/dedup/check-in jobs. */
   const lastStravaCall = (() => {

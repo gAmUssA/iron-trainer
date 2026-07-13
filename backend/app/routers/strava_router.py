@@ -110,7 +110,7 @@ def import_archive(
 ) -> dict:
     """Bulk-load history from a user's uploaded Strava GDPR export ZIP. Athlete-scoped;
     works without a live API connection (bypasses the rate-limit/athlete cap)."""
-    aid = auth.current_athlete_id()  # 401 if auth_required and not logged in
+    auth.current_athlete_id()  # 401 if auth_required and not logged in
     tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
     uploaded = False
     try:
@@ -134,7 +134,7 @@ def import_archive(
                         os.unlink(tmp.name)
                     except OSError:
                         pass
-            job = jobs.submit("import", _job, athlete_id=aid)
+            job = jobs.submit("import", _job)
             if job.get("already_running"):
                 # Our closure never runs: clean up the upload and say so —
                 # returning the older job would silently discard this archive.
@@ -162,8 +162,8 @@ def sync(
     run_async: bool = Query(False, alias="async"),
 ) -> dict:
     if run_async:
-        aid = auth.current_athlete_id()
-        return {"job": jobs.submit("sync", lambda: services.run_sync(full=full), athlete_id=aid)}
+        auth.current_athlete_id()  # 401 gate; submit derives the athlete itself
+        return {"job": jobs.submit("sync", lambda: services.run_sync(full=full))}
     try:
         return services.run_sync(full=full)
     except services.NotConnected as e:
@@ -194,6 +194,5 @@ def dedup(
         return stats
 
     if run_async:
-        aid = auth.current_athlete_id()
-        return {"job": jobs.submit("dedup", _dedup, athlete_id=aid)}
+        return {"job": jobs.submit("dedup", _dedup)}
     return _dedup()

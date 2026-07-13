@@ -34,13 +34,18 @@ KINDS = ("sync", "import", "dedup", "generate_plan", "checkin", "nutrition_regen
 _submit_lock = threading.Lock()
 
 
-def submit(kind: str, fn: Callable[[], dict], *, athlete_id: int) -> dict:
+def submit(kind: str, fn: Callable[[], dict]) -> dict:
     """Run `fn` in a background thread, tracked as a job row.
 
     One active job per (athlete, kind): a second submit while one is queued or
     running returns the existing job with `already_running: True` instead of
     doing duplicate (and rate-limited) work.
+
+    The athlete is derived HERE (request ContextVar), for both the row and the
+    worker thread — a caller-supplied id could diverge from the row's owner and
+    let the worker write one tenant's data against another tenant's job row.
     """
+    athlete_id = auth.current_athlete_id()
     with _submit_lock:
         existing = repo.active_job(kind)
         if existing:

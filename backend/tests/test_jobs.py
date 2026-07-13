@@ -48,17 +48,20 @@ def test_duplicate_submit_returns_existing_job(monkeypatch):
         return {"ok": True}
 
     monkeypatch.setattr(psvc, "generate_plan", slow_generate)
-    with TestClient(app) as c:
+    # One client per thread (TestClient isn't guaranteed thread-safe). Both are
+    # opened BEFORE the race: each startup runs the stale-job sweep, which would
+    # otherwise kill the first client's in-flight job.
+    with TestClient(app) as c1, TestClient(app) as c2:
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-            futs = [ex.submit(lambda: c.post("/api/plan/generate?async=1").json()["job"])
-                    for _ in range(2)]
-            a, b = [f.result() for f in futs]
+            fa = ex.submit(lambda: c1.post("/api/plan/generate?async=1").json()["job"])
+            fb = ex.submit(lambda: c2.post("/api/plan/generate?async=1").json()["job"])
+            a, b = fa.result(), fb.result()
         assert a["id"] == b["id"]
         assert a.get("already_running") or b.get("already_running")
-        _wait_terminal(c, a["id"])
+        _wait_terminal(c1, a["id"])
         # And the plain sequential case:
-        third = c.post("/api/plan/generate?async=1").json()["job"]
-        _wait_terminal(c, third["id"])
+        third = c1.post("/api/plan/generate?async=1").json()["job"]
+        _wait_terminal(c1, third["id"])
     assert started["n"] == 2  # two distinct jobs ran; the racing pair ran ONCE
 
 

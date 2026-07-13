@@ -413,10 +413,13 @@ export async function pollJob<T>(jobId: number, intervalMs = 1500, timeoutMs = 1
       if (job.status === "succeeded") return job.result as T;
       if (job.status === "failed") throw new Error(job.error ?? "operation failed");
     } catch (e) {
-      if (e instanceof Error && !e.message.startsWith("Failed to fetch") && /^[45]\d\d /.test(e.message)) {
-        throw e; // a definitive HTTP answer (404/500) — not a transient blip
+      // Definitive answers about THIS request (bad id, lost auth) fail fast;
+      // 5xx/429 are proxy/overload noise and count toward the miss budget —
+      // a lone 502 must not fail a job that's still running server-side.
+      if (e instanceof Error && /^(401|403|404|422) /.test(e.message)) {
+        throw e;
       }
-      if (++misses > 4) throw e; // 4 consecutive network failures — give up
+      if (++misses > 4) throw e; // 5 consecutive failures — give up
     }
     if (Date.now() > deadline) throw new Error("operation timed out — check back later");
     await new Promise((r) => setTimeout(r, intervalMs));

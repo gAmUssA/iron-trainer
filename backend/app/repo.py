@@ -706,6 +706,23 @@ def active_job(kind: str) -> dict | None:
         return _job_dict(j) if j else None
 
 
+def active_jobs_by_kind() -> dict[str, dict]:
+    """All queued/running jobs for the current athlete, newest per kind —
+    one query instead of one per kind on the summary hot path."""
+    aid = current_athlete_id()
+    out: dict[str, dict] = {}
+    with get_session() as s:
+        rows = s.exec(
+            select(Job).where(Job.athlete_id == aid,
+                              Job.status.in_(("queued", "running")))  # type: ignore[attr-defined]
+            .order_by(Job.id.desc())
+        ).all()
+        for j in rows:
+            if j.kind not in out:
+                out[j.kind] = _job_dict(j)
+    return out
+
+
 def latest_jobs_by_kind() -> dict[str, dict]:
     """Most recent TERMINAL job per kind — powers the 'last called' UI."""
     aid = current_athlete_id()

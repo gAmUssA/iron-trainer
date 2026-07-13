@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from .. import auth, jobs, reconcile as reconcile_mod
+from .. import jobs, reconcile as reconcile_mod
 from .. import repo
 from ..planning import service
 
@@ -17,10 +17,8 @@ def generate(
     run_async: bool = Query(False, alias="async"),
 ) -> dict:
     if run_async:
-        aid = auth.current_athlete_id()
         return {"job": jobs.submit("generate_plan",
-                                   lambda: service.generate_plan(use_llm=use_llm),
-                                   athlete_id=aid)}
+                                   lambda: service.generate_plan(use_llm=use_llm))}
     return service.generate_plan(use_llm=use_llm)
 
 
@@ -49,10 +47,8 @@ def checkin(
     nudges, with a narrative `story` of what changed and why. Synchronous by
     default (the iOS app depends on it); the web app passes ?async=1."""
     if run_async:
-        aid = auth.current_athlete_id()
         return {"job": jobs.submit("checkin",
-                                   lambda: service.weekly_checkin(use_llm=use_llm),
-                                   athlete_id=aid)}
+                                   lambda: service.weekly_checkin(use_llm=use_llm))}
     return service.weekly_checkin(use_llm=use_llm)
 
 
