@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from .. import reconcile as reconcile_mod
+from .. import jobs, reconcile as reconcile_mod
 from .. import repo
 from ..planning import service
 
@@ -12,7 +12,13 @@ router = APIRouter(prefix="/api/plan", tags=["plan"])
 
 
 @router.post("/generate")
-def generate(use_llm: bool = Query(True, description="Adapt the season with Claude")) -> dict:
+def generate(
+    use_llm: bool = Query(True, description="Adapt the season with Claude"),
+    run_async: bool = Query(False, alias="async"),
+) -> dict:
+    if run_async:
+        return {"job": jobs.submit("generate_plan",
+                                   lambda: service.generate_plan(use_llm=use_llm))}
     return service.generate_plan(use_llm=use_llm)
 
 
@@ -33,9 +39,16 @@ def replan_week(week_start: str, use_llm: bool = Query(True)) -> dict:
 
 
 @router.post("/checkin")
-def checkin(use_llm: bool = Query(True)) -> dict:
+def checkin(
+    use_llm: bool = Query(True),
+    run_async: bool = Query(False, alias="async"),
+) -> dict:
     """One-tap weekly check-in: sync → reconcile → replan next week → test-due
-    nudges, with a narrative `story` of what changed and why."""
+    nudges, with a narrative `story` of what changed and why. Synchronous by
+    default (the iOS app depends on it); the web app passes ?async=1."""
+    if run_async:
+        return {"job": jobs.submit("checkin",
+                                   lambda: service.weekly_checkin(use_llm=use_llm))}
     return service.weekly_checkin(use_llm=use_llm)
 
 

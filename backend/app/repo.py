@@ -27,6 +27,7 @@ from .models import (
     Athlete,
     DeviceToken,
     FitnessTestResult,
+    Job,
     MetricDaily,
     Plan,
     PlannedWorkout,
@@ -652,3 +653,110 @@ def _workout_dict(w: PlannedWorkout) -> dict:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ── Background jobs ───────────────────────────────────────────────────────────
+
+
+def create_job(kind: str) -> dict:
+    aid = current_athlete_id()
+    with get_session() as s:
+        j = Job(athlete_id=aid, kind=kind, status="queued", created_at=_now_iso())
+        s.add(j)
+        s.flush()
+        return _job_dict(j)
+
+
+def set_job_status(job_id: int, status: str, *, result_json: str | None = None,
+                   error: str | None = None) -> None:
+    """Status transition, called from the worker thread (athlete already checked
+    at creation; keyed by primary key on purpose — the worker owns the row)."""
+    with get_session() as s:
+        j = s.get(Job, job_id)
+        if j is None:
+            return
+        j.status = status
+        if status == "running":
+            j.started_at = _now_iso()
+        if status in ("succeeded", "failed"):
+            j.finished_at = _now_iso()
+        if result_json is not None:
+            j.result_json = result_json
+        if error is not None:
+            j.error = error
+        s.add(j)
+
+
+def get_job(job_id: int) -> dict | None:
+    aid = current_athlete_id()
+    with get_session() as s:
+        j = s.get(Job, job_id)
+        return _job_dict(j) if (j and j.athlete_id == aid) else None
+
+
+def active_job(kind: str) -> dict | None:
+    """The queued/running job of this kind for the current athlete, if any."""
+    aid = current_athlete_id()
+    with get_session() as s:
+        j = s.exec(
+            select(Job).where(Job.athlete_id == aid, Job.kind == kind,
+                              Job.status.in_(("queued", "running")))  # type: ignore[attr-defined]
+            .order_by(Job.id.desc())
+        ).first()
+        return _job_dict(j) if j else None
+
+
+def active_jobs_by_kind() -> dict[str, dict]:
+    """All queued/running jobs for the current athlete, newest per kind —
+    one query instead of one per kind on the summary hot path."""
+    aid = current_athlete_id()
+    out: dict[str, dict] = {}
+    with get_session() as s:
+        rows = s.exec(
+            select(Job).where(Job.athlete_id == aid,
+                              Job.status.in_(("queued", "running")))  # type: ignore[attr-defined]
+            .order_by(Job.id.desc())
+        ).all()
+        for j in rows:
+            if j.kind not in out:
+                out[j.kind] = _job_dict(j)
+    return out
+
+
+def latest_jobs_by_kind() -> dict[str, dict]:
+    """Most recent TERMINAL job per kind — powers the 'last called' UI."""
+    aid = current_athlete_id()
+    out: dict[str, dict] = {}
+    with get_session() as s:
+        rows = s.exec(
+            select(Job).where(Job.athlete_id == aid,
+                              Job.status.in_(("succeeded", "failed")))  # type: ignore[attr-defined]
+            .order_by(Job.id.desc()).limit(200)
+        ).all()
+        for j in rows:
+            if j.kind not in out:
+                out[j.kind] = _job_dict(j)
+    return out
+
+
+def fail_stale_jobs() -> int:
+    """Startup sweep: single-process workers die with the process, so any
+    queued/running row after a boot is an orphan. NOT athlete-scoped — runs
+    once at startup for the whole instance."""
+    with get_session() as s:
+        rows = s.exec(
+            select(Job).where(Job.status.in_(("queued", "running")))  # type: ignore[attr-defined]
+        ).all()
+        for j in rows:
+            j.status = "failed"
+            j.error = "interrupted by restart"
+            j.finished_at = _now_iso()
+            s.add(j)
+        return len(rows)
+
+
+def _job_dict(j: Job) -> dict:
+    d = j.model_dump()
+    raw = d.pop("result_json", None)
+    d["result"] = json.loads(raw) if raw else None
+    return d

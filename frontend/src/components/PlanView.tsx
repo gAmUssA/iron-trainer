@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  timeAgo,
+  type JobInfo,
   api,
   type GenerateResult,
   type PlannedWorkout,
@@ -53,6 +55,17 @@ export function PlanView({
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [lastGenerate, setLastGenerate] = useState<JobInfo | null>(null);
+  useEffect(() => {
+    api.jobsSummary().then((j) => setLastGenerate(j.latest["generate_plan"] ?? null)).catch(() => {});
+  }, [plan]);
+  const generatedLine = (() => {
+    if (!lastGenerate || lastGenerate.status !== "succeeded") return null;
+    const when = timeAgo(lastGenerate.finished_at);
+    const how = (lastGenerate.result as { llm_used?: boolean } | null)?.llm_used
+      ? "Claude" : "template";
+    return when ? `Plan generated ${when} · ${how}` : null;
+  })();
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [reconciled, setReconciled] = useState<ReconcileResult | null>(null);
   const [openWeek, setOpenWeek] = useState<string | null>(null);
@@ -89,7 +102,10 @@ export function PlanView({
       <div className="plan-head">
         <div>
           <div className="card-title">{weeks.length ? `${weeks.length}-Week Plan to Race Day` : "Training Plan"}</div>
-          <div className="card-sub">Base → Build → Peak → 2-week taper · validated &amp; ramp-capped · tap a week to expand</div>
+          <div className="card-sub">
+            Base → Build → Peak → 2-week taper · validated &amp; ramp-capped · tap a week to expand
+            {generatedLine ? ` · ${generatedLine}` : ""}
+          </div>
         </div>
         <div className="actions">
           {plan.plan && <a className="btn" href={api.planZipUrl}>↓ Full plan (.zip)</a>}

@@ -1,6 +1,15 @@
-import { type ChangeEvent, useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { api, type AppStatus, type AthleteResponse, type HrZones, type Profile } from "../api";
+import {
+  api,
+  pollJob,
+  timeAgo,
+  type AppStatus,
+  type AthleteResponse,
+  type HrZones,
+  type JobsSummary,
+  type Profile,
+} from "../api";
 
 /** "Connect iOS app": mint a pairing code and show it as a QR the helper app scans. */
 function ConnectAppPairing() {
@@ -78,6 +87,41 @@ export function ConnectCard({
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<JobsSummary | null>(null);
+
+  const refreshJobs = () => { api.jobsSummary().then(setJobs).catch(() => {}); };
+  // athlete is replaced on every app-wide refresh (sync/check-in/etc.), so it
+  // doubles as the "something happened, re-read job history" signal.
+  useEffect(refreshJobs, [athlete]);
+
+  // A page load mid-job must still observe completion: watch every active job
+  // (any kind) to its end, then refresh the app — without this, the
+  // "running in background" line lingers and the data stays stale forever.
+  const watched = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    for (const j of Object.values(jobs?.active ?? {})) {
+      if (watched.current.has(j.id)) continue;
+      watched.current.add(j.id);
+      pollJob(j.id)
+        .catch(() => {})
+        .finally(() => {
+          watched.current.delete(j.id);
+          refreshJobs();
+          onSynced();
+        });
+    }
+  }, [jobs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Newest Strava-touching call across sync/import/dedup/check-in jobs. */
+  const lastStravaCall = (() => {
+    const kinds = ["sync", "import", "dedup", "checkin"];
+    const times = kinds
+      .map((k) => jobs?.latest[k]?.finished_at)
+      .filter((t): t is string => !!t)
+      .sort();
+    return times.length ? timeAgo(times[times.length - 1]) : null;
+  })();
+  const activeKinds = Object.keys(jobs?.active ?? {});
 
   async function doSync(full: boolean) {
     setBusy(true);
@@ -95,6 +139,7 @@ export function ConnectCard({
       setMsg(`Sync failed: ${e}`);
     } finally {
       setBusy(false);
+      refreshJobs();
     }
   }
 
@@ -110,6 +155,7 @@ export function ConnectCard({
       setMsg(`De-dup failed: ${e}`);
     } finally {
       setBusy(false);
+      refreshJobs();
     }
   }
 
@@ -131,6 +177,7 @@ export function ConnectCard({
       setMsg(`Import failed: ${err}`);
     } finally {
       setBusy(false);
+      refreshJobs();
     }
   }
 
@@ -222,6 +269,13 @@ export function ConnectCard({
             ? "Sync pulls recent history; or bulk-load everything from a Strava data export (bypasses API limits)."
             : "Add STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET to .env and restart the backend.")}
       </div>
+      {(lastStravaCall || activeKinds.length > 0) && (
+        <div className="hint">
+          {activeKinds.length > 0
+            ? `⏳ Running in background: ${activeKinds.join(", ")} — safe to leave this page.`
+            : `Strava last called ${lastStravaCall}.`}
+        </div>
+      )}
 
       {status.authenticated && <ConnectAppPairing />}
     </div>

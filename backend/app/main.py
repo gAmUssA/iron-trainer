@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import __version__, auth, repo
+from . import __version__, auth, jobs, repo
 from .config import REPO_ROOT, get_settings
 from .db import get_engine, init_db
 from .logging_config import get_logger, setup_logging
@@ -20,6 +20,7 @@ from .routers import (
     athlete_router,
     auth_router,
     export_router,
+    jobs_router,
     nutrition_router,
     plan_router,
     races_router,
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI):
     try:
         init_db()
         log.info("Database ready (migrations applied).")
+        jobs.fail_stale_running()  # threads died with the previous process
     except Exception:
         import traceback
 
@@ -97,6 +99,7 @@ app.include_router(export_router.router)
 app.include_router(races_router.router)
 app.include_router(auth_router.router)
 app.include_router(tests_router.router)
+app.include_router(jobs_router.router)
 
 
 @app.get("/api/health")
