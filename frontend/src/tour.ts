@@ -7,8 +7,6 @@
 
 import Walkthrough, { type WalkthroughStep } from "@ronanarm/walkthroughjs";
 
-const STORAGE_KEY = "iron-trainer-tour-seen";
-
 // The app is tabbed; the tour runs on the Dashboard tab and points at the nav
 // to introduce the other screens (Training Plan / Trends / Thresholds).
 const ALL_STEPS: WalkthroughStep[] = [
@@ -58,19 +56,4 @@ export function startTour(): void {
   });
   tour.configure({ steps });
   tour.start();
-  try {
-    localStorage.setItem(STORAGE_KEY, "1");
-  } catch {
-    /* ignore storage errors (private mode) */
-  }
-}
-
-/** Auto-start once per browser, after the UI has had a moment to render. */
-export function maybeAutoStartTour(): void {
-  try {
-    if (localStorage.getItem(STORAGE_KEY)) return;
-  } catch {
-    return;
-  }
-  window.setTimeout(startTour, 800);
 }

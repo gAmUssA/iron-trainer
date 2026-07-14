@@ -25,7 +25,7 @@ import { TodayCall } from "./components/TodayCall";
 import { TrendsView } from "./components/TrendsView";
 import { useTheme } from "./theme";
 import { useUnits } from "./units";
-import { maybeAutoStartTour, startTour } from "./tour";
+import { startTour } from "./tour";
 
 type Tab = "dashboard" | "plan" | "nutrition" | "trends" | "tests" | "settings";
 
@@ -134,9 +134,7 @@ export default function App() {
       .then((st) => {
         setStatus(st);
         if (!st.auth_required || st.authenticated) {
-          loadData()
-            .then(() => maybeAutoStartTour())
-            .catch((e) => setError(String(e)));
+          loadData().catch((e) => setError(String(e)));
         }
       })
       .catch((e) => setError(String(e)));
