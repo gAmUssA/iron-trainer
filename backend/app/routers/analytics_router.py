@@ -6,7 +6,7 @@ from datetime import date
 
 from fastapi import APIRouter
 
-from .. import dashboards, insights, repo
+from .. import dashboards, insights, readiness, repo
 
 router = APIRouter(prefix="/api", tags=["analytics"])
 
@@ -41,8 +41,15 @@ def trends() -> dict:
     }
 
 
+@router.get("/metrics/readiness/today")
+def readiness_today() -> dict:
+    """Today's readiness call (go hard / go easy / rest) from the athlete's own
+    acute:chronic load, form, and hard-day streak. Reads local data only."""
+    return readiness.compute(repo.get_metrics())
+
+
 @router.get("/metrics/readiness")
-def readiness() -> dict:
+def race_readiness() -> dict:
     """Projected 70.3 splits at current fitness."""
     metrics_rows = repo.get_metrics()
     current_ctl = metrics_rows[-1]["ctl"] if metrics_rows else None

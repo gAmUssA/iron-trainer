@@ -511,6 +511,35 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
   .week-date { width: 44px; }
 }
 
+/* ── Today's readiness call ─────────────────────────────────────────────── */
+.today-call {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 12px 18px;
+}
+.today-call-green { border-left: 3px solid var(--ok); }
+.today-call-amber { border-left: 3px solid #ffb454; }
+.today-call-red { border-left: 3px solid var(--bad); }
+.today-call-pill {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 5px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pill-green { background: rgba(74, 222, 128, 0.14); color: var(--ok); }
+.pill-amber { background: rgba(255, 180, 84, 0.16); color: #ffb454; }
+.pill-red { background: rgba(248, 113, 113, 0.16); color: var(--bad); }
+:root[data-theme="light"] .pill-green { color: #15803d; background: rgba(21, 128, 61, 0.12); }
+:root[data-theme="light"] .pill-amber { color: #b45309; background: rgba(180, 83, 9, 0.12); }
+:root[data-theme="light"] .pill-red { color: #b91c1c; background: rgba(185, 28, 28, 0.1); }
+.today-call-reason { font-size: 13px; color: var(--muted); flex: 1; min-width: 220px; }
+
 /* ── Trends insights ─────────────────────────────────────────────────────── */
 .stale-banner {
   display: flex;

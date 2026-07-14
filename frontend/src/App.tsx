@@ -7,6 +7,7 @@ import {
   type PmcDay,
   type PlanResponse,
   type Readiness,
+  type ReadinessToday,
   type Trends,
   type WeekCompliance,
   type WeekVolume,
@@ -19,6 +20,7 @@ import { RaceCard } from "./components/RaceCard";
 import { CheckinCard } from "./components/CheckinCard";
 import { ConnectCard, ProfileEditor, ZonesCard } from "./components/Setup";
 import { TestsView } from "./components/TestsView";
+import { TodayCall } from "./components/TodayCall";
 import { TrendsView } from "./components/TrendsView";
 import { useTheme } from "./theme";
 import { useUnits } from "./units";
@@ -55,6 +57,7 @@ export default function App() {
   const [weekly, setWeekly] = useState<WeekVolume[]>([]);
   const [trends, setTrends] = useState<Trends | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [todayCall, setTodayCall] = useState<ReadinessToday | null>(null);
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [compliance, setCompliance] = useState<WeekCompliance[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -71,12 +74,13 @@ export default function App() {
   }, []);
 
   const loadData = useCallback(async () => {
-    const [a, p, w, t, r, pl, comp] = await Promise.all([
+    const [a, p, w, t, r, rt, pl, comp] = await Promise.all([
       api.athlete(),
       api.pmc(),
       api.weekly(),
       api.trends(),
       api.readiness(),
+      api.readinessToday(),
       api.plan(),
       api.compliance(),
     ]);
@@ -85,6 +89,7 @@ export default function App() {
     setWeekly(w.weeks);
     setTrends(t);
     setReadiness(r);
+    setTodayCall(rt);
     setPlan(pl);
     setCompliance(comp.weeks);
   }, []);
@@ -225,6 +230,7 @@ export default function App() {
 
         {tab === "dashboard" && (
           <div className="tab-panel">
+            {todayCall && <TodayCall readiness={todayCall} />}
             <div className="dash-top">
               {status && athlete && (
                 <ConnectCard status={status} athlete={athlete} onSynced={safeLoad} />

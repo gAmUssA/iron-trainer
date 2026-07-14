@@ -133,6 +133,18 @@ struct PlanNetworkSource {
         }
     }
 
+    /// Today's readiness call (go hard / go easy / rest) from the athlete's
+    /// acute:chronic training load. Best-effort: the Today view renders fine
+    /// without it, so any failure just means no banner.
+    func readinessToday() async -> ReadinessToday? {
+        let url = baseURL.appending(path: "/api/metrics/readiness/today")
+        guard let (data, resp) = try? await session.data(for: authedRequest(url, bearer: bearer)),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let readiness = try? JSONDecoder().decode(ReadinessToday.self, from: data)
+        else { return nil }
+        return readiness
+    }
+
     /// The id of a check-in job that's already running for this athlete
     /// (started on the web, or before the app was killed) — lets the Today
     /// view re-attach instead of showing nothing.
@@ -144,6 +156,14 @@ struct PlanNetworkSource {
         else { return nil }
         return summary.active["checkin"]?.id
     }
+}
+
+/// Today's readiness call (subset of /api/metrics/readiness/today).
+struct ReadinessToday: Decodable, Equatable {
+    let status: String
+    let call: String?
+    let level: String?
+    let reasons: [String]
 }
 
 /// The narrated result of a weekly check-in (subset of the API payload).

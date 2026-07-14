@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from .. import dashboards, nutrition, reconcile as recon, repo
+from .. import dashboards, nutrition, readiness, reconcile as recon, repo
 from ..logging_config import get_logger
 from . import llm, template
 from .template import monday_of
@@ -66,6 +66,13 @@ def _fitness_summary() -> dict:
         "form_flag": _form_flag(last.get("tsb")),
         "recent_weeks": weekly,
     }
+    ready = readiness.compute(metrics)
+    if ready.get("status") == "ok":
+        summary["readiness_today"] = {
+            "call": ready["call"],
+            "acwr": ready["acwr"],
+            "reason": (ready.get("reasons") or [None])[0],
+        }
     plan = repo.get_active_plan()
     if plan:
         summary["recent_compliance"] = recon.recent_compliance(plan["id"])
@@ -257,6 +264,11 @@ def weekly_checkin(*, today: date | None = None, use_llm: bool = True) -> dict:
     tsb = (repo.get_metrics() or [{}])[-1].get("tsb")
     if flag != "unknown":
         story.append(f"Form: {flag}" + (f" (TSB {tsb:+.0f})." if tsb is not None else "."))
+    ready = readiness.compute(repo.get_metrics(), today=today)
+    out["readiness"] = ready
+    ready_line = readiness.story_line(ready)
+    if ready_line:
+        story.append(ready_line)
     if rec["weeks_replanned"]:
         delta = after_h - before_h
         if abs(delta) >= 0.2:

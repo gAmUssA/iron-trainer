@@ -10,6 +10,7 @@ struct TodayView: View {
     private enum CheckinState: Equatable { case idle, running, failed(String) }
     @State private var checkinState: CheckinState = .idle
     @State private var story: [String]?
+    @State private var readiness: ReadinessToday?
 
     private var todayKey: String { Self.isoDay(.now) }
     private var tomorrowKey: String {
@@ -23,6 +24,10 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let meta = plan.meta, let race = meta.raceDay {
                     RaceCountdownHeader(name: meta.raceName ?? "Race day", raceDay: race)
+                }
+
+                if let readiness, readiness.status == "ok" {
+                    ReadinessBanner(readiness: readiness)
                 }
 
                 if let hero = todaysWorkouts.first {
@@ -88,6 +93,7 @@ struct TodayView: View {
             CheckinStorySheet(lines: story ?? [])
         }
         .task { await resumeActiveCheckin() }
+        .task { await loadReadiness() }
     }
 
     /// Same loop as the web card: the backend syncs, reconciles and replans,
@@ -137,6 +143,14 @@ struct TodayView: View {
         }
     }
 
+    /// Fetch today's readiness call. Best-effort — no banner on failure.
+    @MainActor
+    private func loadReadiness() async {
+        guard let server = auth.serverURL, let bearer = auth.bearer else { return }
+        let source = PlanNetworkSource(baseURL: server, bearer: bearer)
+        readiness = await source.readinessToday()
+    }
+
     /// The next planned session after today, for the rest-day card.
     private func nextSession() -> ItwWorkout? {
         plan.workouts
@@ -147,6 +161,55 @@ struct TodayView: View {
     static func isoDay(_ date: Date) -> String {
         let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+}
+
+/// Today's readiness call: GO HARD / GO EASY / REST with the one-line why.
+/// Same signal-not-noise rule as the web — green stays quiet-looking, amber
+/// and red draw the eye.
+private struct ReadinessBanner: View {
+    let readiness: ReadinessToday
+
+    private var label: String {
+        switch readiness.call {
+        case "hard": "GO HARD"
+        case "easy": "GO EASY"
+        case "rest": "REST"
+        default: (readiness.call ?? "").uppercased()
+        }
+    }
+
+    private var tint: Color {
+        switch readiness.level {
+        case "red": .red
+        case "amber": .orange
+        default: .green
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .font(.caption.weight(.bold))
+                .monospaced()
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(tint.opacity(0.16), in: Capsule())
+                .foregroundStyle(tint)
+            Text(readiness.reasons.first ?? "")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(tint.opacity(readiness.level == "green" ? 0 : 0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Today's readiness: \(label). \(readiness.reasons.first ?? "")")
     }
 }
 
