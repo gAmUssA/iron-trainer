@@ -11,12 +11,14 @@ TODAY = date.today()
 
 
 def _metric_rows(n_days: int) -> list[dict]:
+    """A series ending TODAY — rebuild_metrics(end=today) always emits a row
+    for today, so the window math must be exercised against that shape."""
     return [
         {
             "date": (TODAY - timedelta(days=ago)).isoformat(),
             "tss": 50.0, "ctl": 60.0, "atl": 55.0, "tsb": 5.0,
         }
-        for ago in range(n_days, 0, -1)
+        for ago in range(n_days - 1, -1, -1)
     ]
 
 
@@ -26,8 +28,10 @@ def test_pmc_defaults_to_recent_window(monkeypatch):
         body = c.get("/api/metrics/pmc").json()
         assert body["total_days"] == 400
         assert body["window_days"] == 180
+        # Inclusive of today: exactly 180 calendar days, today-179 .. today.
         assert len(body["days"]) == 180
-        assert body["days"][0]["date"] >= (TODAY - timedelta(days=180)).isoformat()
+        assert body["days"][0]["date"] == (TODAY - timedelta(days=179)).isoformat()
+        assert body["days"][-1]["date"] == TODAY.isoformat()
 
 
 def test_pmc_zero_means_full_history(monkeypatch):

@@ -16,10 +16,13 @@ DEFAULT_WINDOW_DAYS = 180
 
 
 def _window_cutoff(days: int) -> str | None:
-    """ISO date lower bound for a `days` window; None means unbounded (all)."""
+    """ISO date lower bound for a `days` window; None means unbounded (all).
+
+    The window is inclusive of today, so `days=180` spans exactly 180 calendar
+    days: today-179 .. today (the metrics series includes a row for today)."""
     if days <= 0:
         return None
-    return (date.today() - timedelta(days=days)).isoformat()
+    return (date.today() - timedelta(days=days - 1)).isoformat()
 
 
 @router.get("/metrics/pmc")

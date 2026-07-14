@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   DEFAULT_CHART_DAYS,
@@ -102,15 +102,30 @@ export default function App() {
   }, [pmcRange, trendsRange]);
 
   // Range changes refetch only the affected series — no full dashboard reload.
+  // Sequence counters drop out-of-order responses: rapid 3m → All → 6m clicks
+  // must not let a slow earlier request overwrite the latest selection.
+  const pmcReq = useRef(0);
+  const trendsReq = useRef(0);
   const changePmcRange = useCallback((days: number) => {
     setPmcRange(days);
+    const seq = ++pmcReq.current;
     api.pmc(days)
-      .then((r) => { setPmc(r.days); setPmcTotal(r.total_days); })
+      .then((r) => {
+        if (seq !== pmcReq.current) return; // stale response
+        setPmc(r.days);
+        setPmcTotal(r.total_days);
+      })
       .catch((e) => setError(String(e)));
   }, []);
   const changeTrendsRange = useCallback((days: number) => {
     setTrendsRange(days);
-    api.trends(days).then(setTrends).catch((e) => setError(String(e)));
+    const seq = ++trendsReq.current;
+    api.trends(days)
+      .then((t) => {
+        if (seq !== trendsReq.current) return; // stale response
+        setTrends(t);
+      })
+      .catch((e) => setError(String(e)));
   }, []);
 
   // Post-action refreshes (sync, save, plan changes) are fire-and-forget from the
