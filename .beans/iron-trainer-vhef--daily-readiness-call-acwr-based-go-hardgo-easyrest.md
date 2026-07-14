@@ -5,7 +5,7 @@ status: completed
 type: feature
 priority: high
 created_at: 2026-07-14T20:10:49Z
-updated_at: 2026-07-14T21:15:21Z
+updated_at: 2026-07-14T21:47:32Z
 ---
 
 As an athlete I want a daily readiness call (go hard / go easy / rest) computed from my own training history, so I know whether to push or back off today.
@@ -24,3 +24,7 @@ As an athlete I want a daily readiness call (go hard / go easy / rest) computed 
 ## Summary of Changes
 
 Shipped ACWR-based daily readiness call. New pure module backend/app/readiness.py (7d/28d rolling ACWR ending yesterday, TSB and hard-day-streak modifiers, staleness guard, insufficient-data honesty). GET /api/metrics/readiness/today; weekly check-in narrates the call and exposes structured readiness; planner LLM context carries readiness_today with a hard rule against scheduling key sessions on rest/easy days. Web TodayCall banner + iOS Today ReadinessBanner (signal-not-noise styling). Verified: 13 tests, live demo backend, Playwright web check, simulator end-to-end via deep-link pairing. ADR 0016.
+
+## TestFlight
+
+Build 0.1.0 (202607141745) uploaded to App Store Connect 2026-07-14 — first beta carrying the Today-view ReadinessBanner. Verified CFBundleVersion inside the uploaded IPA.
