@@ -176,7 +176,11 @@ def generate_week_workouts(week: dict, profile: dict, context: dict) -> list[dic
         "form_flag is 'fatigued' (very negative TSB), cut intensity and volume and "
         "favor recovery; if they've been under-completing (low completion_rate or "
         "load_ratio < 1), ease the progression; if 'fresh' and compliant, you may "
-        "progress. Output via the tool."
+        "progress. When readiness_today is present, respect it: a 'rest' or 'easy' "
+        "call (acute:chronic load ratio too high, or deep fatigue) means the next "
+        "1-2 days must be recovery or easy Z1-Z2 work — never schedule a key "
+        "session against it, and keep any weekly ramp near +10% or less. "
+        "Output via the tool."
     )
     hr = zones.hr_zones(profile.get("threshold_hr"), profile.get("max_hr"))
     user = (

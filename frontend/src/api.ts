@@ -188,6 +188,20 @@ export interface Readiness {
   note: string;
 }
 
+/** Daily readiness call from acute:chronic load (go hard / go easy / rest). */
+export interface ReadinessToday {
+  status: "ok" | "insufficient_data";
+  call: "hard" | "easy" | "rest" | null;
+  level: "green" | "amber" | "red" | null;
+  acwr?: number;
+  acute_7d?: number;
+  chronic_weekly?: number;
+  tsb?: number | null;
+  ctl?: number | null;
+  hard_day_streak?: number;
+  reasons: string[];
+}
+
 export interface SyncResult {
   fetched: number;
   upserted: number;
@@ -476,6 +490,7 @@ export const api = {
   weekly: () => getJSON<{ weeks: WeekVolume[] }>("/api/metrics/weekly"),
   trends: () => getJSON<Trends>("/api/metrics/trends"),
   readiness: () => getJSON<Readiness>("/api/metrics/readiness"),
+  readinessToday: () => getJSON<ReadinessToday>("/api/metrics/readiness/today"),
   races: () => getJSON<{ races: Race[] }>("/api/races"),
   setRace: (body: { race_id?: number; name?: string; race_date?: string; distance?: string }) =>
     send<{ race: { name: string; date: string } }>("/api/athlete/race", "PUT", body),
