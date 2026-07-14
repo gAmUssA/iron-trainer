@@ -1,11 +1,11 @@
 ---
 # iron-trainer-vhef
 title: 'Daily readiness call: ACWR-based go-hard/go-easy/rest'
-status: in-progress
+status: completed
 type: feature
 priority: high
 created_at: 2026-07-14T20:10:49Z
-updated_at: 2026-07-14T20:30:03Z
+updated_at: 2026-07-14T21:15:21Z
 ---
 
 As an athlete I want a daily readiness call (go hard / go easy / rest) computed from my own training history, so I know whether to push or back off today.
