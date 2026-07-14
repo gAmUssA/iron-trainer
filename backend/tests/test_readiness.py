@@ -117,7 +117,7 @@ def test_today_excluded_from_window():
 def test_story_line_formats_call():
     out = readiness.compute(_flat(400), today=TODAY)
     line = readiness.story_line(out)
-    assert line.startswith("Today's call: HARD — ")
+    assert line.startswith("Today's call: GO HARD — ")
 
 
 def test_checkin_story_includes_readiness_call(monkeypatch):
@@ -143,7 +143,7 @@ def test_checkin_story_includes_readiness_call(monkeypatch):
         assert r["status"] == "ok"
         assert r["readiness"]["status"] == "ok"
         assert r["readiness"]["call"] == "hard"
-        assert any(line.startswith("Today's call: HARD") for line in r["story"])
+        assert any(line.startswith("Today's call: GO HARD") for line in r["story"])
 
 
 def test_endpoint_returns_readiness():

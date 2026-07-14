@@ -80,7 +80,9 @@ export default function App() {
       api.weekly(),
       api.trends(),
       api.readiness(),
-      api.readinessToday(),
+      // Best-effort: the banner is optional garnish — a transient failure (or
+      // an older backend without the endpoint) must not reject the whole load.
+      api.readinessToday().catch(() => null),
       api.plan(),
       api.compliance(),
     ]);

@@ -157,10 +157,15 @@ def compute(metrics_rows: list[dict], *, today: date | None = None) -> dict:
     }
 
 
+# User-facing labels — keep in sync with the web/iOS pill copy.
+_CALL_LABELS = {"hard": "GO HARD", "easy": "GO EASY", "rest": "REST"}
+
+
 def story_line(r: dict) -> str | None:
     """One check-in story sentence, or None when there's nothing worth saying."""
     if r.get("status") != "ok":
         return None
-    call = str(r.get("call") or "").upper()
+    call = str(r.get("call") or "")
+    label = _CALL_LABELS.get(call, call.upper())
     reason = (r.get("reasons") or [""])[0]
-    return f"Today's call: {call} — {reason}"
+    return f"Today's call: {label} — {reason}"
