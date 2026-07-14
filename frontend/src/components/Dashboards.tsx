@@ -15,6 +15,7 @@ import type { PmcDay, Readiness, Trends, WeekVolume } from "../api";
 import { pace100 } from "../api";
 import { useUnits, paceInUnit } from "../units";
 import { useTheme } from "../theme";
+import { RangePicker } from "./RangePicker";
 
 // Sport / metric colors are vivid enough for both themes.
 const COLORS = { swim: "#38bdf8", bike: "#ffb454", run: "#4ade80", ctl: "#4ade80", atl: "#f87171", tsb: "#38bdf8" };
@@ -36,9 +37,28 @@ function useChart() {
 }
 
 // ── Performance Management Chart ──────────────────────────────────────────────
-export function PmcChart({ days }: { days: PmcDay[] }) {
+export function PmcChart({
+  days, range, onRange,
+}: {
+  days: PmcDay[]; range?: number; onRange?: (days: number) => void;
+}) {
   const ch = useChart();
-  if (!days.length) return null;
+  const picker = range !== undefined && onRange ? <RangePicker value={range} onChange={onRange} /> : null;
+  if (!days.length) {
+    // History exists outside the window (the caller only renders this card
+    // when there's data at all) — keep the picker reachable so "All" works.
+    return (
+      <div className="card" id="tour-pmc">
+        <div className="chart-head">
+          <div>
+            <div className="card-title">Fitness &amp; Form</div>
+            <div className="card-sub">No training in this window</div>
+          </div>
+          {picker}
+        </div>
+      </div>
+    );
+  }
   const last = days[days.length - 1];
   const tsb = Math.round(last.tsb);
   return (
@@ -48,6 +68,7 @@ export function PmcChart({ days }: { days: PmcDay[] }) {
           <div className="card-title">Fitness &amp; Form</div>
           <div className="card-sub">Performance Management Chart — CTL is fitness, ATL is fatigue, TSB is form</div>
         </div>
+        {picker}
         <div className="kpi-legend">
           <span className="kpi"><span className="sw" style={{ background: COLORS.ctl }} />Fitness <span className="val">{Math.round(last.ctl)}</span></span>
           <span className="kpi"><span className="sw" style={{ background: COLORS.atl }} />Fatigue <span className="val">{Math.round(last.atl)}</span></span>

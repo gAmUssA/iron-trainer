@@ -39,3 +39,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0014](0014-weekly-checkin.md) | Weekly Check-in: one-tap adaptive loop (sync → reconcile → replan, narrated) | Accepted |
 | [0015](0015-async-jobs.md) | Async background jobs for Strava/Claude operations (DB-tracked, no broker) | Accepted |
 | [0016](0016-daily-readiness-call.md) | Daily readiness call: ACWR-based go hard / go easy / rest | Accepted |
+| [0017](0017-chart-time-windows.md) | Backend-driven time windows for charts (PMC, trends) | Accepted |

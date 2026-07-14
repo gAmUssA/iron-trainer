@@ -162,7 +162,17 @@ export interface Trends {
   Run: { date: string; pace: number; hr: number | null; ef: number | null }[];
   Swim: { date: string; pace: number; hr: number | null }[];
   insights: TrendInsights;
+  window_days?: number;
 }
+
+/** Chart time windows, in days; 0 = full history. Backend default is 180. */
+export const CHART_RANGES = [
+  { days: 90, label: "3m" },
+  { days: 180, label: "6m" },
+  { days: 365, label: "1y" },
+  { days: 0, label: "All" },
+] as const;
+export const DEFAULT_CHART_DAYS = 180;
 
 export interface Leg {
   seconds: number;
@@ -486,9 +496,11 @@ export const api = {
   disconnect: () =>
     send<{ deauthorized: boolean; deleted_activities: number; deleted_metrics: number; message: string }>(
       "/api/strava/disconnect", "POST"),
-  pmc: () => getJSON<{ days: PmcDay[] }>("/api/metrics/pmc"),
+  pmc: (days = DEFAULT_CHART_DAYS) =>
+    getJSON<{ days: PmcDay[]; window_days: number; total_days: number }>(
+      `/api/metrics/pmc?days=${days}`),
   weekly: () => getJSON<{ weeks: WeekVolume[] }>("/api/metrics/weekly"),
-  trends: () => getJSON<Trends>("/api/metrics/trends"),
+  trends: (days = DEFAULT_CHART_DAYS) => getJSON<Trends>(`/api/metrics/trends?days=${days}`),
   readiness: () => getJSON<Readiness>("/api/metrics/readiness"),
   readinessToday: () => getJSON<ReadinessToday>("/api/metrics/readiness/today"),
   races: () => getJSON<{ races: Race[] }>("/api/races"),

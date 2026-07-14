@@ -2,19 +2,37 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from .. import dashboards, insights, readiness, repo
 
 router = APIRouter(prefix="/api", tags=["analytics"])
 
+# Charts default to a recent window — a bulk archive import can hold years of
+# daily rows, and shipping them all on every dashboard load helps nobody.
+DEFAULT_WINDOW_DAYS = 180
+
+
+def _window_cutoff(days: int) -> str | None:
+    """ISO date lower bound for a `days` window; None means unbounded (all)."""
+    if days <= 0:
+        return None
+    return (date.today() - timedelta(days=days)).isoformat()
+
 
 @router.get("/metrics/pmc")
-def pmc() -> dict:
-    """Performance Management Chart: CTL (fitness), ATL (fatigue), TSB (form)."""
-    return {"days": repo.get_metrics()}
+def pmc(days: int = Query(DEFAULT_WINDOW_DAYS, ge=0, le=3660)) -> dict:
+    """Performance Management Chart: CTL (fitness), ATL (fatigue), TSB (form).
+
+    `days` bounds the returned series (0 = full history)."""
+    rows = repo.get_metrics()
+    total = len(rows)
+    cutoff = _window_cutoff(days)
+    if cutoff:
+        rows = [r for r in rows if str(r["date"]) >= cutoff]
+    return {"days": rows, "window_days": days, "total_days": total}
 
 
 @router.get("/metrics/weekly")
@@ -24,10 +42,14 @@ def weekly(weeks: int = 16) -> dict:
 
 
 @router.get("/metrics/trends")
-def trends() -> dict:
+def trends(days: int = Query(DEFAULT_WINDOW_DAYS, ge=0, le=3660)) -> dict:
     """Per-sport progression points plus derived insights: rolling trendlines,
     improving/declining verdicts, weekly intensity mix, PRs, the CTL race-day
-    trajectory, and data freshness."""
+    trajectory, and data freshness.
+
+    `days` windows only the returned chart points (0 = full history); insights
+    and verdicts are always derived from the complete record so a narrow
+    window can't flip a verdict or lose a PR."""
     activities = repo.list_activities()
     sport_points = dashboards.sport_trends(activities)
     race = repo.effective_race()
@@ -35,10 +57,14 @@ def trends() -> dict:
         race_date = date.fromisoformat(str(race.get("date"))[:10])
     except (ValueError, TypeError):
         race_date = None
-    return {
-        **sport_points,
-        "insights": insights.build(activities, sport_points, repo.get_metrics(), race_date),
-    }
+    built = insights.build(activities, sport_points, repo.get_metrics(), race_date)
+    cutoff = _window_cutoff(days)
+    if cutoff:
+        sport_points = {
+            sport: [p for p in pts if str(p["date"]) >= cutoff]
+            for sport, pts in sport_points.items()
+        }
+    return {**sport_points, "insights": built, "window_days": days}
 
 
 @router.get("/metrics/readiness/today")
