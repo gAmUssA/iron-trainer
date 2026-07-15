@@ -48,11 +48,13 @@ public final class HrZones {
         }
         List<Map<String, Object>> zones = new ArrayList<>();
         for (Band b : bands) {
-            long hi = Math.round(base * b.hi());
+            // Math.rint = ties-to-even, matching Python round() (banker's
+            // rounding) exactly on X.5 inputs — required for byte parity.
+            long hi = (long) Math.rint(base * b.hi());
             if (maxHr != null && maxHr > 0) {
                 hi = Math.min(hi, maxHr);
             }
-            long lo = Math.max(1, Math.round(base * b.lo()));
+            long lo = Math.max(1, (long) Math.rint(base * b.lo()));
             lo = Math.min(lo, hi);
             Map<String, Object> z = new LinkedHashMap<>();
             z.put("zone", b.zone());

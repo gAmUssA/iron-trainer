@@ -20,10 +20,19 @@ class HrZonesTest {
     void lthrBands() {
         Map<String, Object> t = HrZones.hrZones(160, null);
         assertEquals("lthr", t.get("basis"));
-        assertEquals(Math.round(160 * 0.81), zone(t, "Z2").get("low"));
-        assertEquals(Math.round(160 * 0.89), zone(t, "Z2").get("high"));
-        assertEquals(Math.round(160 * 0.94), zone(t, "Z4").get("low"));
-        assertEquals(Math.round(160 * 0.99), zone(t, "Z4").get("high"));
+        assertEquals((long) Math.rint(160 * 0.81), zone(t, "Z2").get("low"));
+        assertEquals((long) Math.rint(160 * 0.89), zone(t, "Z2").get("high"));
+        assertEquals((long) Math.rint(160 * 0.94), zone(t, "Z4").get("low"));
+        assertEquals((long) Math.rint(160 * 0.99), zone(t, "Z4").get("high"));
+    }
+
+    @Test
+    void bankerRoundingOnTies() {
+        // threshold_hr=45, Z3 low = 45*0.90 = 40.5 exactly. Python round()
+        // (banker's, ties-to-even) → 40, NOT half-up 41. Parity requires
+        // Math.rint, not Math.round (Copilot review, PR #39).
+        Map<String, Object> t = HrZones.hrZones(45, null);
+        assertEquals(40L, zone(t, "Z3").get("low"));
     }
 
     @Test
