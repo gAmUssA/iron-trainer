@@ -7,10 +7,12 @@ on:
   push:
     paths:
       - "backend-v2/**"
+      - "backend/contract_tests/**"
       - ".github/workflows/backend-v2.yml"
   pull_request:
     paths:
       - "backend-v2/**"
+      - "backend/contract_tests/**"
       - ".github/workflows/backend-v2.yml"
 
 jobs:
@@ -72,3 +74,24 @@ jobs:
           # 124 = timeout killed a healthy running server; anything else
           # (including a clean instant exit) is a startup failure.
           test "$code" -eq 124
+
+  parity:
+    # The strangler gate: FastAPI and backend-v2 against ONE Postgres must
+    # agree on the export contract (parity module runs when V2_BASE_URL set).
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv --python 3.12
+      - run: uv pip install -e ".[dev]"
+      - name: Parity run (both backends, one Postgres)
+        run: ./contract_tests/run_parity.sh
