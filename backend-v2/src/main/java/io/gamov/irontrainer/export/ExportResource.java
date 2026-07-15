@@ -22,6 +22,12 @@ public class ExportResource {
     @Inject
     ItwExport itw;
 
+    @Inject
+    ZwoExport zwo;
+
+    @Inject
+    FitExport fit;
+
     @GET
     @Path("/workout/{id}.itw")
     @Produces("application/json")
@@ -36,5 +42,41 @@ public class ExportResource {
         return Response.ok(itw.workoutItw(w, a))
                 .header("Content-Disposition", "attachment; filename=\"workout-" + id + ".itw\"")
                 .build();
+    }
+
+    @GET
+    @Path("/workout/{id}.zwo")
+    @Produces("application/xml")
+    public Response workoutZwo(@PathParam("id") int id) {
+        int athleteId = current.require();
+        PlannedWorkout w = owned(id, athleteId);
+        Athlete a = Athlete.findById(athleteId);
+        String xml = zwo.workoutZwo(w, a == null ? null : a.ftp);
+        if (xml == null) {
+            throw new NotFoundException("No ZWO for this workout (needs Bike/Brick + FTP + power steps)");
+        }
+        return Response.ok(xml)
+                .header("Content-Disposition", "attachment; filename=\"workout-" + id + ".zwo\"")
+                .build();
+    }
+
+    @GET
+    @Path("/workout/{id}.fit")
+    @Produces("application/octet-stream")
+    public Response workoutFit(@PathParam("id") int id) {
+        int athleteId = current.require();
+        PlannedWorkout w = owned(id, athleteId);
+        return Response.ok(fit.workoutFit(w))
+                .header("Content-Disposition", "attachment; filename=\"workout-" + id + ".fit\"")
+                .build();
+    }
+
+    private PlannedWorkout owned(int id, int athleteId) {
+        PlannedWorkout w = PlannedWorkout
+                .find("id = ?1 and athleteId = ?2", id, athleteId).firstResult();
+        if (w == null) {
+            throw new NotFoundException();
+        }
+        return w;
     }
 }
