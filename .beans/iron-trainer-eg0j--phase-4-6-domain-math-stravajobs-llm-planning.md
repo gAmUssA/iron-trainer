@@ -1,10 +1,11 @@
 ---
 # iron-trainer-eg0j
 title: 'Phase 4-6: domain math, Strava+jobs, LLM planning'
-status: draft
+status: in-progress
 type: epic
+priority: normal
 created_at: 2026-07-15T18:21:04Z
-updated_at: 2026-07-15T18:21:04Z
+updated_at: 2026-07-15T22:31:33Z
 parent: iron-trainer-37md
 ---
 
