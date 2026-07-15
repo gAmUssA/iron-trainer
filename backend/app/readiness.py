@@ -151,9 +151,13 @@ def compute(metrics_rows: list[dict], *, today: date | None = None,
     # rule: silent unless something is genuinely off.
     rec_flags = _recovery_flags(recovery or [], today)
     if rec_flags:
-        reasons.extend(rec_flags)
         if call == "hard":
+            # The veto leads: a GO EASY pill must not open with "prime day
+            # for a key session" — the load view becomes supporting context.
             call, level = "easy", "amber"
+            reasons = rec_flags + reasons
+        else:
+            reasons.extend(rec_flags)
 
     return {
         "status": "ok",

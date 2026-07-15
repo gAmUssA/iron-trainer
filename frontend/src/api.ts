@@ -212,6 +212,18 @@ export interface ReadinessToday {
   reasons: string[];
 }
 
+/** One ingested day of recovery data (Health Auto Export). */
+export interface RecoveryDay {
+  date: string;
+  sleep_h: number | null;
+  deep_h: number | null;
+  rem_h: number | null;
+  awake_h: number | null;
+  hrv_ms: number | null;
+  rhr_bpm: number | null;
+  weight_kg: number | null;
+}
+
 export interface SyncResult {
   fetched: number;
   upserted: number;
@@ -546,6 +558,7 @@ export const api = {
   raceDayNutrition: () => getJSON<RaceDayPlan>("/api/nutrition/race-day"),
   regenerateRaceDayNutrition: () =>
     viaJob<RaceDayPlan>(() => send("/api/nutrition/race-day/regenerate?async=1", "POST")),
+  recovery: (days = 14) => getJSON<{ days: RecoveryDay[] }>(`/api/health/recovery?days=${days}`),
   ingestToken: () =>
     send<{ token: string; header: string; path: string }>("/api/device/ingest-token", "POST"),
   job: (id: number) => getJSON<JobInfo>(`/api/jobs/${id}`),

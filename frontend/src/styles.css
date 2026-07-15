@@ -686,3 +686,17 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
   font-family: var(--mono); font-size: 12px; background: rgba(127,127,127,0.12);
   padding: 2px 6px; border-radius: 5px; word-break: break-all;
 }
+
+/* ── Recovery tiles ─────────────────────────────────────────────────────── */
+.recovery-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 12px; }
+@media (max-width: 680px) { .recovery-tiles { grid-template-columns: 1fr; } }
+.recovery-tile { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.recovery-tile .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.recovery-tile .value { font-family: var(--mono); font-size: 26px; font-weight: 600; margin-top: 4px; }
+.recovery-tile .value .unit { font-size: 13px; color: var(--muted); margin-left: 3px; }
+.recovery-tile .tile-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.recovery-tile .delta { font-size: 12px; font-weight: 600; margin-top: 4px; }
+.recovery-tile .delta.up { color: var(--ok); }
+.recovery-tile .delta.down { color: var(--bad); }
+:root[data-theme="light"] .recovery-tile .delta.up { color: #15803d; }
+.recovery-tile .spark { margin-top: 6px; }
