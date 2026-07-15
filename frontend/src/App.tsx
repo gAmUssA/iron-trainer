@@ -9,6 +9,7 @@ import {
   type PlanResponse,
   type Readiness,
   type ReadinessToday,
+  type RecoveryDay,
   type Trends,
   type WeekCompliance,
   type WeekVolume,
@@ -18,6 +19,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { NutritionView } from "./components/NutritionView";
 import { PlanView } from "./components/PlanView";
 import { RaceCard } from "./components/RaceCard";
+import { RecoveryCard } from "./components/RecoveryCard";
 import { CheckinCard } from "./components/CheckinCard";
 import { ConnectCard, HealthIngestCard, ProfileEditor, ZonesCard } from "./components/Setup";
 import { TestsView } from "./components/TestsView";
@@ -62,6 +64,7 @@ export default function App() {
   const [trends, setTrends] = useState<Trends | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [todayCall, setTodayCall] = useState<ReadinessToday | null>(null);
+  const [recovery, setRecovery] = useState<RecoveryDay[]>([]);
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [compliance, setCompliance] = useState<WeekCompliance[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +81,7 @@ export default function App() {
   }, []);
 
   const loadData = useCallback(async () => {
-    const [a, p, w, t, r, rt, pl, comp] = await Promise.all([
+    const [a, p, w, t, r, rt, rec, pl, comp] = await Promise.all([
       api.athlete(),
       api.pmc(pmcRange),
       api.weekly(),
@@ -87,6 +90,8 @@ export default function App() {
       // Best-effort: the banner is optional garnish — a transient failure (or
       // an older backend without the endpoint) must not reject the whole load.
       api.readinessToday().catch(() => null),
+      // Optional pipeline: absence of recovery data must not break the load.
+      api.recovery().catch(() => ({ days: [] as RecoveryDay[] })),
       api.plan(),
       api.compliance(),
     ]);
@@ -97,6 +102,7 @@ export default function App() {
     setTrends(t);
     setReadiness(r);
     setTodayCall(rt);
+    setRecovery(rec.days);
     setPlan(pl);
     setCompliance(comp.weeks);
   }, [pmcRange, trendsRange]);
@@ -271,6 +277,7 @@ export default function App() {
                 <ReadinessCard readiness={readiness} raceName={status.race.name} />
               )}
             </div>
+            {recovery.length > 0 && <RecoveryCard days={recovery} />}
             {plan?.plan && <CheckinCard onDone={safeLoad} />}
             {pmcTotal > 0 ? (
               <PmcChart days={pmc} range={pmcRange} onRange={changePmcRange} />
