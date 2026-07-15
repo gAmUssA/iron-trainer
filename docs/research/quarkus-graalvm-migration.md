@@ -60,3 +60,14 @@ official FIT SDK, Viktor's home-turf ecosystem (+ DevRel content value).
 Lost/risked: rewrite risk vs working product, Python LLM/numpy conveniences
 (keep scripts/ scratch area), double maintenance during strangle, 194 tests
 re-earned in JUnit.
+
+## Decision note (Viktor, 2026-07-15)
+
+**LangChain4j is the mandated LLM integration layer** for the migration —
+use quarkus-langchain4j-anthropic (1.9.2+: AI Service interfaces, POJO
+structured outputs, build-time native-image wiring), NOT the raw Anthropic
+Java SDK. The official com.anthropic:anthropic-java SDK remains the sanctioned
+FALLBACK for the one plan-generation call if LangChain4j's structured output
+turns out to be prompt-coaxed rather than schema-enforced — that check is
+spike item (2): assert the wire request uses Anthropic's native strict-schema
+path before trusting the abstraction.
