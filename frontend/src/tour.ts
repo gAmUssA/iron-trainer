@@ -21,7 +21,7 @@ const ALL_STEPS: WalkthroughStep[] = [
   {
     element: "#tour-nav",
     title: "Your screens",
-    text: "Dashboard (today's readiness & weekly check-in), Training Plan, Nutrition, Fitness and Settings. Fitness gathers your race-readiness projection, the PMC fitness/form chart, sport trends and fitness tests — the same TrainingPeaks CTL/ATL/TSB model, plus your projected 70.3 finish and cut-off margins. Explore each after the tour.",
+    text: "Dashboard (today's call, recovery & weekly check-in), Training Plan, Nutrition, Fitness and Settings. Fitness gathers your race-readiness projection, the PMC fitness/form chart, sport trends and fitness tests — the same TrainingPeaks CTL/ATL/TSB model, plus your projected 70.3 finish and cut-off margins. Explore each after the tour.",
     position: "bottom",
   },
   {
