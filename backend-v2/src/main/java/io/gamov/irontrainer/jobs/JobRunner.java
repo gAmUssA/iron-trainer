@@ -48,15 +48,19 @@ public class JobRunner {
             });
             LOG.infof("Job succeeded: id=%d (%dms)", jobId, elapsedMs(startNanos));
         } catch (Exception e) {
+            // toString() over getMessage(): never null (messageless exceptions
+            // like NPE would persist a null error) and includes the class.
+            String detail = e.toString();
             transition(jobId, j -> {
                 j.status = "failed";
-                j.error = e.getMessage();
+                j.error = detail;
                 j.finishedAt = OffsetDateTime.now().toString();
             });
-            // Job failures are the load-bearing observability event — WARN with
-            // the cause; the exception is expected control flow, not a crash.
-            LOG.warnf("Job failed: id=%d (%dms): %s", jobId, elapsedMs(startNanos),
-                    e.getMessage());
+            // Load-bearing observability event — WARN WITH the throwable so the
+            // stack trace reaches the logs; the exception is expected control
+            // flow (job failed), not an app crash.
+            LOG.warnf(e, "Job failed: id=%d (%dms): %s", jobId,
+                    elapsedMs(startNanos), detail);
         }
     }
 
