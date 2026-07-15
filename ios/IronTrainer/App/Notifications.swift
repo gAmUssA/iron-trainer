@@ -58,8 +58,13 @@ enum Notifications {
     /// re-scheduled on every plan refresh — no server, no background fetch.
     static func rescheduleMorningBriefs(from plan: TrainingPlan) async {
         await cancelMorningBriefs()
-        guard UserDefaults.standard.bool(forKey: briefEnabledKey),
-              await ensureAuthorized() else { return }
+        guard UserDefaults.standard.bool(forKey: briefEnabledKey) else { return }
+        guard await ensureAuthorized() else {
+            // Permission revoked in system Settings: flip the stored toggle so
+            // the in-app switch doesn't claim briefs that can't be delivered.
+            UserDefaults.standard.set(false, forKey: briefEnabledKey)
+            return
+        }
 
         let center = UNUserNotificationCenter.current()
         let cal = Calendar.current

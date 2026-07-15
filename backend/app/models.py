@@ -195,7 +195,7 @@ class Checkin(SQLModel, table=True):
     athlete_id: int = Field(foreign_key="athlete.id", ondelete="CASCADE", index=True)
     date: str  # ISO day the check-in ran
     created_at: str | None = None
-    inputs_json: str | None = None    # subjective: energy/sleep/soreness/stress 1-5 + note
+    inputs_json: str | None = None    # subjective: energy/sleep/body/stress 1-5 + note
     story_json: str | None = None     # the narrated story lines
     readiness_json: str | None = None  # readiness snapshot at check-in time
 

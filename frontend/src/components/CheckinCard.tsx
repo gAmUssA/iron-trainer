@@ -76,7 +76,9 @@ export function CheckinCard({ onDone }: { onDone: () => void }) {
                 {[1, 2, 3, 4, 5].map((v) => (
                   <button
                     key={v}
+                    type="button"
                     className={`feel-dot${feel[f.key] === v ? " active" : ""}`}
+                    aria-label={`${f.label} ${v} of 5`}
                     aria-pressed={feel[f.key] === v}
                     onClick={() =>
                       setFeel((prev) => ({
@@ -100,10 +102,10 @@ export function CheckinCard({ onDone }: { onDone: () => void }) {
             onChange={(e) => setNote(e.target.value)}
           />
           <div className="feel-actions">
-            <button className="btn" onClick={() => void run(undefined)}>
+            <button type="button" className="btn" onClick={() => void run(undefined)}>
               Skip
             </button>
-            <button className="btn primary" onClick={submitWithFeel}>
+            <button type="button" className="btn primary" onClick={submitWithFeel}>
               Check in
             </button>
           </div>

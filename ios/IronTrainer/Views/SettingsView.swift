@@ -62,7 +62,7 @@ struct SettingsView: View {
                 Section {
                     Toggle("Weekly check-in reminder", isOn: $checkinReminder)
                         .onChange(of: checkinReminder) { _, on in
-                            Task {
+                            Task { @MainActor in
                                 if on {
                                     let ok = await Notifications.scheduleCheckinReminder()
                                     if !ok { checkinReminder = false }  // permission denied
@@ -73,7 +73,7 @@ struct SettingsView: View {
                         }
                     Toggle("Morning brief", isOn: $morningBrief)
                         .onChange(of: morningBrief) { _, on in
-                            Task {
+                            Task { @MainActor in
                                 if on {
                                     guard await Notifications.ensureAuthorized() else {
                                         morningBrief = false

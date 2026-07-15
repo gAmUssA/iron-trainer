@@ -53,7 +53,8 @@ def checkin(
 ) -> dict:
     """One-tap weekly check-in: sync → reconcile → replan next week → test-due
     nudges, with a narrative `story` of what changed and why. Synchronous by
-    default (the iOS app depends on it); the web app passes ?async=1.
+    default for API simplicity; both web and iOS clients pass ?async=1 and
+    poll the job home.
 
     Optional body carries the athlete's subjective inputs (energy/sleep/body/
     stress 1-5, higher is better, plus a note) for feel-vs-data reconciliation."""
