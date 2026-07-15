@@ -25,6 +25,7 @@ from .metrics import Thresholds
 from .models import (
     Activity,
     Athlete,
+    Checkin,
     DeviceToken,
     FitnessTestResult,
     Job,
@@ -656,6 +657,40 @@ def _now_iso() -> str:
 
 
 # ── Background jobs ───────────────────────────────────────────────────────────
+
+
+def save_checkin(*, day: str, inputs: dict | None, story: list[str],
+                 readiness: dict | None) -> None:
+    aid = current_athlete_id()
+    with get_session() as s:
+        s.add(Checkin(
+            athlete_id=aid,
+            date=day,
+            created_at=_now_iso(),
+            inputs_json=json.dumps(inputs) if inputs else None,
+            story_json=json.dumps(story),
+            readiness_json=json.dumps(readiness, default=str) if readiness else None,
+        ))
+
+
+def recent_checkins(limit: int = 6) -> list[dict]:
+    """Newest-first past check-ins with parsed JSON fields — the compounding
+    memory the next check-in reads before judging this week."""
+    aid = current_athlete_id()
+    with get_session() as s:
+        rows = s.exec(
+            select(Checkin).where(Checkin.athlete_id == aid)
+            .order_by(Checkin.date.desc(), Checkin.id.desc()).limit(limit)
+        ).all()
+        out = []
+        for r in rows:
+            out.append({
+                "date": r.date,
+                "inputs": json.loads(r.inputs_json) if r.inputs_json else None,
+                "story": json.loads(r.story_json) if r.story_json else [],
+                "readiness": json.loads(r.readiness_json) if r.readiness_json else None,
+            })
+        return out
 
 
 def create_job(kind: str) -> dict:

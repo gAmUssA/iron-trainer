@@ -183,6 +183,23 @@ class FitnessTestResult(SQLModel, table=True):
     created_at: str | None = None
 
 
+class Checkin(SQLModel, table=True):
+    """One weekly check-in: what the athlete FELT plus what the system said.
+
+    The history is the value — past check-ins feed the next one's LLM context
+    so trends compound instead of resetting every week."""
+
+    __tablename__ = "checkin"
+
+    id: int | None = Field(default=None, primary_key=True)
+    athlete_id: int = Field(foreign_key="athlete.id", ondelete="CASCADE", index=True)
+    date: str  # ISO day the check-in ran
+    created_at: str | None = None
+    inputs_json: str | None = None    # subjective: energy/sleep/soreness/stress 1-5 + note
+    story_json: str | None = None     # the narrated story lines
+    readiness_json: str | None = None  # readiness snapshot at check-in time
+
+
 class Job(SQLModel, table=True):
     """A background operation (Strava sync/import, Claude plan generation, …).
 

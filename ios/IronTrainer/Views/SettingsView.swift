@@ -4,8 +4,11 @@ import SwiftUI
 /// server URL + pairing code by hand. Stores a bearer token in the Keychain.
 struct SettingsView: View {
     @EnvironmentObject private var auth: AuthModel
+    @EnvironmentObject private var model: ImportModel
     @Environment(\.dismiss) private var dismiss
     @AppStorage(DistanceUnit.storageKey) private var unit: DistanceUnit = .km
+    @AppStorage("checkinReminderEnabled") private var checkinReminder = false
+    @AppStorage(Notifications.briefEnabledKey) private var morningBrief = false
 
     @State private var serverText = ""
     @State private var code = ""
@@ -54,6 +57,40 @@ struct SettingsView: View {
                         }
                         .disabled(busy || serverText.isEmpty || code.isEmpty)
                     }
+                }
+
+                Section {
+                    Toggle("Weekly check-in reminder", isOn: $checkinReminder)
+                        .onChange(of: checkinReminder) { _, on in
+                            Task {
+                                if on {
+                                    let ok = await Notifications.scheduleCheckinReminder()
+                                    if !ok { checkinReminder = false }  // permission denied
+                                } else {
+                                    Notifications.cancelCheckinReminder()
+                                }
+                            }
+                        }
+                    Toggle("Morning brief", isOn: $morningBrief)
+                        .onChange(of: morningBrief) { _, on in
+                            Task {
+                                if on {
+                                    guard await Notifications.ensureAuthorized() else {
+                                        morningBrief = false
+                                        return
+                                    }
+                                    if let plan = model.lastPlan {
+                                        await Notifications.rescheduleMorningBriefs(from: plan)
+                                    }
+                                } else {
+                                    await Notifications.cancelMorningBriefs()
+                                }
+                            }
+                        }
+                } header: {
+                    Text("Notifications")
+                } footer: {
+                    Text("Local nudges only — check-in reminder Mondays at 8:00; morning brief daily at 6:45 with today's session, fuel, and the race countdown. Nothing runs in the background.")
                 }
 
                 Section {
