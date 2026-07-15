@@ -20,6 +20,7 @@ from .routers import (
     athlete_router,
     auth_router,
     export_router,
+    health_router,
     jobs_router,
     nutrition_router,
     plan_router,
@@ -100,6 +101,7 @@ app.include_router(races_router.router)
 app.include_router(auth_router.router)
 app.include_router(tests_router.router)
 app.include_router(jobs_router.router)
+app.include_router(health_router.router)
 
 
 @app.get("/api/health")
