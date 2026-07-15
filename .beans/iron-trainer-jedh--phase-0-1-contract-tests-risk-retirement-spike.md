@@ -1,11 +1,11 @@
 ---
 # iron-trainer-jedh
 title: 'Phase 0-1: contract tests + risk-retirement spike'
-status: in-progress
+status: completed
 type: epic
 priority: normal
 created_at: 2026-07-15T18:21:04Z
-updated_at: 2026-07-15T19:39:30Z
+updated_at: 2026-07-15T19:53:34Z
 parent: iron-trainer-37md
 ---
 
@@ -20,4 +20,8 @@ Extract black-box contract tests from the pytest suite (in-process/monkeypatched
 - [x] FIT interop: official Java SDK decodes Python files; power/HR conventions confirmed; EXPOSED probable ms-scale duration bug in Python export (bug bean iron-trainer-sqib)
 - [x] Virtual-thread JobRunner against the real job table (queued→running→succeeded, per-transition transactions)
 - [x] Native image job in backend-v2.yml (container build + binary smoke-run, gated on green tests)
-- [ ] Contract-test extraction (IN PROGRESS): black-box httpx suite in backend/contract_tests/ runnable against any BASE_URL — Python now, Quarkus later
+- [x] Contract-test extraction: 11-test black-box httpx suite (backend/contract_tests/, run_local.sh, contract CI job) — PR #33
+
+## Summary of Changes
+
+Phase 0-1 complete across PRs #30-#33: Quarkus 3.37 skeleton (REST/Panache/Flyway/Dev Services), real prod schema baseline via supabase db dump, real Athlete entity, FIT interop with the official Java SDK (found Python duration-scale bug sqib), virtual-thread JobRunner on the shared job table, native image building + smoke-running in CI against Postgres, LC4J native json_schema proven, and the 11-test black-box contract harness that validates every future vertical against both implementations.
