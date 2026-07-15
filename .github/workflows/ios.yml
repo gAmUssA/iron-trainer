@@ -1,0 +1,38 @@
+name: iOS
+
+# Separate workflow so the paths filter keeps the (10x-billed) macOS runner
+# idle unless iOS code actually changed. Simulator builds need no signing —
+# no App Store keys or profiles ever touch CI.
+on:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer" && xcodebuild -version
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build app + widgets (simulator, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project IronTrainer.xcodeproj \
+            -scheme IronTrainer \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tail -40
