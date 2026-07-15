@@ -151,11 +151,11 @@ def create_pairing_code(athlete_id: int, name: str | None = None, ttl_s: int = 6
     return {"code": code, "expires_at": expires_at, "expires_in": ttl_s}
 
 
-def create_bearer_token(name: str) -> str:
-    """Directly mint a bearer token for the current athlete (no pairing dance).
-    Used for server-to-server pushes like Health Auto Export. The plaintext
-    token is returned exactly once; only its hash is stored."""
-    aid = current_athlete_id()
+def create_bearer_token(name: str, athlete_id: int | None = None) -> str:
+    """Directly mint a bearer token (no pairing dance) for `athlete_id`, or the
+    current athlete when omitted. Used for server-to-server pushes like Health
+    Auto Export. The plaintext is returned exactly once; only its hash is stored."""
+    aid = athlete_id if athlete_id is not None else current_athlete_id()
     token = secrets.token_urlsafe(32)
     with get_session() as s:
         s.add(DeviceToken(athlete_id=aid, name=name, token_hash=_hash_token(token),

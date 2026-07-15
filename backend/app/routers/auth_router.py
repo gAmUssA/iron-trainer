@@ -75,7 +75,7 @@ def ingest_token(request: Request) -> dict:
     if authz.lower().startswith("bearer "):
         if repo.bearer_token_name(authz[7:].strip()) == repo.INGEST_TOKEN_NAME:
             raise HTTPException(403, "Ingest tokens cannot mint new tokens.")
-    token = repo.create_bearer_token(repo.INGEST_TOKEN_NAME)
+    token = repo.create_bearer_token(repo.INGEST_TOKEN_NAME, athlete_id=aid)
     log.info("Issued health-ingest token for athlete %s.", aid)
     return {"token": token, "header": f"Bearer {token}", "path": "/api/health/ingest"}
 

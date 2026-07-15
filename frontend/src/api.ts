@@ -547,7 +547,7 @@ export const api = {
   regenerateRaceDayNutrition: () =>
     viaJob<RaceDayPlan>(() => send("/api/nutrition/race-day/regenerate?async=1", "POST")),
   ingestToken: () =>
-    send<{ token: string; header: string; path: string }>("/api/device/ingest-token", "POST", {}),
+    send<{ token: string; header: string; path: string }>("/api/device/ingest-token", "POST"),
   job: (id: number) => getJSON<JobInfo>(`/api/jobs/${id}`),
   jobsSummary: () => getJSON<JobsSummary>("/api/jobs/summary"),
 };
