@@ -5,7 +5,7 @@ status: draft
 type: epic
 priority: normal
 created_at: 2026-07-15T18:21:04Z
-updated_at: 2026-07-15T21:16:48Z
+updated_at: 2026-07-15T22:14:20Z
 parent: iron-trainer-37md
 ---
 
@@ -14,3 +14,7 @@ Quarkus app: REST resources, Hibernate entities for all tables, Flyway V1 baseli
 ## Dark deploy LIVE (2026-07-15)
 
 backend-v2 on Railway: Quarkus 3.37.3 JVM, 1.755s start, prod profile, DB health UP against the shared Supabase Postgres, unauth /api/export/* → 401 (AUTH_REQUIRED=true, no default-athlete fallback). Domain: backend-v2-production-853d.up.railway.app. Gotcha log: interactive railway add auto-connected the repo and deployed the PYTHON app first (harmless idempotent alembic); fixed via source disconnect + tarball deploy from a clean dir. Remaining: strangler routing flip for /api/export/* (routing-mechanism decision pending) + repo-connected deploys (root-directory needs MCP re-auth or dashboard).
+
+## Native in production (2026-07-15)
+
+backend-v2 now runs the GRAALVM NATIVE binary on Railway: started in 0.276s (vs 1.755s JVM), health UP, unauth 401, /q/health healthcheck RE-ENABLED and passing (probe visible in the new access log). Root cause of the healthcheck saga: Railway Express/Railpack auto-builder was hijacking repo builds (ignoring railway.toml builder=DOCKERFILE) and producing containers without start.sh env derivation — forced via RAILWAY_DOCKERFILE_PATH=Dockerfile service variable. Native-image gotcha fixed en route: @ConfigProperty on a JAX-RS @Provider bakes build-time values (auth-required true-vs-false crash) → runtime ConfigProvider lookup. Observability added: HTTP access log (status+duration), auth-rejection events (never credentials), per-export INFO logs. 'Wait for CI' gating: dashboard-only setting — Viktor: tick it in backend-v2 service settings.
