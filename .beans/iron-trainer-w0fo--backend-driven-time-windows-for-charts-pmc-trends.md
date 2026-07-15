@@ -1,11 +1,11 @@
 ---
 # iron-trainer-w0fo
 title: Backend-driven time windows for charts (PMC, trends)
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-07-14T22:25:37Z
-updated_at: 2026-07-14T22:32:12Z
+updated_at: 2026-07-15T00:29:14Z
 ---
 
 Fitness & Form (PMC) and trend graphs currently fetch and render the athlete's entire history — after a bulk archive import that's years of daily rows shipped on every dashboard load. Add backend-driven windowing: range params with sane defaults on /api/metrics/pmc and /api/metrics/trends, and a range picker (3m/6m/1y/all) in the UI. Insights/verdicts keep using full history server-side; only chart point payloads are windowed.
