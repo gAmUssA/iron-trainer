@@ -5,7 +5,8 @@ status: completed
 type: task
 priority: normal
 created_at: 2026-07-15T23:10:08Z
-updated_at: 2026-07-15T23:18:09Z
+updated_at: 2026-07-15T23:32:10Z
+parent: iron-trainer-uywr
 ---
 
 Second of 3 IA-overhaul PRs (docs/research/ui-taxonomy.md). Consolidate everything that answers 'am I getting fitter / will I be ready?' onto one tab.
