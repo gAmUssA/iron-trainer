@@ -1,11 +1,11 @@
 ---
 # iron-trainer-u3zo
 title: 'Phase 2-3: Quarkus skeleton + first vertical (exports)'
-status: draft
+status: completed
 type: epic
 priority: normal
 created_at: 2026-07-15T18:21:04Z
-updated_at: 2026-07-15T22:14:20Z
+updated_at: 2026-07-15T22:28:46Z
 parent: iron-trainer-37md
 ---
 
@@ -18,3 +18,7 @@ backend-v2 on Railway: Quarkus 3.37.3 JVM, 1.755s start, prod profile, DB health
 ## Native in production (2026-07-15)
 
 backend-v2 now runs the GRAALVM NATIVE binary on Railway: started in 0.276s (vs 1.755s JVM), health UP, unauth 401, /q/health healthcheck RE-ENABLED and passing (probe visible in the new access log). Root cause of the healthcheck saga: Railway Express/Railpack auto-builder was hijacking repo builds (ignoring railway.toml builder=DOCKERFILE) and producing containers without start.sh env derivation — forced via RAILWAY_DOCKERFILE_PATH=Dockerfile service variable. Native-image gotcha fixed en route: @ConfigProperty on a JAX-RS @Provider bakes build-time values (auth-required true-vs-false crash) → runtime ConfigProvider lookup. Observability added: HTTP access log (status+duration), auth-rejection events (never credentials), per-export INFO logs. 'Wait for CI' gating: dashboard-only setting — Viktor: tick it in backend-v2 service settings.
+
+## FIRST PRODUCTION TRAFFIC (2026-07-15 22:26 UTC)
+
+Viktor's iOS plan fetch served by the native Quarkus binary: backend-v2 log shows 'Export plan.itw: athlete=2 workouts=72 plan=7' + access-log 200 (81KB), FastAPI log shows 'Export proxied to backend-v2 -> 200'. Exports vertical COMPLETE end to end: endpoints → parity gate → dark deploy → native binary → live traffic with fallback + kill-switch. Epic closed.
