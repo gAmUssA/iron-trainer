@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="200" height="48" viewBox="0 0 200 48" role="img" aria-label="Connect with Strava">
-  <rect width="200" height="48" rx="8" fill="#FC4C02"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="224" height="48" viewBox="0 0 224 48" role="img" aria-label="Connect with Strava">
+  <rect width="224" height="48" rx="8" fill="#FC4C02"/>
   <!-- Strava chevron mark (white) -->
   <g transform="translate(20 12)" fill="#FFFFFF">
     <path d="M11 0 0 21h6.4L11 12l4.6 9H22L11 0z"/>

@@ -224,7 +224,9 @@ function CtlTrajectoryCard({ pmc, traj }: { pmc: PmcDay[]; traj: NonNullable<Tre
 }
 
 // ── Personal records ──────────────────────────────────────────────────────────
-function PrCards({ prs }: { prs: Trends["insights"]["prs"] }) {
+// Exported so the Dashboard can surface it directly (it reads the same
+// trends.insights.prs the App already has in hand).
+export function PrCards({ prs }: { prs: Trends["insights"]["prs"] }) {
   const { unit } = useUnits();
   const entries: { label: string; pr: (typeof prs)[string]; fmt: (v: number) => string }[] = [
     { label: "Best bike power (≥40 min)", pr: prs.bike_best_power_40min, fmt: (v) => `${v} W` },
@@ -304,8 +306,6 @@ export function TrendsView({
         <WeeklyVolumeChart weeks={weekly} />
         <IntensityMixChart weeks={ins.intensity_weeks} />
       </div>
-
-      <PrCards prs={ins.prs} />
     </>
   );
 }
