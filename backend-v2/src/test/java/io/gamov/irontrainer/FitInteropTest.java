@@ -13,8 +13,10 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** Spike item: the official Garmin FIT SDK (Java) reads files produced by the
- * Python fit-tool exporter, preserving our custom-target conventions
- * (power raw = watts + 1000, HR raw = bpm + 100, duration ms). Plain JUnit —
+ * Python fit-tool exporter. Custom-target conventions survive byte-exact
+ * (power raw = watts + 1000, HR raw = bpm + 100). Durations do NOT follow the
+ * FIT ms scale — the Python exporter stores raw seconds (suspected bug,
+ * iron-trainer-sqib); assertions pin that current behavior. Plain JUnit —
  * no Quarkus context needed. */
 class FitInteropTest {
 

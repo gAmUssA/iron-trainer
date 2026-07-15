@@ -59,6 +59,8 @@
             <groupId>com.garmin</groupId>
             <artifactId>fit</artifactId>
             <version>21.205.0</version>
+            <!-- test-only until the exports vertical ships FIT encoding -->
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
