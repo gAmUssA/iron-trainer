@@ -1,11 +1,11 @@
 ---
 # iron-trainer-p526
 title: 'Weekly check-in: feel-vs-data reconciliation + compounding history'
-status: in-progress
+status: completed
 type: feature
 priority: high
 created_at: 2026-07-14T20:11:12Z
-updated_at: 2026-07-15T02:33:25Z
+updated_at: 2026-07-15T02:36:26Z
 parent: iron-trainer-udbc
 ---
 

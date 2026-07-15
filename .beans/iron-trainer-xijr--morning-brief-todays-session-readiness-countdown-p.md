@@ -1,11 +1,11 @@
 ---
 # iron-trainer-xijr
 title: 'Morning brief: today''s session + readiness + countdown push'
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-07-14T20:11:12Z
-updated_at: 2026-07-15T02:33:25Z
+updated_at: 2026-07-15T02:36:26Z
 parent: iron-trainer-03qt
 blocked_by:
     - iron-trainer-vhef
