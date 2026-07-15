@@ -29,14 +29,13 @@ import { useTheme } from "./theme";
 import { useUnits } from "./units";
 import { startTour } from "./tour";
 
-type Tab = "dashboard" | "plan" | "nutrition" | "trends" | "tests" | "settings";
+type Tab = "dashboard" | "plan" | "nutrition" | "trends" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "plan", label: "Training Plan" },
   { id: "nutrition", label: "Nutrition" },
-  { id: "trends", label: "Trends" },
-  { id: "tests", label: "Tests" },
+  { id: "trends", label: "Fitness" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -291,11 +290,18 @@ export default function App() {
                 )}
               </div>
             )}
+            {recovery.length > 0 && <RecoveryCard days={recovery} />}
+            {plan?.plan && <CheckinCard onDone={safeLoad} />}
+          </div>
+        )}
+
+        {/* Fitness — "am I getting fitter, will I be ready?" Race readiness
+            projection + PMC + sport trends + tests, one question per cadence. */}
+        {tab === "trends" && (
+          <div className="tab-panel">
             {readiness && status && (
               <ReadinessCard readiness={readiness} raceName={status.race.name} />
             )}
-            {recovery.length > 0 && <RecoveryCard days={recovery} />}
-            {plan?.plan && <CheckinCard onDone={safeLoad} />}
             {pmcTotal > 0 ? (
               <PmcChart days={pmc} range={pmcRange} onRange={changePmcRange} />
             ) : (
@@ -303,20 +309,18 @@ export default function App() {
                 <p className="muted">Connect Strava and sync to populate your fitness chart.</p>
               </div>
             )}
-          </div>
-        )}
-
-        {tab === "trends" && trends && (
-          <div className="tab-panel">
-            <TrendsView
-              trends={trends}
-              weekly={weekly}
-              pmc={pmc}
-              range={trendsRange}
-              onRange={changeTrendsRange}
-              connected={athlete?.connected ?? false}
-              onSynced={safeLoad}
-            />
+            {trends && (
+              <TrendsView
+                trends={trends}
+                weekly={weekly}
+                pmc={pmc}
+                range={trendsRange}
+                onRange={changeTrendsRange}
+                connected={athlete?.connected ?? false}
+                onSynced={safeLoad}
+              />
+            )}
+            <TestsView onChanged={safeLoad} />
           </div>
         )}
 
@@ -339,12 +343,6 @@ export default function App() {
               hasBodyWeight={!!athlete?.profile.body_weight_kg}
               onGoToSettings={() => setTab("settings")}
             />
-          </div>
-        )}
-
-        {tab === "tests" && (
-          <div className="tab-panel">
-            <TestsView onChanged={safeLoad} />
           </div>
         )}
 
