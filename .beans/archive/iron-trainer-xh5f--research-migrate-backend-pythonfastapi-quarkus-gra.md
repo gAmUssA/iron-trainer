@@ -5,7 +5,8 @@ status: completed
 type: task
 priority: normal
 created_at: 2026-07-15T04:03:23Z
-updated_at: 2026-07-15T17:54:42Z
+updated_at: 2026-07-15T18:20:24Z
+parent: iron-trainer-37md
 ---
 
 Evaluate a full backend rewrite: FastAPI+SQLModel/Alembic → Quarkus (REST, Hibernate/Panache, Flyway), GraalVM native image on Railway. Research agent in flight: component mapping, Claude SDK options in Java, FIT encoding (Garmin FIT SDK is Java-native), job system → virtual threads, SQLite-vs-Postgres story, native-image gotchas, migration strategy (strangler vs big-bang) with 194-test parity, and an honest is-it-worth-it.
