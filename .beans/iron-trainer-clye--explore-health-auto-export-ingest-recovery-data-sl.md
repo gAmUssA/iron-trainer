@@ -1,11 +1,11 @@
 ---
 # iron-trainer-clye
 title: Explore Health Auto Export → ingest recovery data (sleep, HRV, RHR)
-status: todo
+status: in-progress
 type: task
 priority: normal
 created_at: 2026-07-14T20:29:05Z
-updated_at: 2026-07-15T02:42:42Z
+updated_at: 2026-07-15T02:49:14Z
 parent: iron-trainer-udbc
 ---
 
