@@ -1,10 +1,11 @@
 ---
 # iron-trainer-jedh
 title: 'Phase 0-1: contract tests + risk-retirement spike'
-status: draft
+status: in-progress
 type: epic
+priority: normal
 created_at: 2026-07-15T18:21:04Z
-updated_at: 2026-07-15T18:21:04Z
+updated_at: 2026-07-15T18:23:17Z
 parent: iron-trainer-37md
 ---
 
