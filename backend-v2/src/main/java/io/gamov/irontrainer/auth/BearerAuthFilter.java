@@ -4,7 +4,7 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.ext.Provider;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.config.ConfigProvider;
 import org.jboss.logging.Logger;
 
 import java.nio.charset.StandardCharsets;
@@ -24,8 +24,15 @@ public class BearerAuthFilter implements ContainerRequestFilter {
     @Inject
     CurrentAthlete current;
 
-    @ConfigProperty(name = "irontrainer.auth-required", defaultValue = "false")
-    boolean authRequired;
+    // Read at request time, NOT field-injected: a @Provider is instantiated
+    // during native-image static init, which bakes the build-time value and
+    // makes Quarkus refuse to start when the runtime value differs
+    // (observed on Railway: baked false vs runtime true).
+    private static boolean authRequired() {
+        return ConfigProvider.getConfig()
+                .getOptionalValue("irontrainer.auth-required", Boolean.class)
+                .orElse(false);
+    }
 
     @Override
     public void filter(ContainerRequestContext ctx) {
@@ -42,7 +49,7 @@ public class BearerAuthFilter implements ContainerRequestFilter {
             LOG.infof("Bearer rejected: unknown token (path=%s)",
                     ctx.getUriInfo().getPath());
         }
-        if (!authRequired) {
+        if (!authRequired()) {
             current.set(1); // single-athlete local mode, same as FastAPI default
         }
         // else: leave unset — CurrentAthlete.require() raises 401 on use.
