@@ -77,3 +77,27 @@ community reports. NOTHING SUBMITTED — drafts below await Viktor's review.
   from steps (your values ignored); distance-based steps need the athlete's
   speed threshold set or TSS/time come back empty; workout date ≤1 year out.
 - Sandbox DB refreshed from prod every weekend — test data vanishes weekly.
+
+## Follow-up: HRV from Apple Health into TrainingPeaks (2026-07-15)
+
+1. **Native Apple Health HRV import: NO.** TP's Apple integration is
+   workouts-only (planned → Watch, completed → back). Their own feature
+   tracker "Support Metrics from Apple Health" (231 votes) has been
+   Planned→Started since 2024 and still isn't shipped — users complain
+   HRV/sleep don't sync. This is a real product gap.
+2. **Partner API metrics:write: YES, strong fit.** POST /v2/metrics accepts
+   ~40 fields per local-time-stamped payload incl. HRV (0-200 float — their
+   example shows "HRV": 84.1), Pulse (resting HR), SleepHours +
+   TimeInDeep/Light/RemSleep + TotalTimeAwake + SleepQuality, weight, SPO2,
+   and subjective enums (Fatigue, Soreness, Stress, Mood…). UploadClient
+   required; DateTime ≤1 day future/≤1 yr past. This is exactly how the
+   official WHOOP integration feeds TP. metrics:read GETs are
+   Premium-restricted; the POST isn't on the restricted list.
+3. **What brings HRV into TP today:** WHOOP (native), HRV4Training (partner —
+   the main Apple Watch/Oura bridge), HealthFit (~$6 bridge, community
+   standard). Garmin HRV does NOT flow to TP.
+
+**Application impact:** add the `metrics:write` scope checkbox and cite
+"HRV/sleep/RHR from Apple Health via our iOS companion" in the usage text —
+it fills a gap TP has publicly acknowledged and strengthens the
+value-add criterion they select partners on.

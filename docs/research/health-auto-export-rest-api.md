@@ -71,16 +71,16 @@ Summarize OFF gives per-segment records
 
 ## 2. Metric identifiers (from the developer's own server code) [doc]
 
-| Metric | Identifier | Units |
-|---|---|---|
-| Sleep | `sleep_analysis` | `hr` |
-| HRV (SDNN) | `heart_rate_variability` | `ms` |
-| Resting HR | `resting_heart_rate` | `bpm` |
-| Wrist temp (sleep) | `apple_sleeping_wrist_temperature` | `degC`/`degF` |
-| Respiratory rate | `respiratory_rate` | count/min |
-| Weight | `weight_body_mass` | `kg`/`lb` (user pref) |
-| VO2max | `vo2max` | mL/min·kg |
-| Heart rate | `heart_rate` | `bpm` (Min/Avg/Max shape) |
+| Metric             | Identifier                         | Units                     |
+|--------------------|------------------------------------|---------------------------|
+| Sleep              | `sleep_analysis`                   | `hr`                      |
+| HRV (SDNN)         | `heart_rate_variability`           | `ms`                      |
+| Resting HR         | `resting_heart_rate`               | `bpm`                     |
+| Wrist temp (sleep) | `apple_sleeping_wrist_temperature` | `degC`/`degF`             |
+| Respiratory rate   | `respiratory_rate`                 | count/min                 |
+| Weight             | `weight_body_mass`                 | `kg`/`lb` (user pref)     |
+| VO2max             | `vo2max`                           | mL/min·kg                 |
+| Heart rate         | `heart_rate`                       | `bpm` (Min/Avg/Max shape) |
 
 Units follow user preferences and are declared in the payload — always read
 `units`, never assume [doc].
