@@ -9,6 +9,10 @@ struct SettingsView: View {
     @AppStorage(DistanceUnit.storageKey) private var unit: DistanceUnit = .km
     @AppStorage("checkinReminderEnabled") private var checkinReminder = false
     @AppStorage(Notifications.briefEnabledKey) private var morningBrief = false
+    @State private var ingestToken: IngestToken?
+    @State private var ingestBusy = false
+    @State private var ingestError: String?
+    @State private var lastRecovery: RecoveryDay?
 
     @State private var serverText = ""
     @State private var code = ""
@@ -104,6 +108,40 @@ struct SettingsView: View {
                     Text("Applies to distances and run/bike paces when browsing the plan. Swim paces stay per 100 m.")
                 }
 
+                Section {
+                    if let t = ingestToken {
+                        Text("Token created — shown once, copy it now.")
+                            .font(.footnote)
+                        Button("Copy header value (Bearer …)") {
+                            UIPasteboard.general.string = t.header
+                        }
+                        if let server = auth.serverURL {
+                            Button("Copy endpoint URL") {
+                                UIPasteboard.general.string =
+                                    server.appending(path: t.path).absoluteString
+                            }
+                        }
+                    } else {
+                        Button(ingestBusy ? "Working…" : "Create ingest token") {
+                            mintIngestToken()
+                        }
+                        .disabled(ingestBusy || !auth.isSignedIn)
+                    }
+                    if let r = lastRecovery {
+                        Text(recoveryLine(r)).font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        Text("No health data received yet.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    if let ingestError {
+                        Text(ingestError).foregroundStyle(.red).font(.footnote)
+                    }
+                } header: {
+                    Text("Health data (Apple Health)")
+                } footer: {
+                    Text("Push sleep, HRV and resting heart rate from the Health Auto Export app: Automations → REST API, paste the URL and header, select the three metrics, JSON, aggregate by days, Summarize ON. Feeds your readiness call.")
+                }
+
                 if let error {
                     Section { Text(error).foregroundStyle(.red).font(.footnote) }
                 }
@@ -112,6 +150,7 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
             }
+            .task { await loadRecoveryStatus() }
             .sheet(isPresented: $scanning) {
                 NavigationStack {
                     QRScannerView { payload in
@@ -154,4 +193,35 @@ struct SettingsView: View {
         }
         busy = false
     }
+
+    private func mintIngestToken() {
+        guard let server = auth.serverURL, let bearer = auth.bearer else { return }
+        ingestBusy = true
+        ingestError = nil
+        Task { @MainActor in
+            defer { ingestBusy = false }
+            do {
+                ingestToken = try await PlanNetworkSource(baseURL: server, bearer: bearer)
+                    .mintIngestToken()
+            } catch {
+                ingestError = error.localizedDescription
+            }
+        }
+    }
+
+    @MainActor
+    private func loadRecoveryStatus() async {
+        guard let server = auth.serverURL, let bearer = auth.bearer else { return }
+        lastRecovery = await PlanNetworkSource(baseURL: server, bearer: bearer).latestRecovery()
+    }
+
+    private func recoveryLine(_ r: RecoveryDay) -> String {
+        var bits: [String] = []
+        if let s = r.sleep_h { bits.append(String(format: "sleep %.1fh", s)) }
+        if let h = r.hrv_ms { bits.append(String(format: "HRV %.0fms", h)) }
+        if let b = r.rhr_bpm { bits.append(String(format: "RHR %.0f", b)) }
+        let detail = bits.isEmpty ? "received" : bits.joined(separator: " · ")
+        return "Last push: \(r.date) — \(detail)"
+    }
+
 }

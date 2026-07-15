@@ -679,3 +679,10 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
   font-size: 13.5px;
 }
 .checkin-story li::marker { color: var(--accent); }
+
+/* ── Health ingest setup ────────────────────────────────────────────────── */
+.ingest-steps { font-size: 13px; line-height: 1.9; padding-left: 20px; margin: 8px 0; }
+.ingest-steps code {
+  font-family: var(--mono); font-size: 12px; background: rgba(127,127,127,0.12);
+  padding: 2px 6px; border-radius: 5px; word-break: break-all;
+}

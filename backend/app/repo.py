@@ -151,6 +151,18 @@ def create_pairing_code(athlete_id: int, name: str | None = None, ttl_s: int = 6
     return {"code": code, "expires_at": expires_at, "expires_in": ttl_s}
 
 
+def create_bearer_token(name: str, athlete_id: int | None = None) -> str:
+    """Directly mint a bearer token (no pairing dance) for `athlete_id`, or the
+    current athlete when omitted. Used for server-to-server pushes like Health
+    Auto Export. The plaintext is returned exactly once; only its hash is stored."""
+    aid = athlete_id if athlete_id is not None else current_athlete_id()
+    token = secrets.token_urlsafe(32)
+    with get_session() as s:
+        s.add(DeviceToken(athlete_id=aid, name=name, token_hash=_hash_token(token),
+                          created_at=_now_iso()))
+    return token
+
+
 def claim_pairing_code(code: str, device_name: str | None = None) -> dict | None:
     """Exchange a valid, unexpired, unclaimed code for a bearer token.
     Returns {token, athlete:{name,strava_athlete_id}} or None if invalid."""
@@ -175,6 +187,19 @@ def claim_pairing_code(code: str, device_name: str | None = None) -> dict | None
             "strava_athlete_id": a.strava_athlete_id if a else None,
         }
     return {"token": token, "athlete": athlete}
+
+
+INGEST_TOKEN_NAME = "health-auto-export"
+
+
+def bearer_token_name(token: str) -> str | None:
+    """The DeviceToken.name behind a presented bearer, or None if unknown."""
+    if not token:
+        return None
+    with get_session() as s:
+        row = s.exec(select(DeviceToken).where(
+            DeviceToken.token_hash == _hash_token(token))).first()
+        return row.name if row else None
 
 
 def athlete_id_for_bearer(token: str) -> int | None:

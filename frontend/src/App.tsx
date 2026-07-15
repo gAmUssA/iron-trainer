@@ -19,7 +19,7 @@ import { NutritionView } from "./components/NutritionView";
 import { PlanView } from "./components/PlanView";
 import { RaceCard } from "./components/RaceCard";
 import { CheckinCard } from "./components/CheckinCard";
-import { ConnectCard, ProfileEditor, ZonesCard } from "./components/Setup";
+import { ConnectCard, HealthIngestCard, ProfileEditor, ZonesCard } from "./components/Setup";
 import { TestsView } from "./components/TestsView";
 import { TodayCall } from "./components/TodayCall";
 import { TrendsView } from "./components/TrendsView";
@@ -330,6 +330,7 @@ export default function App() {
             {status && <RaceCard status={status} onChanged={reload} />}
             <ProfileEditor profile={athlete.profile} onSaved={safeLoad} />
             <ZonesCard thresholdHr={athlete.profile.threshold_hr} maxHr={athlete.profile.max_hr} />
+            <HealthIngestCard />
           </div>
         )}
       </main>

@@ -149,6 +149,26 @@ struct PlanNetworkSource {
         return readiness
     }
 
+    /// Mint a bearer token for the Health Auto Export automation (shown once).
+    func mintIngestToken() async throws -> IngestToken {
+        var req = authedRequest(baseURL.appending(path: "/api/device/ingest-token"),
+                                bearer: bearer)
+        req.httpMethod = "POST"
+        let (data, resp) = try await session.data(for: req)
+        if let h = resp as? HTTPURLResponse, h.statusCode != 200 { throw NetworkError.http(h.statusCode) }
+        return try JSONDecoder().decode(IngestToken.self, from: data)
+    }
+
+    /// Latest ingested recovery row — the "is my phone actually pushing?" check.
+    func latestRecovery() async -> RecoveryDay? {
+        let url = baseURL.appending(path: "/api/health/recovery")
+        guard let (data, resp) = try? await session.data(for: authedRequest(url, bearer: bearer)),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let out = try? JSONDecoder().decode(RecoveryDays.self, from: data)
+        else { return nil }
+        return out.days.first
+    }
+
     /// The id of a check-in job that's already running for this athlete
     /// (started on the web, or before the app was killed) — lets the Today
     /// view re-attach instead of showing nothing.
@@ -160,6 +180,23 @@ struct PlanNetworkSource {
         else { return nil }
         return summary.active["checkin"]?.id
     }
+}
+
+struct IngestToken: Decodable {
+    let token: String
+    let header: String
+    let path: String
+}
+
+struct RecoveryDay: Decodable {
+    let date: String
+    let sleep_h: Double?
+    let hrv_ms: Double?
+    let rhr_bpm: Double?
+}
+
+private struct RecoveryDays: Decodable {
+    let days: [RecoveryDay]
 }
 
 /// Subjective check-in inputs — 1-5, higher is better, everything optional.

@@ -128,3 +128,21 @@ def test_readiness_ignores_stale_or_normal_recovery():
              if r["date"] <= (TODAY - timedelta(days=5)).isoformat()]
     out = readiness.compute(_metrics_flat(), today=TODAY, recovery=stale)
     assert out["call"] == "hard"
+
+
+def test_ingest_token_mints_and_authenticates():
+    with TestClient(app) as c:
+        out = c.post("/api/device/ingest-token").json()
+        assert out["token"] and out["path"] == "/api/health/ingest"
+        # The minted token authenticates an ingest push (bearer, no session).
+        r = c.post("/api/health/ingest", json=_payload(),
+                   headers={"Authorization": f"Bearer {out['token']}"}).json()
+        assert r["ok"] is True and r["days"] == 1
+
+
+def test_ingest_token_cannot_mint_siblings():
+    with TestClient(app) as c:
+        t = c.post("/api/device/ingest-token").json()["token"]
+        r = c.post("/api/device/ingest-token",
+                   headers={"Authorization": f"Bearer {t}"})
+        assert r.status_code == 403
