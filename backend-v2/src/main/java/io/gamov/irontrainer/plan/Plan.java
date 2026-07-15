@@ -30,6 +30,6 @@ public class Plan extends PanacheEntityBase {
     public String summary;
 
     public static Plan activeFor(int athleteId) {
-        return find("athleteId = ?1 and status = 'active'", athleteId).firstResult();
+        return find("athleteId = ?1 and status = 'active' order by id desc", athleteId).firstResult();
     }
 }
