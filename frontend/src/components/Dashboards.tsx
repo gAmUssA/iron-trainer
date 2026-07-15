@@ -14,27 +14,8 @@ import {
 import type { PmcDay, Readiness, Trends, WeekVolume } from "../api";
 import { pace100 } from "../api";
 import { useUnits, paceInUnit } from "../units";
-import { useTheme } from "../theme";
+import { COLORS, useChart } from "../chartTheme";
 import { RangePicker } from "./RangePicker";
-
-// Sport / metric colors are vivid enough for both themes.
-const COLORS = { swim: "#38bdf8", bike: "#ffb454", run: "#4ade80", ctl: "#4ade80", atl: "#f87171", tsb: "#38bdf8" };
-
-const CHART_THEME = {
-  dark: { grid: "rgba(255,255,255,0.06)", tick: "#5b6270", tipBg: "#14161c", tipBorder: "#2a3441", tipText: "#eceef2" },
-  light: { grid: "rgba(0,0,0,0.09)", tick: "#9099a3", tipBg: "#ffffff", tipBorder: "#d8dce2", tipText: "#161a20" },
-};
-
-/** Theme-derived chart colors (Recharts takes JS values, not CSS vars). */
-function useChart() {
-  const { theme } = useTheme();
-  const c = CHART_THEME[theme];
-  return {
-    grid: c.grid,
-    tick: { fill: c.tick, fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
-    tooltip: { background: c.tipBg, border: `1px solid ${c.tipBorder}`, borderRadius: 8, color: c.tipText, fontSize: 12 },
-  };
-}
 
 // ── Performance Management Chart ──────────────────────────────────────────────
 export function PmcChart({

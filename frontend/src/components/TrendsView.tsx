@@ -13,27 +13,11 @@ import {
 } from "recharts";
 import { api, pace100, type PmcDay, type SportInsight, type Trends, type WeekVolume } from "../api";
 import { useUnits, metersToUnit, paceInUnit } from "../units";
-import { useTheme } from "../theme";
+import { COLORS, useChart } from "../chartTheme";
 import { WeeklyVolumeChart } from "./Dashboards";
 import { RangePicker } from "./RangePicker";
 
-const COLORS = { swim: "#38bdf8", bike: "#ffb454", run: "#4ade80", ctl: "#4ade80", proj: "#a78bfa" };
 const IF_COLORS = { easy: "#4ade80", endurance: "#38bdf8", tempo: "#ffb454", hard: "#f87171", unknown: "#5b6270" };
-
-const CHART_THEME = {
-  dark: { grid: "rgba(255,255,255,0.06)", tick: "#5b6270", tipBg: "#14161c", tipBorder: "#2a3441", tipText: "#eceef2" },
-  light: { grid: "rgba(0,0,0,0.09)", tick: "#9099a3", tipBg: "#ffffff", tipBorder: "#d8dce2", tipText: "#161a20" },
-};
-
-function useChart() {
-  const { theme } = useTheme();
-  const c = CHART_THEME[theme];
-  return {
-    grid: c.grid,
-    tick: { fill: c.tick, fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" },
-    tooltip: { background: c.tipBg, border: `1px solid ${c.tipBorder}`, borderRadius: 8, color: c.tipText, fontSize: 12 },
-  };
-}
 
 // ── Freshness banner ──────────────────────────────────────────────────────────
 function FreshnessBanner({

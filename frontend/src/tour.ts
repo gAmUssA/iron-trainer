@@ -8,7 +8,9 @@
 import Walkthrough, { type WalkthroughStep } from "@ronanarm/walkthroughjs";
 
 // The app is tabbed; the tour runs on the Dashboard tab and points at the nav
-// to introduce the other screens (Training Plan / Trends / Settings).
+// to introduce the other screens (Training Plan / Nutrition / Fitness /
+// Settings). Race readiness and the PMC fitness chart moved to the Fitness tab,
+// so they're introduced via the nav step rather than anchored on the Dashboard.
 const ALL_STEPS: WalkthroughStep[] = [
   {
     element: "#tour-countdown",
@@ -19,7 +21,7 @@ const ALL_STEPS: WalkthroughStep[] = [
   {
     element: "#tour-nav",
     title: "Your screens",
-    text: "Dashboard (here), Training Plan, Nutrition, Trends, Tests and Settings. The plan adapts to the data on the other tabs — explore each after the tour.",
+    text: "Dashboard (today's readiness & weekly check-in), Training Plan, Nutrition, Fitness and Settings. Fitness gathers your race-readiness projection, the PMC fitness/form chart, sport trends and fitness tests — the same TrainingPeaks CTL/ATL/TSB model, plus your projected 70.3 finish and cut-off margins. Explore each after the tour.",
     position: "bottom",
   },
   {
@@ -27,18 +29,6 @@ const ALL_STEPS: WalkthroughStep[] = [
     title: "Connect & sync",
     text: "Your Strava connection status. Connect Strava, pull your history and pair the iOS app over in the Settings tab. Activities recorded by two devices are de-duplicated there (bike → Garmin Edge, swim/run → Apple Watch).",
     position: "bottom",
-  },
-  {
-    element: "#tour-readiness",
-    title: "Race readiness",
-    text: "Projected 70.3 finish at current fitness, a timeline of your splits, and the official cut-offs (swim 1:10, bike 5:30, finish 8:30) with your margin on each.",
-    position: "left",
-  },
-  {
-    element: "#tour-pmc",
-    title: "Fitness & form",
-    text: "The Performance Management Chart: CTL (fitness), ATL (fatigue) and TSB (form) over time — the same model TrainingPeaks uses.",
-    position: "top",
   },
 ];
 
