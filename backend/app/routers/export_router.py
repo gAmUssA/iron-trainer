@@ -22,7 +22,14 @@ router = APIRouter(prefix="/api/export", tags=["export"])
 log = get_logger("export")
 
 _PROXY_TIMEOUT_S = 30.0
-_HOP_HEADERS = {"content-length", "transfer-encoding", "connection"}
+# RFC 7230 hop-by-hop headers, plus content-length (recomputed) and
+# content-encoding (httpx transparently decompresses, so forwarding the
+# original encoding header would mislabel an already-decoded body).
+_DROP_HEADERS = {
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailers", "transfer-encoding", "upgrade",
+    "content-length", "content-encoding",
+}
 
 
 def _maybe_proxy(request: Request) -> Response | None:
@@ -36,6 +43,8 @@ def _maybe_proxy(request: Request) -> Response | None:
     if not authz.lower().startswith("bearer "):
         return None  # web session traffic stays local until Phase 7
     url = proxy_base + request.url.path
+    if request.url.query:
+        url += "?" + request.url.query
     try:
         upstream = httpx.get(url, headers={"Authorization": authz},
                              timeout=_PROXY_TIMEOUT_S)
@@ -45,7 +54,7 @@ def _maybe_proxy(request: Request) -> Response | None:
     log.info("Export proxied to backend-v2: %s -> %d", request.url.path,
              upstream.status_code)
     headers = {k: v for k, v in upstream.headers.items()
-               if k.lower() not in _HOP_HEADERS}
+               if k.lower() not in _DROP_HEADERS}
     return Response(content=upstream.content, status_code=upstream.status_code,
                     headers=headers)
 
