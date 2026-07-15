@@ -8,7 +8,7 @@
 import Walkthrough, { type WalkthroughStep } from "@ronanarm/walkthroughjs";
 
 // The app is tabbed; the tour runs on the Dashboard tab and points at the nav
-// to introduce the other screens (Training Plan / Trends / Thresholds).
+// to introduce the other screens (Training Plan / Trends / Settings).
 const ALL_STEPS: WalkthroughStep[] = [
   {
     element: "#tour-countdown",
@@ -18,15 +18,15 @@ const ALL_STEPS: WalkthroughStep[] = [
   },
   {
     element: "#tour-nav",
-    title: "Four screens",
-    text: "Dashboard (here), Training Plan, Trends and Thresholds. The plan adapts to the data on the other tabs — explore each after the tour.",
+    title: "Your screens",
+    text: "Dashboard (here), Training Plan, Nutrition, Trends, Tests and Settings. The plan adapts to the data on the other tabs — explore each after the tour.",
     position: "bottom",
   },
   {
     element: "#tour-setup",
     title: "Connect & sync",
-    text: "Connect Strava and pull your history. Activities recorded by two devices are de-duplicated (bike → Garmin Edge, swim/run → Apple Watch). “Re-run de-dup” anytime.",
-    position: "right",
+    text: "Your Strava connection status. Connect Strava, pull your history and pair the iOS app over in the Settings tab. Activities recorded by two devices are de-duplicated there (bike → Garmin Edge, swim/run → Apple Watch).",
+    position: "bottom",
   },
   {
     element: "#tour-readiness",

@@ -226,6 +226,11 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 .app-footer { display: flex; justify-content: center; padding: 22px 16px 30px; opacity: 0.9; }
 .app-footer img { display: block; }
 
+/* Thin dashboard sync-status line (replaces the ConnectCard, now in Settings). */
+.sync-line { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+.linklike { background: none; border: none; padding: 0; font: inherit; color: var(--accent); font-weight: 600; cursor: pointer; }
+.linklike:hover { text-decoration: underline; }
+
 /* ── Setup card ── */
 .status-list { display: flex; flex-direction: column; gap: 11px; font-size: 13.5px; margin-top: 16px; }
 .status-row { display: flex; align-items: center; gap: 9px; }
