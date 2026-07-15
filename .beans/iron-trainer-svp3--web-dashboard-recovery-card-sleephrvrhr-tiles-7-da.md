@@ -1,11 +1,11 @@
 ---
 # iron-trainer-svp3
 title: 'Web dashboard: Recovery card (sleep/HRV/RHR tiles + 7-day sparklines)'
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-07-15T03:53:25Z
-updated_at: 2026-07-15T03:58:20Z
+updated_at: 2026-07-15T05:56:44Z
 parent: iron-trainer-udbc
 ---
 
