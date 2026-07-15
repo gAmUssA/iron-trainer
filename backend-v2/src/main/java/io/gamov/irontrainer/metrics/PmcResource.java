@@ -29,15 +29,18 @@ public class PmcResource {
             throw new WebApplicationException("days must be 0..3660", 422);
         }
         int athleteId = current.require();
-        List<MetricDaily> all = MetricDaily
-                .list("athleteId = ?1 order by date", athleteId);
-        int total = all.size();
-        String cutoff = windowCutoff(days);  // null = unbounded
+        // total_days is the full history count; the rows are windowed at the
+        // query level (not loaded-then-filtered) so a multi-year history never
+        // ships all rows to build a 180-day chart.
+        int total = (int) MetricDaily.count("athleteId", athleteId);
+        String cutoff = windowCutoff(days);  // null = unbounded (days=0)
+        List<MetricDaily> windowed = cutoff == null
+                ? MetricDaily.list("athleteId = ?1 order by date", athleteId)
+                : MetricDaily.list("athleteId = ?1 and date >= ?2 order by date",
+                                   athleteId, cutoff);
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (MetricDaily m : all) {
-            if (cutoff == null || m.date.compareTo(cutoff) >= 0) {
-                rows.add(row(m));
-            }
+        for (MetricDaily m : windowed) {
+            rows.add(row(m));
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("days", rows);

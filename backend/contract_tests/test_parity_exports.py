@@ -105,5 +105,7 @@ def test_pmc_parity(v1, v2):
     assert a.json() == b.json()
     a2 = v1.get("/api/metrics/pmc?days=30")
     b2 = v2.get("/api/metrics/pmc?days=30")
-    assert a2.json() == b2.json()
-    assert a2.json()["window_days"] == 30
+    assert a2.status_code == b2.status_code == 200
+    a2j, b2j = a2.json(), b2.json()
+    assert a2j == b2j
+    assert a2j["window_days"] == 30

@@ -22,10 +22,12 @@ import static org.hamcrest.Matchers.lessThanOrEqualTo;
 class PmcResourceTest {
 
     String token;
+    LocalDate today;
 
     @BeforeEach
     void seed() {
         token = "tok-" + java.util.UUID.randomUUID();
+        today = LocalDate.now();
         QuarkusTransaction.requiringNew().run(() -> {
             Athlete a = new Athlete();
             a.name = "PMC";
@@ -39,7 +41,7 @@ class PmcResourceTest {
             for (int ago = 399; ago >= 0; ago--) {
                 MetricDaily m = new MetricDaily();
                 m.athleteId = a.id;
-                m.date = LocalDate.now().minusDays(ago).toString();
+                m.date = today.minusDays(ago).toString();
                 m.tss = 50.0; m.ctl = 60.0; m.atl = 55.0; m.tsb = 5.0;
                 m.persist();
             }
@@ -54,8 +56,8 @@ class PmcResourceTest {
                 .body("window_days", equalTo(180))
                 .body("total_days", equalTo(400))
                 .body("days", hasSize(180))
-                .body("days[0].date", equalTo(LocalDate.now().minusDays(179).toString()))
-                .body("days[179].date", equalTo(LocalDate.now().toString()))
+                .body("days[0].date", equalTo(today.minusDays(179).toString()))
+                .body("days[179].date", equalTo(today.toString()))
                 .body("days[0].athlete_id", org.hamcrest.Matchers.notNullValue());
     }
 
