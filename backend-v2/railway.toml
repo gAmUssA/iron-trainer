@@ -9,10 +9,10 @@ dockerfilePath = "Dockerfile"
 watchPatterns = ["backend-v2/**"]
 
 [deploy]
-# Healthcheck deliberately DISABLED while the service is dark: Railway's
-# probe reports service-unavailable against a provably-listening container
-# (IPv6 + PORT verified; see bean q8ld). Re-enable ("/q/health") when the
-# strangler routes real traffic and zero-downtime gating buys something.
-healthcheckPath = ""
+# Re-enabled after the PORT + IPv6 (::) binding fixes landed — if the probe
+# still reports service-unavailable, that is a prober-side issue (bean q8ld
+# has the forensic history) and this goes back to "".
+healthcheckPath = "/q/health"
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
