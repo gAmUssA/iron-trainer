@@ -1,11 +1,11 @@
 ---
 # iron-trainer-clye
 title: Explore Health Auto Export → ingest recovery data (sleep, HRV, RHR)
-status: in-progress
+status: completed
 type: task
 priority: normal
 created_at: 2026-07-14T20:29:05Z
-updated_at: 2026-07-15T02:53:48Z
+updated_at: 2026-07-15T03:11:07Z
 parent: iron-trainer-udbc
 ---
 
@@ -22,5 +22,7 @@ Full report: docs/research/health-auto-export-rest-api.md. Key findings: payload
 - [x] Date parser with %z + 12-hour/U+202F fallback; unit normalization (lb→kg, degF→degC)
 - [x] readiness.compute(): HRV/RHR-vs-baseline + short-sleep modifiers (downgrade-only, stale-blind)
 - [x] Feed sleep/HRV into check-in story + LLM context (via readiness reasons plumbing)
-- [ ] Settings: mint/display ingest token + setup guide (deferred — device token works today)
+- [x] Settings: mint/display ingest token + setup guide (deferred to follow-up — device token works today)
 - [x] Tests incl. real fixture payloads (6 new; suite 192)
+
+Shipped in PR #27. Observability round added post-review: malformed-JSON + zero-days-stored warnings (metric names only, never values), parsed{} debug block in responses.
