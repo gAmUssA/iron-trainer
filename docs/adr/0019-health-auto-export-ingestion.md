@@ -31,8 +31,9 @@ Bean: iron-trainer-clye · Research: docs/research/health-auto-export-rest-api.m
 
 ## Deferred
 
-- Settings UI for minting a dedicated ingest token + setup guide (device
-  token works today).
+- ~~Settings UI for minting a dedicated ingest token~~ — shipped as follow-up:
+  POST /api/device/ingest-token (session-auth, plaintext shown once, hash
+  stored) + HealthIngestCard on the web Settings tab with copy-paste setup.
 - Workouts array ingestion — noted on k5d0 as a potential full Strava
   escape hatch (Garmin → Apple Health → us); this endpoint is the
   foundation it would extend.

@@ -477,3 +477,59 @@ function Field({
     </label>
   );
 }
+
+
+/** Health data ingest: mint a bearer token for the Health Auto Export app and
+ * show the exact setup. The token is displayed ONCE — only its hash is stored. */
+export function HealthIngestCard() {
+  const [token, setToken] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const url = `${window.location.origin}/api/health/ingest`;
+
+  async function mint() {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await api.ingestToken();
+      setToken(out.token);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="card-title">Health data (Apple Health)</div>
+      <div className="card-sub" style={{ marginBottom: 10 }}>
+        Sleep, HRV and resting heart rate feed your readiness call. Push them from your
+        phone with the Health Auto Export app (Premium) — no third-party APIs involved.
+      </div>
+      {!token ? (
+        <button className="btn primary" type="button" disabled={busy} onClick={mint}>
+          {busy ? "Working…" : "Create ingest token"}
+        </button>
+      ) : (
+        <ol className="ingest-steps">
+          <li>In Health Auto Export: Automations → New → <b>REST API</b></li>
+          <li>URL: <code>{url}</code></li>
+          <li>Add header <code>Authorization: Bearer {token}</code>
+            <button className="btn tiny" type="button" style={{ marginLeft: 8 }}
+              onClick={() => void navigator.clipboard?.writeText(`Bearer ${token}`)}>
+              Copy header
+            </button>
+          </li>
+          <li>Select Sleep Analysis, Heart Rate Variability, Resting Heart Rate ·
+            format <b>JSON</b> · aggregate <b>days</b> · <b>Summarize ON</b> · <b>Batch ON</b></li>
+        </ol>
+      )}
+      {token && (
+        <div className="hint">Shown once — we store only a hash. Re-mint any time; revoke
+          all tokens from the disconnect flow.</div>
+      )}
+      {error && <div className="hint">Failed: {error}</div>}
+    </div>
+  );
+}

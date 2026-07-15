@@ -151,6 +151,18 @@ def create_pairing_code(athlete_id: int, name: str | None = None, ttl_s: int = 6
     return {"code": code, "expires_at": expires_at, "expires_in": ttl_s}
 
 
+def create_bearer_token(name: str) -> str:
+    """Directly mint a bearer token for the current athlete (no pairing dance).
+    Used for server-to-server pushes like Health Auto Export. The plaintext
+    token is returned exactly once; only its hash is stored."""
+    aid = current_athlete_id()
+    token = secrets.token_urlsafe(32)
+    with get_session() as s:
+        s.add(DeviceToken(athlete_id=aid, name=name, token_hash=_hash_token(token),
+                          created_at=_now_iso()))
+    return token
+
+
 def claim_pairing_code(code: str, device_name: str | None = None) -> dict | None:
     """Exchange a valid, unexpired, unclaimed code for a bearer token.
     Returns {token, athlete:{name,strava_athlete_id}} or None if invalid."""
