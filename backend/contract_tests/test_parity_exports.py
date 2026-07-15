@@ -84,3 +84,11 @@ def test_fit_both_valid(v1, v2):
 def test_cross_tenant_404_parity(v1, v2):
     assert v1.get("/api/export/workout/999999.itw").status_code == 404
     assert v2.get("/api/export/workout/999999.itw").status_code == 404
+
+
+def test_zones_parity(v1, v2):
+    """First domain-math vertical: identical zone tables from both backends."""
+    a = v1.get("/api/athlete/zones")
+    b = v2.get("/api/athlete/zones")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
