@@ -27,7 +27,7 @@ public class BearerAuthFilter implements ContainerRequestFilter {
     @Override
     public void filter(ContainerRequestContext ctx) {
         String authz = ctx.getHeaderString("Authorization");
-        if (authz != null && authz.toLowerCase().startsWith("bearer ")) {
+        if (authz != null && authz.regionMatches(true, 0, "Bearer ", 0, 7)) {
             String hash = sha256(authz.substring(7).strip());
             DeviceToken t = DeviceToken.find("tokenHash", hash).firstResult();
             if (t != null) {
