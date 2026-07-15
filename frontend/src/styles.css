@@ -540,6 +540,28 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 :root[data-theme="light"] .pill-red { color: #b91c1c; background: rgba(185, 28, 28, 0.1); }
 .today-call-reason { font-size: 13px; color: var(--muted); flex: 1; min-width: 220px; }
 
+/* ── Chart range picker ─────────────────────────────────────────────────── */
+.range-picker {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+}
+.range-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.range-btn:hover { color: var(--text); }
+.range-btn.active { background: var(--accent); color: var(--on-accent); }
+
 /* ── Trends insights ─────────────────────────────────────────────────────── */
 .stale-banner {
   display: flex;

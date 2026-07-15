@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
+  DEFAULT_CHART_DAYS,
   stravaErrorMessage,
   type AppStatus,
   type AthleteResponse,
@@ -24,7 +25,7 @@ import { TodayCall } from "./components/TodayCall";
 import { TrendsView } from "./components/TrendsView";
 import { useTheme } from "./theme";
 import { useUnits } from "./units";
-import { maybeAutoStartTour, startTour } from "./tour";
+import { startTour } from "./tour";
 
 type Tab = "dashboard" | "plan" | "nutrition" | "trends" | "tests" | "settings";
 
@@ -54,6 +55,9 @@ export default function App() {
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [athlete, setAthlete] = useState<AthleteResponse | null>(null);
   const [pmc, setPmc] = useState<PmcDay[]>([]);
+  const [pmcTotal, setPmcTotal] = useState(0);
+  const [pmcRange, setPmcRange] = useState(DEFAULT_CHART_DAYS);
+  const [trendsRange, setTrendsRange] = useState(DEFAULT_CHART_DAYS);
   const [weekly, setWeekly] = useState<WeekVolume[]>([]);
   const [trends, setTrends] = useState<Trends | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
@@ -76,9 +80,9 @@ export default function App() {
   const loadData = useCallback(async () => {
     const [a, p, w, t, r, rt, pl, comp] = await Promise.all([
       api.athlete(),
-      api.pmc(),
+      api.pmc(pmcRange),
       api.weekly(),
-      api.trends(),
+      api.trends(trendsRange),
       api.readiness(),
       // Best-effort: the banner is optional garnish — a transient failure (or
       // an older backend without the endpoint) must not reject the whole load.
@@ -88,12 +92,40 @@ export default function App() {
     ]);
     setAthlete(a);
     setPmc(p.days);
+    setPmcTotal(p.total_days);
     setWeekly(w.weeks);
     setTrends(t);
     setReadiness(r);
     setTodayCall(rt);
     setPlan(pl);
     setCompliance(comp.weeks);
+  }, [pmcRange, trendsRange]);
+
+  // Range changes refetch only the affected series — no full dashboard reload.
+  // Sequence counters drop out-of-order responses: rapid 3m → All → 6m clicks
+  // must not let a slow earlier request overwrite the latest selection.
+  const pmcReq = useRef(0);
+  const trendsReq = useRef(0);
+  const changePmcRange = useCallback((days: number) => {
+    setPmcRange(days);
+    const seq = ++pmcReq.current;
+    api.pmc(days)
+      .then((r) => {
+        if (seq !== pmcReq.current) return; // stale response
+        setPmc(r.days);
+        setPmcTotal(r.total_days);
+      })
+      .catch((e) => setError(String(e)));
+  }, []);
+  const changeTrendsRange = useCallback((days: number) => {
+    setTrendsRange(days);
+    const seq = ++trendsReq.current;
+    api.trends(days)
+      .then((t) => {
+        if (seq !== trendsReq.current) return; // stale response
+        setTrends(t);
+      })
+      .catch((e) => setError(String(e)));
   }, []);
 
   // Post-action refreshes (sync, save, plan changes) are fire-and-forget from the
@@ -117,9 +149,7 @@ export default function App() {
       .then((st) => {
         setStatus(st);
         if (!st.auth_required || st.authenticated) {
-          loadData()
-            .then(() => maybeAutoStartTour())
-            .catch((e) => setError(String(e)));
+          loadData().catch((e) => setError(String(e)));
         }
       })
       .catch((e) => setError(String(e)));
@@ -242,8 +272,8 @@ export default function App() {
               )}
             </div>
             {plan?.plan && <CheckinCard onDone={safeLoad} />}
-            {pmc.length > 0 ? (
-              <PmcChart days={pmc} />
+            {pmcTotal > 0 ? (
+              <PmcChart days={pmc} range={pmcRange} onRange={changePmcRange} />
             ) : (
               <div className="card">
                 <p className="muted">Connect Strava and sync to populate your fitness chart.</p>
@@ -258,6 +288,8 @@ export default function App() {
               trends={trends}
               weekly={weekly}
               pmc={pmc}
+              range={trendsRange}
+              onRange={changeTrendsRange}
               connected={athlete?.connected ?? false}
               onSynced={safeLoad}
             />

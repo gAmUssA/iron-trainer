@@ -15,6 +15,7 @@ import { api, pace100, type PmcDay, type SportInsight, type Trends, type WeekVol
 import { useUnits, metersToUnit, paceInUnit } from "../units";
 import { useTheme } from "../theme";
 import { WeeklyVolumeChart } from "./Dashboards";
+import { RangePicker } from "./RangePicker";
 
 const COLORS = { swim: "#38bdf8", bike: "#ffb454", run: "#4ade80", ctl: "#4ade80", proj: "#a78bfa" };
 const IF_COLORS = { easy: "#4ade80", endurance: "#38bdf8", tempo: "#ffb454", hard: "#f87171", unknown: "#5b6270" };
@@ -269,9 +270,11 @@ function PrCards({ prs }: { prs: Trends["insights"]["prs"] }) {
 
 // ── The Trends tab ────────────────────────────────────────────────────────────
 export function TrendsView({
-  trends, weekly, pmc, connected, onSynced,
+  trends, weekly, pmc, range, onRange, connected, onSynced,
 }: {
-  trends: Trends; weekly: WeekVolume[]; pmc: PmcDay[]; connected: boolean; onSynced: () => void;
+  trends: Trends; weekly: WeekVolume[]; pmc: PmcDay[];
+  range: number; onRange: (days: number) => void;
+  connected: boolean; onSynced: () => void;
 }) {
   const { unit } = useUnits();
   const ins = trends.insights;
@@ -288,6 +291,9 @@ export function TrendsView({
         {(["Bike", "Run", "Swim"] as const).map((s) => (
           <VerdictBadge key={s} sport={s} ins={ins.sports[s]} />
         ))}
+        <span style={{ marginLeft: "auto" }}>
+          <RangePicker value={range} onChange={onRange} />
+        </span>
       </div>
 
       <div className="grid-2">
