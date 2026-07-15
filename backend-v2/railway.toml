@@ -1,0 +1,18 @@
+# Config-as-code for the backend-v2 Railway service (root directory =
+# backend-v2/, so this file is picked up from here — isolated-monorepo
+# pattern). Dashboard settings should stay empty; this file is the truth.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+# Relative to repo root: only Java changes redeploy this service.
+watchPatterns = ["backend-v2/**"]
+
+[deploy]
+# Healthcheck deliberately DISABLED while the service is dark: Railway's
+# probe reports service-unavailable against a provably-listening container
+# (IPv6 + PORT verified; see bean q8ld). Re-enable ("/q/health") when the
+# strangler routes real traffic and zero-downtime gating buys something.
+healthcheckPath = ""
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
