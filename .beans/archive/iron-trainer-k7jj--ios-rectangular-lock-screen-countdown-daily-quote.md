@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: normal
 created_at: 2026-07-09T01:48:34Z
-updated_at: 2026-07-09T02:34:11Z
+updated_at: 2026-07-15T02:33:12Z
+parent: iron-trainer-03qt
 ---
 
 Viktor's requests after confirming the Today release works on device:

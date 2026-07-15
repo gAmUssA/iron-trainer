@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: normal
 created_at: 2026-07-09T02:51:51Z
-updated_at: 2026-07-09T03:21:09Z
+updated_at: 2026-07-15T02:33:12Z
+parent: iron-trainer-9gjv
 ---
 
 Validated: weekly_hours_target only feeds generate_plan(); saving thresholds never touches the existing plan, the UI claims 'Saved — recomputed', and replan_week deliberately preserves stored week volumes. Option A chosen: surface the mismatch.
