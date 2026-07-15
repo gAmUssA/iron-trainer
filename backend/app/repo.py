@@ -189,6 +189,19 @@ def claim_pairing_code(code: str, device_name: str | None = None) -> dict | None
     return {"token": token, "athlete": athlete}
 
 
+INGEST_TOKEN_NAME = "health-auto-export"
+
+
+def bearer_token_name(token: str) -> str | None:
+    """The DeviceToken.name behind a presented bearer, or None if unknown."""
+    if not token:
+        return None
+    with get_session() as s:
+        row = s.exec(select(DeviceToken).where(
+            DeviceToken.token_hash == _hash_token(token))).first()
+        return row.name if row else None
+
+
 def athlete_id_for_bearer(token: str) -> int | None:
     """Resolve a bearer token to its athlete id (bumping last_used_at). Used by the
     auth middleware, so it operates by token rather than the current-user context."""

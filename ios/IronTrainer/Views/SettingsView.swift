@@ -112,7 +112,7 @@ struct SettingsView: View {
                     if let t = ingestToken {
                         Text("Token created — shown once, copy it now.")
                             .font(.footnote)
-                        Button("Copy Authorization header") {
+                        Button("Copy header value (Bearer …)") {
                             UIPasteboard.general.string = t.header
                         }
                         if let server = auth.serverURL {

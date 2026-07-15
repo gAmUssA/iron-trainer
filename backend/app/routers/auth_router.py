@@ -64,11 +64,18 @@ def device_pairing_code(body: PairingCodeRequest | None = None) -> dict:
 
 
 @router.post("/device/ingest-token")
-def ingest_token() -> dict:
+def ingest_token(request: Request) -> dict:
     """Mint a bearer token for the Health Auto Export automation. Shown once —
-    we store only the hash. Revocable via the existing revoke-all endpoint."""
+    we store only the hash. Revocable via the existing revoke-all endpoint.
+
+    Web sessions and paired devices may mint; an ingest token must not be able
+    to mint siblings (a leaked push credential stays a push credential)."""
     aid = auth.current_athlete_id()  # 401 when auth_required and not logged in
-    token = repo.create_bearer_token("health-auto-export")
+    authz = request.headers.get("authorization", "")
+    if authz.lower().startswith("bearer "):
+        if repo.bearer_token_name(authz[7:].strip()) == repo.INGEST_TOKEN_NAME:
+            raise HTTPException(403, "Ingest tokens cannot mint new tokens.")
+    token = repo.create_bearer_token(repo.INGEST_TOKEN_NAME)
     log.info("Issued health-ingest token for athlete %s.", aid)
     return {"token": token, "header": f"Bearer {token}", "path": "/api/health/ingest"}
 

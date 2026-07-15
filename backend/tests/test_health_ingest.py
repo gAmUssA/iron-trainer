@@ -138,3 +138,11 @@ def test_ingest_token_mints_and_authenticates():
         r = c.post("/api/health/ingest", json=_payload(),
                    headers={"Authorization": f"Bearer {out['token']}"}).json()
         assert r["ok"] is True and r["days"] == 1
+
+
+def test_ingest_token_cannot_mint_siblings():
+    with TestClient(app) as c:
+        t = c.post("/api/device/ingest-token").json()["token"]
+        r = c.post("/api/device/ingest-token",
+                   headers={"Authorization": f"Bearer {t}"})
+        assert r.status_code == 403

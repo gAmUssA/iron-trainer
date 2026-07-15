@@ -515,10 +515,11 @@ export function HealthIngestCard() {
         <ol className="ingest-steps">
           <li>In Health Auto Export: Automations → New → <b>REST API</b></li>
           <li>URL: <code>{url}</code></li>
-          <li>Add header <code>Authorization: Bearer {token}</code>
+          <li>Add a header named <code>Authorization</code> with value{" "}
+            <code>Bearer {token}</code>
             <button className="btn tiny" type="button" style={{ marginLeft: 8 }}
               onClick={() => void navigator.clipboard?.writeText(`Bearer ${token}`)}>
-              Copy header
+              Copy value
             </button>
           </li>
           <li>Select Sleep Analysis, Heart Rate Variability, Resting Heart Rate ·
