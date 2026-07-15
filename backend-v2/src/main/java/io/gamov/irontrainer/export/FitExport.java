@@ -40,8 +40,8 @@ public class FitExport {
             fileId.setTimeCreated(new DateTime(new Date()));
             encoder.write(fileId);
 
-            JsonNode steps = w.structureJson == null ? mapper.createArrayNode()
-                    : mapper.readTree(w.structureJson);
+            JsonNode steps = (w.structureJson == null || w.structureJson.isBlank())
+                    ? mapper.createArrayNode() : mapper.readTree(w.structureJson);
             if (!steps.isArray()) steps = steps.path("steps");
 
             WorkoutMesg workout = new WorkoutMesg();

@@ -53,7 +53,7 @@ public class ExportResource {
         Athlete a = Athlete.findById(athleteId);
         String xml = zwo.workoutZwo(w, a == null ? null : a.ftp);
         if (xml == null) {
-            throw new NotFoundException("No ZWO for this workout (needs Bike/Brick + FTP + power steps)");
+            throw new NotFoundException("No ZWO for this workout (needs a Bike/Brick session and an athlete FTP)");
         }
         return Response.ok(xml)
                 .header("Content-Disposition", "attachment; filename=\"workout-" + id + ".zwo\"")

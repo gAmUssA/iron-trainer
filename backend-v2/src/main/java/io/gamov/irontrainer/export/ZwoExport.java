@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gamov.irontrainer.plan.PlannedWorkout;
 import jakarta.enterprise.context.ApplicationScoped;
 
+import java.util.Locale;
+
 /** Port of app/export/zwo_export.py — Zwift workout XML for bike power
  * sessions. Power as fraction of FTP; null for non-bike or FTP-less. */
 @ApplicationScoped
@@ -18,8 +20,8 @@ public class ZwoExport {
 
         StringBuilder segments = new StringBuilder();
         try {
-            JsonNode steps = w.structureJson == null ? mapper.createArrayNode()
-                    : mapper.readTree(w.structureJson);
+            JsonNode steps = (w.structureJson == null || w.structureJson.isBlank())
+                    ? mapper.createArrayNode() : mapper.readTree(w.structureJson);
             if (!steps.isArray()) steps = steps.path("steps");
             for (JsonNode step : steps) {
                 int dur = step.path("duration_s").asInt(0);
@@ -33,18 +35,19 @@ public class ZwoExport {
                 }
                 String kind = step.path("type").asText("");
                 if (kind.equals("warmup")) {
-                    segments.append(String.format(
+                    segments.append(String.format(Locale.ROOT,
                         "    <Warmup Duration=\"%d\" PowerLow=\"%.3f\" PowerHigh=\"%.3f\"/>%n", dur, lo, hi));
                 } else if (kind.equals("cooldown")) {
-                    segments.append(String.format(
+                    segments.append(String.format(Locale.ROOT,
                         "    <Cooldown Duration=\"%d\" PowerLow=\"%.3f\" PowerHigh=\"%.3f\"/>%n", dur, lo, hi));
                 } else {
-                    segments.append(String.format(
+                    segments.append(String.format(Locale.ROOT,
                         "    <SteadyState Duration=\"%d\" Power=\"%.3f\"/>%n", dur, (lo + hi) / 2));
                 }
             }
         } catch (Exception e) {
-            return null;
+            // Malformed stored JSON is a server/data problem, not "no ZWO".
+            throw new IllegalStateException("ZWO encoding failed", e);
         }
         if (segments.isEmpty()) return null;
 
