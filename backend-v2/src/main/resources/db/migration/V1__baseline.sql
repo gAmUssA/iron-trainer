@@ -41,7 +41,7 @@ END;
 
 $$;
 
-CREATE TABLE IF NOT EXISTS "public"."activities" (
+CREATE TABLE "public"."activities" (
     "id" bigint NOT NULL,
     "sport" character varying NOT NULL,
     "start_date" character varying NOT NULL,
@@ -67,11 +67,11 @@ CREATE TABLE IF NOT EXISTS "public"."activities" (
     "athlete_id" integer NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "public"."alembic_version" (
+CREATE TABLE "public"."alembic_version" (
     "version_num" character varying(32) NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS "public"."athlete" (
+CREATE TABLE "public"."athlete" (
     "id" integer NOT NULL,
     "strava_athlete_id" bigint,
     "name" character varying,
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS "public"."athlete" (
     "gi_tolerance" character varying
 );
 
-CREATE SEQUENCE IF NOT EXISTS "public"."athlete_id_seq"
+CREATE SEQUENCE "public"."athlete_id_seq"
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -108,7 +108,7 @@ CREATE SEQUENCE IF NOT EXISTS "public"."athlete_id_seq"
 
 ALTER SEQUENCE "public"."athlete_id_seq" OWNED BY "public"."athlete"."id";
 
-CREATE TABLE IF NOT EXISTS "public"."checkin" (
+CREATE TABLE "public"."checkin" (
     "id" integer NOT NULL,
     "athlete_id" integer NOT NULL,
     "date" character varying NOT NULL,
@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS "public"."checkin" (
     "readiness_json" character varying
 );
 
-CREATE SEQUENCE IF NOT EXISTS "public"."checkin_id_seq"
+CREATE SEQUENCE "public"."checkin_id_seq"
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -128,7 +128,7 @@ CREATE SEQUENCE IF NOT EXISTS "public"."checkin_id_seq"
 
 ALTER SEQUENCE "public"."checkin_id_seq" OWNED BY "public"."checkin"."id";
 
-CREATE TABLE IF NOT EXISTS "public"."daily_recovery" (
+CREATE TABLE "public"."daily_recovery" (
     "id" integer NOT NULL,
     "athlete_id" integer NOT NULL,
     "date" character varying NOT NULL,
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS "public"."daily_recovery" (
     "wrist_temp_c" double precision
 );
 
-CREATE SEQUENCE IF NOT EXISTS "public"."daily_recovery_id_seq"
+CREATE SEQUENCE "public"."daily_recovery_id_seq"
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -157,7 +157,7 @@ CREATE SEQUENCE IF NOT EXISTS "public"."daily_recovery_id_seq"
 
 ALTER SEQUENCE "public"."daily_recovery_id_seq" OWNED BY "public"."daily_recovery"."id";
 
-CREATE TABLE IF NOT EXISTS "public"."device_token" (
+CREATE TABLE "public"."device_token" (
     "id" integer NOT NULL,
     "athlete_id" integer NOT NULL,
     "name" character varying,
@@ -168,7 +168,7 @@ CREATE TABLE IF NOT EXISTS "public"."device_token" (
     "last_used_at" character varying
 );
 
-CREATE SEQUENCE IF NOT EXISTS "public"."device_token_id_seq"
+CREATE SEQUENCE "public"."device_token_id_seq"
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -178,7 +178,7 @@ CREATE SEQUENCE IF NOT EXISTS "public"."device_token_id_seq"
 
 ALTER SEQUENCE "public"."device_token_id_seq" OWNED BY "public"."device_token"."id";
 
-CREATE TABLE IF NOT EXISTS "public"."fitness_test_result" (
+CREATE TABLE "public"."fitness_test_result" (
     "id" integer NOT NULL,
     "athlete_id" integer NOT NULL,
     "test_slug" character varying NOT NULL,
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS "public"."fitness_test_result" (
     "created_at" character varying
 );
 
-CREATE SEQUENCE IF NOT EXISTS "public"."fitness_test_result_id_seq"
+CREATE SEQUENCE "public"."fitness_test_result_id_seq"
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -200,7 +200,7 @@ CREATE SEQUENCE IF NOT EXISTS "public"."fitness_test_result_id_seq"
 
 ALTER SEQUENCE "public"."fitness_test_result_id_seq" OWNED BY "public"."fitness_test_result"."id";
 
-CREATE TABLE IF NOT EXISTS "public"."job" (
+CREATE TABLE "public"."job" (
     "id" integer NOT NULL,
     "athlete_id" integer NOT NULL,
     "kind" character varying NOT NULL,
@@ -212,7 +212,7 @@ CREATE TABLE IF NOT EXISTS "public"."job" (
     "error" character varying
 );
 
-CREATE SEQUENCE IF NOT EXISTS "public"."job_id_seq"
+CREATE SEQUENCE "public"."job_id_seq"
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -222,7 +222,7 @@ CREATE SEQUENCE IF NOT EXISTS "public"."job_id_seq"
 
 ALTER SEQUENCE "public"."job_id_seq" OWNED BY "public"."job"."id";
 
-CREATE TABLE IF NOT EXISTS "public"."metrics_daily" (
+CREATE TABLE "public"."metrics_daily" (
     "athlete_id" integer NOT NULL,
     "date" character varying NOT NULL,
     "tss" double precision,
@@ -231,7 +231,7 @@ CREATE TABLE IF NOT EXISTS "public"."metrics_daily" (
     "tsb" double precision
 );
 
-CREATE TABLE IF NOT EXISTS "public"."plan" (
+CREATE TABLE "public"."plan" (
     "id" integer NOT NULL,
     "race_name" character varying,
     "race_date" character varying,
@@ -243,7 +243,7 @@ CREATE TABLE IF NOT EXISTS "public"."plan" (
     "base_weekly_hours" double precision
 );
 
-CREATE SEQUENCE IF NOT EXISTS "public"."plan_id_seq"
+CREATE SEQUENCE "public"."plan_id_seq"
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -253,7 +253,7 @@ CREATE SEQUENCE IF NOT EXISTS "public"."plan_id_seq"
 
 ALTER SEQUENCE "public"."plan_id_seq" OWNED BY "public"."plan"."id";
 
-CREATE TABLE IF NOT EXISTS "public"."planned_workouts" (
+CREATE TABLE "public"."planned_workouts" (
     "id" integer NOT NULL,
     "plan_id" integer,
     "date" character varying NOT NULL,
@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS "public"."planned_workouts" (
     "athlete_id" integer NOT NULL
 );
 
-CREATE SEQUENCE IF NOT EXISTS "public"."planned_workouts_id_seq"
+CREATE SEQUENCE "public"."planned_workouts_id_seq"
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -283,7 +283,7 @@ CREATE SEQUENCE IF NOT EXISTS "public"."planned_workouts_id_seq"
 
 ALTER SEQUENCE "public"."planned_workouts_id_seq" OWNED BY "public"."planned_workouts"."id";
 
-CREATE TABLE IF NOT EXISTS "public"."race" (
+CREATE TABLE "public"."race" (
     "id" integer NOT NULL,
     "slug" character varying NOT NULL,
     "name" character varying NOT NULL,
@@ -296,7 +296,7 @@ CREATE TABLE IF NOT EXISTS "public"."race" (
     "cutoff_finish_s" integer
 );
 
-CREATE SEQUENCE IF NOT EXISTS "public"."race_id_seq"
+CREATE SEQUENCE "public"."race_id_seq"
     AS integer
     START WITH 1
     INCREMENT BY 1
