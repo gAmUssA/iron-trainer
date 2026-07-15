@@ -42,3 +42,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0017](0017-chart-time-windows.md) | Backend-driven time windows for charts (PMC, trends) | Accepted |
 | [0018](0018-checkin-feel-and-notifications.md) | Feel-vs-data check-in + local notifications (reminder & morning brief) | Accepted |
 | [0019](0019-health-auto-export-ingestion.md) | Recovery-data ingestion via Health Auto Export (sleep/HRV/RHR → readiness) | Accepted |
+| [0020](0020-backend-v2-quarkus-strangler.md) | Backend v2: Quarkus strangler migration decisions | Accepted |
