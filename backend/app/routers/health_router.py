@@ -22,8 +22,12 @@ async def ingest(request: Request) -> dict:
     try:
         payload = await request.json()
     except Exception:  # noqa: BLE001 — malformed body: acknowledge, don't retry-loop
+        log.warning("Health ingest: malformed JSON body (%s bytes)",
+                    request.headers.get("content-length", "?"))
         return {"ok": False, "error": "invalid JSON", "days": 0}
-    days = health_ingest.parse_payload(payload if isinstance(payload, dict) else {})
+    stats: dict = {}
+    days = health_ingest.parse_payload(payload if isinstance(payload, dict) else {},
+                                       stats=stats)
     stored = 0
     for day, fields in days.items():
         try:
@@ -31,9 +35,22 @@ async def ingest(request: Request) -> dict:
             stored += 1
         except Exception as e:  # noqa: BLE001 — one bad day must not 500 the batch
             log.warning("Recovery upsert failed for %s: %s", day, e)
+    # Metric NAMES and counts only — never values; this is health data.
+    summary = ("%d metric(s) %s, %d record(s), %d day(s) stored"
+               % (len(stats.get("metrics_seen", [])), sorted(set(stats.get("metrics_seen", []))),
+                  stats.get("records", 0), stored))
     if days:
-        log.info("Health ingest: %d day(s) upserted (%s)", len(days), ", ".join(sorted(days)))
-    return {"ok": True, "days": stored}
+        log.info("Health ingest: %s (%s)", summary, ", ".join(sorted(days)))
+    else:
+        # The silent failure mode that matters: payload arrived but nothing
+        # was recognized — wrong metrics selected, or a date format we miss.
+        log.warning("Health ingest: nothing stored — %s; unknown_metrics=%s bad_dates=%d samples=%s",
+                    summary, stats.get("unknown_metrics"), stats.get("bad_dates", 0),
+                    stats.get("bad_date_samples"))
+    return {"ok": True, "days": stored,
+            "parsed": {"records": stats.get("records", 0),
+                       "unknown_metrics": stats.get("unknown_metrics", []),
+                       "bad_dates": stats.get("bad_dates", 0)}}
 
 
 @router.get("/recovery")

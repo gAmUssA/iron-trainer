@@ -67,7 +67,8 @@ def test_parse_date_variants():
 def test_ingest_endpoint_upserts_and_dedupes():
     with TestClient(app) as c:
         r = c.post("/api/health/ingest", json=_payload()).json()
-        assert r == {"ok": True, "days": 1}
+        assert r["ok"] is True and r["days"] == 1
+        assert r["parsed"]["records"] == 4 and r["parsed"]["unknown_metrics"] == []
         # Re-send (overlapping window) with a fuller sleep record → same row updated.
         p2 = _payload()
         p2["data"]["metrics"][0]["data"][0]["rem"] = 2.0
@@ -81,8 +82,8 @@ def test_ingest_endpoint_upserts_and_dedupes():
         # Garbage in → polite 200, nothing stored extra.
         assert c.post("/api/health/ingest", content=b"not json",
                       headers={"Content-Type": "application/json"}).json()["ok"] is False
-        assert c.post("/api/health/ingest", json={"data": {"metrics": [{"bogus": 1}]}}
-                      ).json() == {"ok": True, "days": 0}
+        r0 = c.post("/api/health/ingest", json={"data": {"metrics": [{"bogus": 1}]}}).json()
+        assert r0["ok"] is True and r0["days"] == 0
 
 
 def _metrics_flat(week_tss: float = 400.0) -> list[dict]:

@@ -73,12 +73,16 @@ def _num(v) -> float | None:
     return float(v) if isinstance(v, (int, float)) else None
 
 
-def parse_payload(payload: dict) -> dict[str, dict]:
+def parse_payload(payload: dict, stats: dict | None = None) -> dict[str, dict]:
     """Reduce a Health Auto Export payload to {local_date: partial recovery row}.
 
     Multiple samples on the same day average (HRV/RHR arrive per-day when the
     automation aggregates by days, but be tolerant of raw samples too)."""
     metrics = ((payload or {}).get("data") or {}).get("metrics") or []
+    if stats is None:
+        stats = {}
+    stats.update({"metrics_seen": [], "records": 0, "bad_dates": 0,
+                  "unknown_metrics": [], "bad_date_samples": []})
     days: dict[str, dict] = {}
     sums: dict[tuple[str, str], list[float]] = {}
 
@@ -92,14 +96,21 @@ def parse_payload(payload: dict) -> dict[str, dict]:
             continue
         name = m.get("name")
         units = m.get("units")
+        if name:
+            stats["metrics_seen"].append(str(name))
         for rec in m.get("data") or []:
             if not isinstance(rec, dict):
                 continue
+            stats["records"] += 1
             if name == "sleep_analysis":
                 # Key the night by wake-up day (sleepEnd), falling back to date.
-                day = _local_day(rec.get("sleepEnd") or rec.get("date"))
+                raw_day = rec.get("sleepEnd") or rec.get("date")
+                day = _local_day(raw_day)
                 row = bucket(day)
                 if row is None:
+                    stats["bad_dates"] += 1
+                    if len(stats["bad_date_samples"]) < 3 and raw_day:
+                        stats["bad_date_samples"].append(str(raw_day)[:40])
                     continue
                 sleep = _sleep_hours(rec)
                 if sleep is not None:
@@ -114,9 +125,15 @@ def parse_payload(payload: dict) -> dict[str, dict]:
                         row[dst] = dt.isoformat()
                 continue
 
-            day = _local_day(rec.get("date") or rec.get("startDate"))
+            raw_day = rec.get("date") or rec.get("startDate")
+            day = _local_day(raw_day)
             qty = _num(rec.get("qty"))
-            if day is None or qty is None:
+            if day is None:
+                stats["bad_dates"] += 1
+                if len(stats["bad_date_samples"]) < 3 and raw_day:
+                    stats["bad_date_samples"].append(str(raw_day)[:40])
+                continue
+            if qty is None:
                 continue
             field = {
                 "heart_rate_variability": "hrv_ms",
@@ -127,7 +144,9 @@ def parse_payload(payload: dict) -> dict[str, dict]:
                 "apple_sleeping_wrist_temperature": "wrist_temp_c",
             }.get(str(name))
             if not field:
-                continue  # unselected/unknown metric — ignore, never fail
+                if str(name) not in stats["unknown_metrics"]:
+                    stats["unknown_metrics"].append(str(name))
+                continue  # unrecognized metric — ignore, never fail
             if field == "weight_kg":
                 qty = _to_kg(qty, units)
             elif field == "wrist_temp_c":
