@@ -39,9 +39,12 @@ def upgrade() -> None:
     )
     op.create_index("ix_daily_recovery_athlete_id", "daily_recovery", ["athlete_id"])
     op.create_index("ix_daily_recovery_date", "daily_recovery", ["date"])
+    op.create_index("uq_daily_recovery_athlete_date", "daily_recovery",
+                    ["athlete_id", "date"], unique=True)
 
 
 def downgrade() -> None:
+    op.drop_index("uq_daily_recovery_athlete_date", table_name="daily_recovery")
     op.drop_index("ix_daily_recovery_date", table_name="daily_recovery")
     op.drop_index("ix_daily_recovery_athlete_id", table_name="daily_recovery")
     op.drop_table("daily_recovery")

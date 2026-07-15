@@ -13,7 +13,7 @@ Design notes:
 
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Column
+from sqlalchemy import BigInteger, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -189,6 +189,7 @@ class DailyRecovery(SQLModel, table=True):
     (athlete_id, date) — the app re-sends overlapping windows by design."""
 
     __tablename__ = "daily_recovery"
+    __table_args__ = (UniqueConstraint("athlete_id", "date", name="uq_daily_recovery_athlete_date"),)
 
     id: int | None = Field(default=None, primary_key=True)
     athlete_id: int = Field(foreign_key="athlete.id", ondelete="CASCADE", index=True)

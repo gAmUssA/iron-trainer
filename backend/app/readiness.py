@@ -222,7 +222,8 @@ def _recovery_flags(recovery: list[dict], today: date | None) -> list[str]:
 
     hrv = latest.get("hrv_ms")
     hrv_base = _baseline("hrv_ms")
-    if isinstance(hrv, (int, float)) and hrv_base and hrv < HRV_SUPPRESSED_RATIO * hrv_base:
+    if isinstance(hrv, (int, float)) and hrv_base is not None and hrv_base > 0 \
+            and hrv < HRV_SUPPRESSED_RATIO * hrv_base:
         flags.append(
             f"HRV suppressed: {hrv:.0f} ms vs your ~{hrv_base:.0f} ms baseline "
             f"({hrv / hrv_base:.0%}) — the nervous system wants an easy day."
@@ -230,7 +231,8 @@ def _recovery_flags(recovery: list[dict], today: date | None) -> list[str]:
 
     rhr = latest.get("rhr_bpm")
     rhr_base = _baseline("rhr_bpm")
-    if isinstance(rhr, (int, float)) and rhr_base and rhr > rhr_base + RHR_ELEVATED_BPM:
+    if isinstance(rhr, (int, float)) and rhr_base is not None and rhr_base > 0 \
+            and rhr > rhr_base + RHR_ELEVATED_BPM:
         flags.append(
             f"Resting HR elevated: {rhr:.0f} bpm vs your ~{rhr_base:.0f} bpm baseline — "
             "watch for illness or accumulated fatigue."

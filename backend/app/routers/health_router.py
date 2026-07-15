@@ -2,8 +2,9 @@
 
 The app POSTs {"data": {"metrics": [...]}} on its own schedule with an
 Authorization: Bearer header (the existing device-token machinery resolves the
-athlete). Return 200 fast and lenient — the app surfaces non-2xx to the user
-as automation errors, and delivery timing is never guaranteed."""
+athlete). Parseable-or-not payloads get a fast 200 (the app surfaces non-2xx to
+the user as automation errors); auth failures deliberately stay 401 —
+a misconfigured token SHOULD be visible in the app."""
 
 from __future__ import annotations
 
@@ -23,11 +24,16 @@ async def ingest(request: Request) -> dict:
     except Exception:  # noqa: BLE001 — malformed body: acknowledge, don't retry-loop
         return {"ok": False, "error": "invalid JSON", "days": 0}
     days = health_ingest.parse_payload(payload if isinstance(payload, dict) else {})
+    stored = 0
     for day, fields in days.items():
-        repo.upsert_daily_recovery(day, fields)
+        try:
+            repo.upsert_daily_recovery(day, fields)
+            stored += 1
+        except Exception as e:  # noqa: BLE001 — one bad day must not 500 the batch
+            log.warning("Recovery upsert failed for %s: %s", day, e)
     if days:
         log.info("Health ingest: %d day(s) upserted (%s)", len(days), ", ".join(sorted(days)))
-    return {"ok": True, "days": len(days)}
+    return {"ok": True, "days": stored}
 
 
 @router.get("/recovery")
