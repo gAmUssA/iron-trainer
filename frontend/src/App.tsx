@@ -24,18 +24,19 @@ import { CheckinCard } from "./components/CheckinCard";
 import { ConnectCard, HealthIngestCard, ProfileEditor, ZonesCard } from "./components/Setup";
 import { TestsView } from "./components/TestsView";
 import { TodayCall } from "./components/TodayCall";
-import { TrendsView } from "./components/TrendsView";
+import { PrCards, TrendsView } from "./components/TrendsView";
 import { useTheme } from "./theme";
 import { useUnits } from "./units";
 import { startTour } from "./tour";
 
-type Tab = "dashboard" | "plan" | "nutrition" | "trends" | "settings";
+type Tab = "dashboard" | "plan" | "trends" | "nutrition" | "tests" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "plan", label: "Training Plan" },
-  { id: "nutrition", label: "Nutrition" },
   { id: "trends", label: "Fitness" },
+  { id: "nutrition", label: "Nutrition" },
+  { id: "tests", label: "Tests" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -290,18 +291,19 @@ export default function App() {
                 )}
               </div>
             )}
+            {readiness && status && (
+              <ReadinessCard readiness={readiness} raceName={status.race.name} />
+            )}
+            {trends && <PrCards prs={trends.insights.prs} />}
             {recovery.length > 0 && <RecoveryCard days={recovery} />}
             {plan?.plan && <CheckinCard onDone={safeLoad} />}
           </div>
         )}
 
-        {/* Fitness — "am I getting fitter, will I be ready?" Race readiness
-            projection + PMC + sport trends + tests, one question per cadence. */}
+        {/* Fitness — "am I getting fitter?" PMC + sport trends. (Race readiness
+            and personal records live on the Dashboard; tests have their own tab.) */}
         {tab === "trends" && (
           <div className="tab-panel">
-            {readiness && status && (
-              <ReadinessCard readiness={readiness} raceName={status.race.name} />
-            )}
             {pmcTotal > 0 ? (
               <PmcChart days={pmc} range={pmcRange} onRange={changePmcRange} />
             ) : (
@@ -320,7 +322,6 @@ export default function App() {
                 onSynced={safeLoad}
               />
             )}
-            <TestsView onChanged={safeLoad} />
           </div>
         )}
 
@@ -346,13 +347,21 @@ export default function App() {
           </div>
         )}
 
+        {tab === "tests" && (
+          <div className="tab-panel">
+            <TestsView onChanged={safeLoad} />
+          </div>
+        )}
+
         {tab === "settings" && athlete && (
           <div className="tab-panel">
             {hoursBanner}
             {status && <ConnectCard status={status} athlete={athlete} onSynced={safeLoad} />}
             {status && <RaceCard status={status} onChanged={reload} />}
-            <ProfileEditor profile={athlete.profile} onSaved={safeLoad} />
-            <ZonesCard thresholdHr={athlete.profile.threshold_hr} maxHr={athlete.profile.max_hr} />
+            <div className="grid-2">
+              <ProfileEditor profile={athlete.profile} onSaved={safeLoad} />
+              <ZonesCard thresholdHr={athlete.profile.threshold_hr} maxHr={athlete.profile.max_hr} />
+            </div>
             <HealthIngestCard />
           </div>
         )}

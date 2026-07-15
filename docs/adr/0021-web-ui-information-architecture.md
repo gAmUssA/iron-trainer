@@ -104,3 +104,29 @@ Migrate in **three shippable PRs**, never a big-bang rewrite:
   charts + Fitness Trajectory, Weekly Volume + Intensity Mix, Personal Records,
   and the folded-in Fitness tests protocols. All charts draw. Tab bar shows the
   five expected entries with no Tests/Trends leftovers.
+
+## Update (2026-07-15) — post-merge IA refinement
+
+After PR2 shipped, a product-owner review adjusted the placement (the taxonomy
+decision itself stands; only which surface hosts a few cards changed):
+
+- **Race readiness moves back to the Dashboard** (first tab) as the headline,
+  followed by **Personal Records**, then Recovery and Check-in. The Dashboard is
+  the "am I ready / how am I today" glance; PMC and sport trends remain the
+  Fitness tab's job. `PrCards` is exported from `TrendsView.tsx` and rendered on
+  the Dashboard from the `trends.insights.prs` the App already holds (no new API
+  call); it is no longer rendered inside `TrendsView`.
+- **Tests stays its own tab** rather than folded into Fitness — a distinct
+  cadence (measure thresholds every 4–6 weeks) that did not want to live inside
+  the trends scroll.
+- **Tab order**: Dashboard · Training Plan · **Fitness** · Nutrition · Tests ·
+  Settings (Fitness sits right after Training Plan). Fitness therefore holds only
+  PMC + sport trends now.
+- **Settings**: Thresholds and Heart-Rate Zones render as two columns in one
+  row (`grid-2`).
+- **Tour**: the `#tour-readiness` step is restored (readiness is back on the
+  Dashboard, where the tour runs); PMC stays introduced via the nav step.
+
+Also fixed an unrelated pre-existing bug surfaced in review: the "Connect with
+Strava" button (`public/strava/btn_strava_connect.svg`) clipped its label — the
+text ran past the 200-unit viewBox; widened the canvas to 224.
