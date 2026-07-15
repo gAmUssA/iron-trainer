@@ -18,8 +18,8 @@ const ALL_STEPS: WalkthroughStep[] = [
   },
   {
     element: "#tour-nav",
-    title: "Four screens",
-    text: "Dashboard (here), Training Plan, Trends and Settings. The plan adapts to the data on the other tabs — explore each after the tour.",
+    title: "Your screens",
+    text: "Dashboard (here), Training Plan, Nutrition, Trends, Tests and Settings. The plan adapts to the data on the other tabs — explore each after the tour.",
     position: "bottom",
   },
   {

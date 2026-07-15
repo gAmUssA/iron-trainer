@@ -277,14 +277,14 @@ export default function App() {
                 {athlete.connected ? (
                   <span>
                     Strava connected{athlete.profile.name ? ` · ${athlete.profile.name}` : ""} —{" "}
-                    <button className="linklike" onClick={() => setTab("settings")}>
+                    <button type="button" className="linklike" onClick={() => setTab("settings")}>
                       manage &amp; sync in Settings →
                     </button>
                   </span>
                 ) : (
                   <span>
                     Strava not connected —{" "}
-                    <button className="linklike" onClick={() => setTab("settings")}>
+                    <button type="button" className="linklike" onClick={() => setTab("settings")}>
                       set up in Settings →
                     </button>
                   </span>
