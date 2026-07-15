@@ -71,3 +71,14 @@ FALLBACK for the one plan-generation call if LangChain4j's structured output
 turns out to be prompt-coaxed rather than schema-enforced — that check is
 spike item (2): assert the wire request uses Anthropic's native strict-schema
 path before trusting the abstraction.
+
+## POC result (2026-07-15): LangChain4j native schema CONFIRMED
+
+spikes/lc4j-structured-output/ (plain LC4J 1.13.1 + langchain4j-anthropic, Java 21).
+AI Service returning a record, with .supportedCapabilities(RESPONSE_FORMAT_JSON_SCHEMA)
+set on AnthropicChatModel: the RAW request body contains
+output_config.format = {type: "json_schema", schema: <record schema>} — Anthropic
+native strict enforcement, NOT prompt-coaxed. POJO parsed cleanly
+(claude-haiku-4-5). CAVEAT: the capability flag is mandatory — without it
+LC4J silently falls back to prompting (documented). Spike item (2) retired;
+LangChain4j mandate stands with no fallback needed.
