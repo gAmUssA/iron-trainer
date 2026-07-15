@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: normal
 created_at: 2026-07-09T18:30:38Z
-updated_at: 2026-07-09T23:21:17Z
+updated_at: 2026-07-15T02:33:12Z
+parent: iron-trainer-udbc
 ---
 
 One action composes the adaptive loop that currently takes three manual buttons:

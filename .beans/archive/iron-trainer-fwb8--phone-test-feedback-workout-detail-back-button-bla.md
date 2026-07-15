@@ -5,7 +5,8 @@ status: completed
 type: bug
 priority: high
 created_at: 2026-07-08T20:19:39Z
-updated_at: 2026-07-09T01:48:34Z
+updated_at: 2026-07-15T02:33:12Z
+parent: iron-trainer-03qt
 ---
 
 From Viktor's on-device test of build 202607081335:

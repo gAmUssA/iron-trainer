@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: normal
 created_at: 2026-07-13T04:36:47Z
-updated_at: 2026-07-13T19:40:10Z
+updated_at: 2026-07-15T02:33:12Z
+parent: iron-trainer-03qt
 ---
 
 The iOS check-in held one HTTP request open for 90s — fragile on cellular / app backgrounding. Adopt PR #21's job API:

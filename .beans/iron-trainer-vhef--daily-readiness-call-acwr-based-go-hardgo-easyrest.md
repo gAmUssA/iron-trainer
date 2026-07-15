@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: high
 created_at: 2026-07-14T20:10:49Z
-updated_at: 2026-07-14T21:47:32Z
+updated_at: 2026-07-15T02:33:12Z
+parent: iron-trainer-udbc
 ---
 
 As an athlete I want a daily readiness call (go hard / go easy / rest) computed from my own training history, so I know whether to push or back off today.

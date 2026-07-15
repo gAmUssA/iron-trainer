@@ -5,7 +5,8 @@ status: completed
 type: feature
 priority: normal
 created_at: 2026-07-09T13:47:46Z
-updated_at: 2026-07-09T14:38:48Z
+updated_at: 2026-07-15T02:33:12Z
+parent: iron-trainer-udbc
 ---
 
 Viktor: use HR zones in workout planning (we have LTHR/max HR), feed zones to the AI planner, and add an HR-zone calculator.

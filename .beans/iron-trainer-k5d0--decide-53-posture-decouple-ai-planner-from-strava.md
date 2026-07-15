@@ -5,7 +5,8 @@ status: todo
 type: task
 priority: high
 created_at: 2026-07-08T17:29:55Z
-updated_at: 2026-07-08T17:29:55Z
+updated_at: 2026-07-15T02:33:12Z
+parent: iron-trainer-cgoy
 ---
 
 The last open item from the 2026-07-06 review (N4). Both plan generation and race-day nutrition (llm.py) send Strava-derived readiness/context to Claude — in tension with Strava API Agreement §5.3. Options analyzed in docs/research/strava-ingestion-and-ai.md:
