@@ -5,7 +5,8 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-07-14T20:11:12Z
-updated_at: 2026-07-15T02:14:57Z
+updated_at: 2026-07-15T02:33:25Z
+parent: iron-trainer-03qt
 blocked_by:
     - iron-trainer-vhef
 ---

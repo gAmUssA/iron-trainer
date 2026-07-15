@@ -5,7 +5,8 @@ status: in-progress
 type: feature
 priority: high
 created_at: 2026-07-14T20:11:12Z
-updated_at: 2026-07-15T02:14:57Z
+updated_at: 2026-07-15T02:33:25Z
+parent: iron-trainer-udbc
 ---
 
 As an athlete I want the weekly check-in to ask how the week FELT (energy, sleep, soreness, stress) and reconcile that with my data, calling out disagreements — and I want past check-ins remembered so trends compound across weeks.
