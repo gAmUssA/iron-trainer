@@ -283,6 +283,15 @@ export interface RecentCompliance {
   skipped_sessions: number;
   planned_sessions: number;
 }
+/** Subjective check-in inputs — 1-5, higher is better, all optional. */
+export interface CheckinFeel {
+  energy?: number;
+  sleep?: number;
+  body?: number;
+  stress?: number;
+  note?: string;
+}
+
 export interface CheckinResult {
   status?: "ok" | "no_plan";
   story: string[];
@@ -509,7 +518,9 @@ export const api = {
   plan: () => getJSON<PlanResponse>("/api/plan"),
   generatePlan: (useLlm = true) =>
     viaJob<GenerateResult>(() => send(`/api/plan/generate?use_llm=${useLlm}&async=1`, "POST")),
-  checkin: () => viaJob<CheckinResult>(() => send("/api/plan/checkin?async=1", "POST")),
+  checkin: (inputs?: CheckinFeel) =>
+    viaJob<CheckinResult>(() =>
+      send("/api/plan/checkin?async=1", "POST", inputs ? { inputs } : undefined)),
   reconcile: (weeksAhead = 1) =>
     send<ReconcileResult>(`/api/plan/reconcile?weeks_ahead=${weeksAhead}`, "POST"),
   compliance: () =>

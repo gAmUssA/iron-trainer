@@ -73,6 +73,17 @@ def _fitness_summary() -> dict:
             "acwr": ready["acwr"],
             "reason": (ready.get("reasons") or [None])[0],
         }
+    # Compounding memory: how the athlete FELT in past weeks (1-5, higher is
+    # better) next to the readiness call each time. Lets the planner see e.g.
+    # three weeks of sliding sleep that raw load numbers would never show.
+    past = [
+        {"date": c["date"], "feel": c["inputs"],
+         "readiness_call": (c.get("readiness") or {}).get("call")}
+        for c in repo.recent_checkins()
+        if c.get("inputs") or c.get("readiness")
+    ]
+    if past:
+        summary["recent_checkins"] = past
     plan = repo.get_active_plan()
     if plan:
         summary["recent_compliance"] = recon.recent_compliance(plan["id"])
@@ -170,7 +181,47 @@ def refresh_future_plan_targets(*, today: date | None = None) -> int:
     return refreshed
 
 
-def replan_week(*, week_start: str, use_llm: bool = True) -> dict:
+FEEL_KEYS = ("energy", "sleep", "body", "stress")  # all 1-5, higher is better
+
+
+def sanitize_feel(inputs: dict | None) -> dict | None:
+    """Clamp subjective check-in inputs to their contract: known keys, ints
+    1-5 (higher is better), plus an optional short free-text note."""
+    if not isinstance(inputs, dict):
+        return None
+    out: dict = {}
+    for k in FEEL_KEYS:
+        v = inputs.get(k)
+        if isinstance(v, (int, float)):
+            out[k] = max(1, min(5, int(v)))
+    note = inputs.get("note")
+    if isinstance(note, str) and note.strip():
+        out["note"] = note.strip()[:280]
+    return out or None
+
+
+def _feel_vs_data_line(feel: dict | None, ready: dict) -> str | None:
+    """The reconciliation the Weekly Review pattern calls the most useful part
+    of a review: where how you FEEL and what the DATA says disagree."""
+    scores = [v for k, v in (feel or {}).items() if k in FEEL_KEYS]
+    if not scores or ready.get("status") != "ok":
+        return None
+    avg = sum(scores) / len(scores)
+    level = ready.get("level")
+    if avg <= 2.5 and level == "green":
+        return (
+            f"Feel vs data: you rate the week {avg:.1f}/5 but your training load is steady — "
+            "the fatigue is probably coming from sleep or life stress, not the plan. Worth a look."
+        )
+    if avg >= 3.5 and level in ("amber", "red"):
+        return (
+            f"Feel vs data: you feel good ({avg:.1f}/5) but the numbers disagree — "
+            f"{(ready.get('reasons') or [''])[0]} Don't let a good day bait an overreach."
+        )
+    return f"Feel vs data: aligned ({avg:.1f}/5 vs a {level} load picture)."
+
+
+def replan_week(*, week_start: str, use_llm: bool = True, feel: dict | None = None) -> dict:
     plan = repo.get_active_plan()
     if not plan:
         raise ValueError("No active plan. Generate a plan first.")
@@ -186,7 +237,10 @@ def replan_week(*, week_start: str, use_llm: bool = True) -> dict:
     workouts: list[dict] | None = None
     if use_llm:
         try:
-            workouts = llm.generate_week_workouts(week, profile, _fitness_summary())
+            context = _fitness_summary()
+            if feel:
+                context["todays_feel"] = feel
+            workouts = llm.generate_week_workouts(week, profile, context)
             llm_used = bool(workouts)
         except llm.LLMUnavailable:
             workouts = None
@@ -200,7 +254,8 @@ def replan_week(*, week_start: str, use_llm: bool = True) -> dict:
     return {"week_start": week_start, "llm_used": llm_used, "workouts": n, "notes": notes}
 
 
-def weekly_checkin(*, today: date | None = None, use_llm: bool = True) -> dict:
+def weekly_checkin(*, today: date | None = None, use_llm: bool = True,
+                   inputs: dict | None = None) -> dict:
     """The one-tap adaptive loop: sync Strava (best-effort) → match actuals →
     re-plan next week from compliance + form → surface due fitness tests and the
     upcoming key sessions — with a human-readable story of what changed and why.
@@ -208,8 +263,9 @@ def weekly_checkin(*, today: date | None = None, use_llm: bool = True) -> dict:
     from .. import fitness_tests, services  # lazy: services is a peer module
 
     today = today or date.today()
+    feel = sanitize_feel(inputs)
     story: list[str] = []
-    out: dict = {}
+    out: dict = {"inputs": feel}
 
     # 1. Sync — best-effort; a missing connection or Strava hiccup must not
     #    block the rest of the loop (local data still reconciles fine).
@@ -247,8 +303,9 @@ def weekly_checkin(*, today: date | None = None, use_llm: bool = True) -> dict:
 
     before_h = _week_hours()
 
-    # 2 + 3. Match actuals + replan the upcoming week.
-    rec = reconcile(today=today, weeks_ahead=1, use_llm=use_llm)
+    # 2 + 3. Match actuals + replan the upcoming week (the athlete's subjective
+    # state rides along into the replan prompt).
+    rec = reconcile(today=today, weeks_ahead=1, use_llm=use_llm, feel=feel)
     after_h = _week_hours()
     out["reconcile"] = {k: rec[k] for k in ("matched", "compliance", "weeks_replanned", "form_flag")}
     out["next_week"] = {"week_start": next_monday, "hours_before": before_h, "hours_after": after_h}
@@ -269,6 +326,9 @@ def weekly_checkin(*, today: date | None = None, use_llm: bool = True) -> dict:
     ready_line = readiness.story_line(ready)
     if ready_line:
         story.append(ready_line)
+    feel_line = _feel_vs_data_line(feel, ready)
+    if feel_line:
+        story.append(feel_line)
     if rec["weeks_replanned"]:
         delta = after_h - before_h
         if abs(delta) >= 0.2:
@@ -313,10 +373,17 @@ def weekly_checkin(*, today: date | None = None, use_llm: bool = True) -> dict:
 
     out["status"] = "ok"
     out["story"] = story
+    # Persist — past check-ins are the memory the next one reads. Best-effort:
+    # a storage hiccup must not fail a check-in that already replanned.
+    try:
+        repo.save_checkin(day=today.isoformat(), inputs=feel, story=story, readiness=ready)
+    except Exception as e:  # noqa: BLE001
+        log.warning("Check-in persist failed: %s", e)
     return out
 
 
-def reconcile(*, today: date | None = None, weeks_ahead: int = 1, use_llm: bool = True) -> dict:
+def reconcile(*, today: date | None = None, weeks_ahead: int = 1, use_llm: bool = True,
+              feel: dict | None = None) -> dict:
     """Fold actual training back into the plan, then re-plan upcoming week(s).
 
     1. Match completed activities to planned workouts (status + compliance).
@@ -334,7 +401,8 @@ def reconcile(*, today: date | None = None, weeks_ahead: int = 1, use_llm: bool 
 
     next_monday = (monday_of(today) + timedelta(days=7)).isoformat()
     upcoming = [w for w in plan["weeks"] if w["week_start"] >= next_monday][:weeks_ahead]
-    replanned = [replan_week(week_start=w["week_start"], use_llm=use_llm) for w in upcoming]
+    replanned = [replan_week(week_start=w["week_start"], use_llm=use_llm, feel=feel)
+                 for w in upcoming]
 
     return {
         "matched": matched,

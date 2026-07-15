@@ -180,6 +180,11 @@ def generate_week_workouts(week: dict, profile: dict, context: dict) -> list[dic
         "call (acute:chronic load ratio too high, or deep fatigue) means the next "
         "1-2 days must be recovery or easy Z1-Z2 work — never schedule a key "
         "session against it, and keep any weekly ramp near +10% or less. "
+        "todays_feel and recent_checkins carry the athlete's subjective state "
+        "(energy/sleep/body/stress, 1-5, higher is better, plus a free-text note): "
+        "weigh feel against the load data — persistent low sleep or stress across "
+        "recent_checkins means favor recovery even when the load numbers look fine, "
+        "and honor anything concrete in the note (a niggle, travel, a hard work week). "
         "Output via the tool."
     )
     hr = zones.hr_zones(profile.get("threshold_hr"), profile.get("max_hr"))

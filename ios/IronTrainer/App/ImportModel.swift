@@ -46,6 +46,7 @@ final class ImportModel: ObservableObject {
                 // Group, then ask WidgetKit to rebuild timelines.
                 SharedStore.write(WidgetSnapshot.build(from: plan))
                 WidgetCenter.shared.reloadAllTimelines()
+                Task { await Notifications.rescheduleMorningBriefs(from: plan) }
             }
         } catch {
             state = .failed(error.localizedDescription)
@@ -61,6 +62,7 @@ final class ImportModel: ObservableObject {
         state = .loadedPlan(plan)
         SharedStore.write(WidgetSnapshot.build(from: plan))
         WidgetCenter.shared.reloadAllTimelines()
+        Task { await Notifications.rescheduleMorningBriefs(from: plan) }
     }
 
     /// Return to the plan list (e.g. after scheduling one workout).

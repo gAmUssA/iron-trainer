@@ -75,12 +75,16 @@ struct PlanNetworkSource {
     /// one request open for the whole ~30s LLM replan was fragile on a phone —
     /// backgrounding the app or a cellular blip killed the connection while
     /// the server kept working. Submit + short polls survive both.
-    func checkin() async throws -> CheckinStory {
+    func checkin(feel: CheckinFeel? = nil) async throws -> CheckinStory {
         var comps = URLComponents(url: baseURL.appending(path: "/api/plan/checkin"),
                                   resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "async", value: "1")]
         var req = authedRequest(comps.url!, bearer: bearer)
         req.httpMethod = "POST"
+        if let feel, !feel.isEmpty {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONEncoder().encode(CheckinRequestBody(inputs: feel))
+        }
         let (data, resp) = try await session.data(for: req)
         if let h = resp as? HTTPURLResponse, h.statusCode != 200 { throw NetworkError.http(h.statusCode) }
         let envelope = try JSONDecoder().decode(JobEnvelope.self, from: data)
@@ -156,6 +160,24 @@ struct PlanNetworkSource {
         else { return nil }
         return summary.active["checkin"]?.id
     }
+}
+
+/// Subjective check-in inputs — 1-5, higher is better, everything optional.
+struct CheckinFeel: Encodable, Equatable {
+    var energy: Int?
+    var sleep: Int?
+    var body: Int?
+    var stress: Int?
+    var note: String?
+
+    var isEmpty: Bool {
+        energy == nil && sleep == nil && body == nil && stress == nil
+            && (note?.isEmpty ?? true)
+    }
+}
+
+private struct CheckinRequestBody: Encodable {
+    let inputs: CheckinFeel
 }
 
 /// Today's readiness call (subset of /api/metrics/readiness/today).

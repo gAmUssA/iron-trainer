@@ -11,6 +11,7 @@ struct TodayView: View {
     @State private var checkinState: CheckinState = .idle
     @State private var story: [String]?
     @State private var readiness: ReadinessToday?
+    @State private var askingFeel = false
 
     private var todayKey: String { Self.isoDay(.now) }
     private var tomorrowKey: String {
@@ -63,7 +64,7 @@ struct TodayView: View {
                 // token while UserDefaults lost the server URL (seen live when
                 // reinstalling) — don't render a button that can't run.
                 if auth.isSignedIn && auth.serverURL != nil {
-                    Button(action: runCheckin) {
+                    Button(action: { askingFeel = true }) {
                         HStack {
                             Label(checkinState == .running ? "Checking in…" : "Weekly Check-in",
                                   systemImage: "checkmark.arrow.trianglehead.counterclockwise")
@@ -92,6 +93,13 @@ struct TodayView: View {
         .sheet(isPresented: .init(get: { story != nil }, set: { if !$0 { story = nil } })) {
             CheckinStorySheet(lines: story ?? [])
         }
+        .sheet(isPresented: $askingFeel) {
+            CheckinFeelSheet { feel in
+                askingFeel = false
+                runCheckin(feel: feel)
+            }
+            .presentationDetents([.medium, .large])
+        }
         .task { await resumeActiveCheckin() }
         .task { await loadReadiness() }
     }
@@ -101,7 +109,7 @@ struct TodayView: View {
     /// checkin() submits a background job and polls it — short requests that
     /// survive backgrounding, instead of one fragile 90s connection.
     @MainActor
-    private func runCheckin() {
+    private func runCheckin(feel: CheckinFeel? = nil) {
         guard let server = auth.serverURL, let bearer = auth.bearer else {
             checkinState = .failed("Not connected — re-pair in Settings.")
             return
@@ -110,7 +118,7 @@ struct TodayView: View {
         Task {
             do {
                 let source = PlanNetworkSource(baseURL: server, bearer: bearer)
-                let result = try await source.checkin()
+                let result = try await source.checkin(feel: feel)
                 await model.refreshPlanQuietly(from: source)  // plan + widgets, no .loading flash
                 story = result.story
                 checkinState = .idle
@@ -210,6 +218,93 @@ private struct ReadinessBanner: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Today's readiness: \(label). \(readiness.reasons.first ?? "")")
+    }
+}
+
+/// Ten-second "how did the week feel?" before the check-in runs. Skippable on
+/// purpose — the backend reconciles these against the load data and calls out
+/// where feel and numbers disagree.
+private struct CheckinFeelSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onSubmit: (CheckinFeel?) -> Void
+
+    @State private var energy: Int?
+    @State private var sleep: Int?
+    @State private var body_: Int?
+    @State private var stress: Int?
+    @State private var note = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    feelRow("Energy", low: "flat", high: "charged", value: $energy)
+                    feelRow("Sleep", low: "poor", high: "great", value: $sleep)
+                    feelRow("Body", low: "beat up", high: "fresh", value: $body_)
+                    feelRow("Life stress", low: "maxed", high: "calm", value: $stress)
+                } header: {
+                    Text("How did the week feel?")
+                } footer: {
+                    Text("Optional — your answers get reconciled against the training data.")
+                }
+                Section {
+                    TextField("Anything else? (a niggle, travel…)", text: $note, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+                Section {
+                    Button("Check in") {
+                        var feel = CheckinFeel(energy: energy, sleep: sleep,
+                                               body: body_, stress: stress)
+                        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty { feel.note = String(trimmed.prefix(280)) }
+                        onSubmit(feel.isEmpty ? nil : feel)
+                    }
+                    .fontWeight(.semibold)
+                    Button("Skip") { onSubmit(nil) }
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Weekly Check-in")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func feelRow(_ label: String, low: String, high: String,
+                         value: Binding<Int?>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(label)
+                Spacer()
+                Text(value.wrappedValue.map { "\($0)/5" } ?? "—")
+                    .font(.caption).monospaced().foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Text(low).font(.caption2).foregroundStyle(.tertiary)
+                ForEach(1...5, id: \.self) { v in
+                    Button {
+                        value.wrappedValue = value.wrappedValue == v ? nil : v
+                    } label: {
+                        Text("\(v)")
+                            .font(.caption.weight(.semibold)).monospaced()
+                            .frame(width: 30, height: 30)
+                            .background(
+                                value.wrappedValue == v ? Color.accentColor
+                                    : Color.secondary.opacity(0.12),
+                                in: Circle()
+                            )
+                            .foregroundStyle(value.wrappedValue == v ? .white : .primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text(high).font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 

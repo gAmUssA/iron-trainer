@@ -540,6 +540,38 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 :root[data-theme="light"] .pill-red { color: #b91c1c; background: rgba(185, 28, 28, 0.1); }
 .today-call-reason { font-size: 13px; color: var(--muted); flex: 1; min-width: 220px; }
 
+/* ── Check-in feel form ─────────────────────────────────────────────────── */
+.feel-form { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.feel-title { font-size: 13px; color: var(--muted); }
+.feel-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.feel-label { width: 84px; font-size: 13px; color: var(--text); flex: none; }
+.feel-scale { display: inline-flex; align-items: center; gap: 6px; }
+.feel-end { font-size: 11px; color: var(--muted); min-width: 44px; }
+.feel-end:last-child { text-align: left; }
+.feel-dot {
+  font-family: var(--mono);
+  font-size: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+}
+.feel-dot:hover { border-color: var(--accent); color: var(--text); }
+.feel-dot.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.feel-note {
+  font: inherit;
+  font-size: 13px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+}
+.feel-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
 /* ── Chart range picker ─────────────────────────────────────────────────── */
 .range-picker {
   display: inline-flex;

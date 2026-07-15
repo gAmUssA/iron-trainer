@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from .. import jobs, reconcile as reconcile_mod
 from .. import repo
 from ..planning import service
 
 router = APIRouter(prefix="/api/plan", tags=["plan"])
+
+
+class CheckinBody(BaseModel):
+    """Subjective check-in inputs; keys sanitized server-side (sanitize_feel)."""
+
+    inputs: dict | None = None
 
 
 @router.post("/generate")
@@ -40,16 +47,23 @@ def replan_week(week_start: str, use_llm: bool = Query(True)) -> dict:
 
 @router.post("/checkin")
 def checkin(
+    body: CheckinBody | None = None,
     use_llm: bool = Query(True),
     run_async: bool = Query(False, alias="async"),
 ) -> dict:
     """One-tap weekly check-in: sync → reconcile → replan next week → test-due
     nudges, with a narrative `story` of what changed and why. Synchronous by
-    default (the iOS app depends on it); the web app passes ?async=1."""
+    default for API simplicity; both web and iOS clients pass ?async=1 and
+    poll the job home.
+
+    Optional body carries the athlete's subjective inputs (energy/sleep/body/
+    stress 1-5, higher is better, plus a note) for feel-vs-data reconciliation."""
+    inputs = body.inputs if body else None
     if run_async:
         return {"job": jobs.submit("checkin",
-                                   lambda: service.weekly_checkin(use_llm=use_llm))}
-    return service.weekly_checkin(use_llm=use_llm)
+                                   lambda: service.weekly_checkin(use_llm=use_llm,
+                                                                  inputs=inputs))}
+    return service.weekly_checkin(use_llm=use_llm, inputs=inputs)
 
 
 @router.post("/reconcile")
