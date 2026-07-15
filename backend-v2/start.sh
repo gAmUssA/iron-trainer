@@ -13,4 +13,9 @@ if [ -n "${DATABASE_URL:-}" ] && [ -z "${DATABASE_JDBC_URL:-}" ]; then
   export DATABASE_PASSWORD="${creds#*:}"
   export DATABASE_JDBC_URL="jdbc:postgresql://${hostpart}"
 fi
-exec java -jar quarkus-run.jar
+# Native binary when present (prod image); JVM fallback for local docker runs.
+if [ -x /app/application ]; then
+  exec /app/application
+else
+  exec java -jar quarkus-run.jar
+fi

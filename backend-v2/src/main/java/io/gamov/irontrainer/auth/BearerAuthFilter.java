@@ -5,6 +5,7 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.ext.Provider;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.logging.Logger;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -17,6 +18,8 @@ import java.util.HexFormat;
  * stay on the FastAPI side of the strangler. */
 @Provider
 public class BearerAuthFilter implements ContainerRequestFilter {
+
+    private static final Logger LOG = Logger.getLogger(BearerAuthFilter.class);
 
     @Inject
     CurrentAthlete current;
@@ -32,8 +35,12 @@ public class BearerAuthFilter implements ContainerRequestFilter {
             DeviceToken t = DeviceToken.find("tokenHash", hash).firstResult();
             if (t != null) {
                 current.set(t.athleteId);
+                LOG.debugf("Bearer resolved: athlete=%d device=%s", t.athleteId, t.name);
                 return;
             }
+            // Unknown token: log the event, never the credential.
+            LOG.infof("Bearer rejected: unknown token (path=%s)",
+                    ctx.getUriInfo().getPath());
         }
         if (!authRequired) {
             current.set(1); // single-athlete local mode, same as FastAPI default

@@ -10,11 +10,14 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Response;
+import org.jboss.logging.Logger;
 
 /** Exports vertical — first strangled path. Bearer-authenticated (iOS),
  * athlete-scoped lookups; cross-tenant ids 404 exactly like FastAPI. */
 @Path("/api/export")
 public class ExportResource {
+
+    private static final Logger LOG = Logger.getLogger(ExportResource.class);
 
     @Inject
     CurrentAthlete current;
@@ -39,6 +42,7 @@ public class ExportResource {
             throw new NotFoundException();
         }
         Athlete a = Athlete.findById(athleteId);
+        LOG.infof("Export itw: athlete=%d workout=%d sport=%s", athleteId, id, w.sport);
         return Response.ok(itw.workoutItw(w, a))
                 .header("Content-Disposition", "attachment; filename=\"workout-" + id + ".itw\"")
                 .build();
@@ -52,6 +56,7 @@ public class ExportResource {
         PlannedWorkout w = owned(id, athleteId);
         Athlete a = Athlete.findById(athleteId);
         String xml = zwo.workoutZwo(w, a == null ? null : a.ftp);
+        LOG.infof("Export zwo: athlete=%d workout=%d eligible=%b", athleteId, id, xml != null);
         if (xml == null) {
             throw new NotFoundException("No ZWO for this workout (needs a Bike/Brick session and an athlete FTP)");
         }
@@ -66,6 +71,7 @@ public class ExportResource {
     public Response workoutFit(@PathParam("id") int id) {
         int athleteId = current.require();
         PlannedWorkout w = owned(id, athleteId);
+        LOG.infof("Export fit: athlete=%d workout=%d sport=%s", athleteId, id, w.sport);
         return Response.ok(fit.workoutFit(w))
                 .header("Content-Disposition", "attachment; filename=\"workout-" + id + ".fit\"")
                 .build();
@@ -80,6 +86,8 @@ public class ExportResource {
         java.util.List<PlannedWorkout> workouts = plan == null ? java.util.List.of()
                 : PlannedWorkout.list("planId = ?1 and athleteId = ?2 order by date", plan.id, athleteId);
         Athlete a = Athlete.findById(athleteId);
+        LOG.infof("Export plan.itw: athlete=%d workouts=%d plan=%s",
+                athleteId, workouts.size(), plan == null ? "none" : plan.id);
         return Response.ok(itw.planItw(workouts, plan, a))
                 .header("Content-Disposition", "attachment; filename=\"iron-trainer-plan.itw\"")
                 .build();
