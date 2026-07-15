@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     auth_required: bool = False
     session_secret: str = "dev-insecure-change-me"
     allowed_strava_ids: str = ""  # comma-separated Strava athlete ids (empty = allow all)
+    # Strangler flip: when set (e.g. http://backend-v2.railway.internal:8080),
+    # bearer-authenticated export requests are proxied to backend-v2. Empty =
+    # serve locally (instant rollback). Session-cookie traffic always local.
+    export_proxy_url: str = ""
     default_athlete_id: int = 1  # identity used in local no-login mode
     cookie_secure: bool = False  # set true behind HTTPS (Secure session cookie)
     log_level: str = "INFO"  # app log verbosity (DEBUG/INFO/WARNING/ERROR)
