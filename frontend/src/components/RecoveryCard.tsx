@@ -59,12 +59,13 @@ export function RecoveryCard({ days }: { days: RecoveryDay[] }) {
       </div>
       <div className="recovery-tiles">
         {tiles.map((t) => {
-          const points = series
+          const all = series
             .filter((d) => d[t.field] != null)
-            .map((d) => ({ v: d[t.field] as number }))
-            .slice(-7); // sparkline shows the last 7 samples; fetch window is wider for baselines
-          // Baseline = mean of everything before the latest sample.
-          const prior = points.slice(0, -1).map((p) => p.v);
+            .map((d) => ({ v: d[t.field] as number }));
+          // Sparkline shows the last 7 samples; the baseline uses the full
+          // fetch window (14d) so clamping the chart doesn't move the delta.
+          const points = all.slice(-7);
+          const prior = all.slice(0, -1).map((p) => p.v);
           const base = prior.length >= 3 ? prior.reduce((a, b) => a + b, 0) / prior.length : null;
           const delta = base != null && t.value != null ? t.value - base : null;
           const good = delta != null && (t.goodWhenUp ? delta >= 0 : delta <= 0);
