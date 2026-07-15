@@ -92,3 +92,20 @@ def test_zones_parity(v1, v2):
     b = v2.get("/api/athlete/zones")
     assert a.status_code == b.status_code == 200
     assert a.json() == b.json()
+
+
+def test_pmc_parity(v1, v2):
+    """PMC windowing: both backends read the same metrics_daily rows, so the
+    windowed response must be byte-identical (shape + window params + rows).
+    The 4 backend-v2 unit tests prove the windowing math on 400 seeded rows;
+    this proves the two implementations agree on whatever the DB holds."""
+    a = v1.get("/api/metrics/pmc")
+    b = v2.get("/api/metrics/pmc")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    a2 = v1.get("/api/metrics/pmc?days=30")
+    b2 = v2.get("/api/metrics/pmc?days=30")
+    assert a2.status_code == b2.status_code == 200
+    a2j, b2j = a2.json(), b2.json()
+    assert a2j == b2j
+    assert a2j["window_days"] == 30
