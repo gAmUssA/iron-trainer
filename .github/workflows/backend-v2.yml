@@ -29,3 +29,29 @@ jobs:
           cache: maven
       - name: JVM tests (Dev Services Postgres)
         run: ./mvnw -B test
+
+  native:
+    # The last Phase 0-1 spike item: GraalVM native image builds in CI
+    # (container build via Mandrel; ~have 16GB on ubuntu-latest runners).
+    # Deliberately after `test` — no point burning native minutes on red code.
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Native image build + native ITs
+        run: ./mvnw -B package -Dnative -Dquarkus.native.container-build=true -DskipTests
+      - name: Smoke-run the binary
+        run: |
+          ls -lh target/*-runner
+          timeout 15 ./target/*-runner || code=$?
+          # 124 = timeout killed a healthy running server; anything else is a real failure
+          test "${code:-124}" -eq 124
