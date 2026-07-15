@@ -37,7 +37,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "nutrition", label: "Nutrition" },
   { id: "trends", label: "Trends" },
   { id: "tests", label: "Tests" },
-  { id: "settings", label: "Thresholds" },
+  { id: "settings", label: "Settings" },
 ];
 
 function daysUntil(dateStr: string): number {
@@ -269,14 +269,31 @@ export default function App() {
         {tab === "dashboard" && (
           <div className="tab-panel">
             {todayCall && <TodayCall readiness={todayCall} />}
-            <div className="dash-top">
-              {status && athlete && (
-                <ConnectCard status={status} athlete={athlete} onSynced={safeLoad} />
-              )}
-              {readiness && status && (
-                <ReadinessCard readiness={readiness} raceName={status.race.name} />
-              )}
-            </div>
+            {athlete && (
+              // Thin sync-status line replacing the ConnectCard (moved to Settings).
+              // Uses athlete.connected — already in hand, no extra API call.
+              <div className="sync-line" id="tour-setup">
+                <span className={`status-dot${athlete.connected ? " ok" : ""}`} />
+                {athlete.connected ? (
+                  <span>
+                    Strava connected{athlete.profile.name ? ` · ${athlete.profile.name}` : ""} —{" "}
+                    <button className="linklike" onClick={() => setTab("settings")}>
+                      manage &amp; sync in Settings →
+                    </button>
+                  </span>
+                ) : (
+                  <span>
+                    Strava not connected —{" "}
+                    <button className="linklike" onClick={() => setTab("settings")}>
+                      set up in Settings →
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
+            {readiness && status && (
+              <ReadinessCard readiness={readiness} raceName={status.race.name} />
+            )}
             {recovery.length > 0 && <RecoveryCard days={recovery} />}
             {plan?.plan && <CheckinCard onDone={safeLoad} />}
             {pmcTotal > 0 ? (
@@ -334,6 +351,7 @@ export default function App() {
         {tab === "settings" && athlete && (
           <div className="tab-panel">
             {hoursBanner}
+            {status && <ConnectCard status={status} athlete={athlete} onSynced={safeLoad} />}
             {status && <RaceCard status={status} onChanged={reload} />}
             <ProfileEditor profile={athlete.profile} onSaved={safeLoad} />
             <ZonesCard thresholdHr={athlete.profile.threshold_hr} maxHr={athlete.profile.max_hr} />

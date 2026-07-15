@@ -209,7 +209,7 @@ export function ConnectCard({
   ];
 
   return (
-    <div className="card" id="tour-setup" style={{ display: "flex", flexDirection: "column" }}>
+    <div className="card" id="tour-connect" style={{ display: "flex", flexDirection: "column" }}>
       <div className="card-label">Setup</div>
       <div className="status-list">
         {rows.map((r, i) => (

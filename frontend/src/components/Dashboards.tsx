@@ -250,7 +250,7 @@ export function ReadinessCard({ readiness, raceName }: { readiness: Readiness; r
 
           {incomplete && (
             <div className="rd-missing">
-              ⚠ Missing <b>{missingLabels}</b> — set it in the <b>Thresholds</b> tab to project the
+              ⚠ Missing <b>{missingLabels}</b> — set it in <b>Settings → Thresholds</b> to project the
               {readiness.missing.includes("css_swim") ? " swim leg, " : " "}timeline and cut-offs.
             </div>
           )}

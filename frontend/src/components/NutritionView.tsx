@@ -87,7 +87,7 @@ export function NutritionView({
             exercise are shown regardless (they're gut-limited, not weight-based).
           </div>
           <div className="save-row">
-            <button className="btn primary" onClick={onGoToSettings}>Go to Thresholds</button>
+            <button className="btn primary" onClick={onGoToSettings}>Go to Settings</button>
           </div>
         </div>
       )}
