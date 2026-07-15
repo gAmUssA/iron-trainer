@@ -41,3 +41,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0016](0016-daily-readiness-call.md) | Daily readiness call: ACWR-based go hard / go easy / rest | Accepted |
 | [0017](0017-chart-time-windows.md) | Backend-driven time windows for charts (PMC, trends) | Accepted |
 | [0018](0018-checkin-feel-and-notifications.md) | Feel-vs-data check-in + local notifications (reminder & morning brief) | Accepted |
+| [0019](0019-health-auto-export-ingestion.md) | Recovery-data ingestion via Health Auto Export (sleep/HRV/RHR → readiness) | Accepted |

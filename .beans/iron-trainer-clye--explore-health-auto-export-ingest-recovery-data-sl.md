@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-07-14T20:29:05Z
-updated_at: 2026-07-15T02:49:14Z
+updated_at: 2026-07-15T02:53:48Z
 parent: iron-trainer-udbc
 ---
 
@@ -17,10 +17,10 @@ Full report: docs/research/health-auto-export-rest-api.md. Key findings: payload
 
 ## Implementation todos
 
-- [ ] daily_recovery table + migration (wide row, upsert last-write-wins)
-- [ ] POST /api/health/ingest (bearer device-token auth, lenient parsing, fast 200)
-- [ ] Date parser with %z + 12-hour/U+202F fallback; unit normalization (lb→kg, degF→degC)
-- [ ] readiness.compute(): HRV/RHR-vs-baseline + short-sleep modifiers (signal-not-noise)
-- [ ] Feed sleep/HRV into check-in feel-vs-data line + LLM context
-- [ ] Settings: mint/display ingest token + setup guide for the app config
-- [ ] Tests incl. real fixture payloads
+- [x] daily_recovery table + migration a1b3c5d7e9f1 (wide row, upsert last-write-wins)
+- [x] POST /api/health/ingest (bearer device-token auth, lenient parsing, fast 200) + GET /api/health/recovery
+- [x] Date parser with %z + 12-hour/U+202F fallback; unit normalization (lb→kg, degF→degC)
+- [x] readiness.compute(): HRV/RHR-vs-baseline + short-sleep modifiers (downgrade-only, stale-blind)
+- [x] Feed sleep/HRV into check-in story + LLM context (via readiness reasons plumbing)
+- [ ] Settings: mint/display ingest token + setup guide (deferred — device token works today)
+- [x] Tests incl. real fixture payloads (6 new; suite 192)

@@ -26,6 +26,7 @@ from .models import (
     Activity,
     Athlete,
     Checkin,
+    DailyRecovery,
     DeviceToken,
     FitnessTestResult,
     Job,
@@ -657,6 +658,36 @@ def _now_iso() -> str:
 
 
 # ── Background jobs ───────────────────────────────────────────────────────────
+
+
+def upsert_daily_recovery(day: str, fields: dict) -> None:
+    """Merge one day's recovery data. Last write wins per field — Health Auto
+    Export re-sends overlapping windows, and last night's sleep often arrives
+    incomplete early and fuller later."""
+    aid = current_athlete_id()
+    with get_session() as s:
+        row = s.exec(
+            select(DailyRecovery).where(DailyRecovery.athlete_id == aid,
+                                        DailyRecovery.date == day)
+        ).first()
+        if row is None:
+            row = DailyRecovery(athlete_id=aid, date=day)
+        for k, v in fields.items():
+            if v is not None and hasattr(row, k):
+                setattr(row, k, v)
+        row.updated_at = _now_iso()
+        s.add(row)
+
+
+def recent_recovery(days: int = 35) -> list[dict]:
+    """Newest-first recovery rows for baselines and today's modifiers."""
+    aid = current_athlete_id()
+    with get_session() as s:
+        rows = s.exec(
+            select(DailyRecovery).where(DailyRecovery.athlete_id == aid)
+            .order_by(DailyRecovery.date.desc()).limit(days)
+        ).all()
+        return [r.model_dump(exclude={"id", "athlete_id"}) for r in rows]
 
 
 def save_checkin(*, day: str, inputs: dict | None, story: list[str],

@@ -66,7 +66,7 @@ def _fitness_summary() -> dict:
         "form_flag": _form_flag(last.get("tsb")),
         "recent_weeks": weekly,
     }
-    ready = readiness.compute(metrics)
+    ready = readiness.compute(metrics, recovery=repo.recent_recovery())
     if ready.get("status") == "ok":
         summary["readiness_today"] = {
             "call": ready["call"],
@@ -321,7 +321,8 @@ def weekly_checkin(*, today: date | None = None, use_llm: bool = True,
     tsb = (repo.get_metrics() or [{}])[-1].get("tsb")
     if flag != "unknown":
         story.append(f"Form: {flag}" + (f" (TSB {tsb:+.0f})." if tsb is not None else "."))
-    ready = readiness.compute(repo.get_metrics(), today=today)
+    ready = readiness.compute(repo.get_metrics(), today=today,
+                              recovery=repo.recent_recovery())
     out["readiness"] = ready
     ready_line = readiness.story_line(ready)
     if ready_line:

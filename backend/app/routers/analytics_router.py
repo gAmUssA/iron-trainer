@@ -74,7 +74,7 @@ def trends(days: int = Query(DEFAULT_WINDOW_DAYS, ge=0, le=3660)) -> dict:
 def readiness_today() -> dict:
     """Today's readiness call (go hard / go easy / rest) from the athlete's own
     acute:chronic load, form, and hard-day streak. Reads local data only."""
-    return readiness.compute(repo.get_metrics())
+    return readiness.compute(repo.get_metrics(), recovery=repo.recent_recovery())
 
 
 @router.get("/metrics/readiness")

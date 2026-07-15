@@ -183,6 +183,31 @@ class FitnessTestResult(SQLModel, table=True):
     created_at: str | None = None
 
 
+class DailyRecovery(SQLModel, table=True):
+    """One day of recovery data pushed from the athlete's phone (Health Auto
+    Export -> POST /api/health/ingest). Wide row, upserted last-write-wins on
+    (athlete_id, date) — the app re-sends overlapping windows by design."""
+
+    __tablename__ = "daily_recovery"
+
+    id: int | None = Field(default=None, primary_key=True)
+    athlete_id: int = Field(foreign_key="athlete.id", ondelete="CASCADE", index=True)
+    date: str = Field(index=True)  # local wake-up day, ISO YYYY-MM-DD
+    updated_at: str | None = None
+    sleep_h: float | None = None
+    deep_h: float | None = None
+    rem_h: float | None = None
+    awake_h: float | None = None
+    sleep_start: str | None = None
+    sleep_end: str | None = None
+    hrv_ms: float | None = None
+    rhr_bpm: float | None = None
+    weight_kg: float | None = None
+    vo2max: float | None = None
+    respiratory_rate: float | None = None
+    wrist_temp_c: float | None = None
+
+
 class Checkin(SQLModel, table=True):
     """One weekly check-in: what the athlete FELT plus what the system said.
 

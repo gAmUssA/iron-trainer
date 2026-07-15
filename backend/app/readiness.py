@@ -37,7 +37,8 @@ MIN_HISTORY_DAYS = 14
 MIN_CHRONIC_WEEKLY_TSS = 30.0
 
 
-def compute(metrics_rows: list[dict], *, today: date | None = None) -> dict:
+def compute(metrics_rows: list[dict], *, today: date | None = None,
+            recovery: list[dict] | None = None) -> dict:
     """Compute today's readiness from the daily metrics series.
 
     `metrics_rows` is repo.get_metrics() output: dicts with ISO `date`, `tss`,
@@ -143,6 +144,17 @@ def compute(metrics_rows: list[dict], *, today: date | None = None) -> dict:
                 f"ratio {acwr:.2f}). Green light for quality if the plan calls for it."
             )
 
+    # ── Recovery modifiers (Health Auto Export data, when fresh) ─────────────
+    # Load says one thing; the body may say another. Short sleep, suppressed
+    # HRV, or elevated resting HR (each vs the athlete's OWN baseline) can
+    # downgrade a green day to easy — never upgrade. Same signal-not-noise
+    # rule: silent unless something is genuinely off.
+    rec_flags = _recovery_flags(recovery or [], today)
+    if rec_flags:
+        reasons.extend(rec_flags)
+        if call == "hard":
+            call, level = "easy", "amber"
+
     return {
         "status": "ok",
         "call": call,
@@ -169,3 +181,58 @@ def story_line(r: dict) -> str | None:
     label = _CALL_LABELS.get(call, call.upper())
     reason = (r.get("reasons") or [""])[0]
     return f"Today's call: {label} — {reason}"
+
+
+RECOVERY_FRESH_DAYS = 2
+SHORT_SLEEP_H = 6.0
+HRV_SUPPRESSED_RATIO = 0.80
+RHR_ELEVATED_BPM = 5.0
+MIN_BASELINE_SAMPLES = 5
+
+
+def _recovery_flags(recovery: list[dict], today: date | None) -> list[str]:
+    """Flags from the athlete's own recovery baselines. `recovery` is
+    repo.recent_recovery() output: newest-first dicts with date/sleep_h/
+    hrv_ms/rhr_bpm. Stale data (no row within RECOVERY_FRESH_DAYS) says
+    nothing — a phone that stopped pushing is not a bad night's sleep."""
+    today = today or date.today()
+    by_date = []
+    for r in recovery:
+        try:
+            d = date.fromisoformat(str(r.get("date"))[:10])
+        except (ValueError, TypeError):
+            continue
+        if d <= today:
+            by_date.append((d, r))
+    by_date.sort(key=lambda t: t[0], reverse=True)
+    if not by_date or (today - by_date[0][0]).days > RECOVERY_FRESH_DAYS:
+        return []
+
+    latest_day, latest = by_date[0]
+    flags: list[str] = []
+
+    sleep = latest.get("sleep_h")
+    if isinstance(sleep, (int, float)) and 0 < sleep < SHORT_SLEEP_H:
+        flags.append(f"Short sleep: {sleep:.1f}h last night — recovery took the hit before training did.")
+
+    def _baseline(field: str) -> float | None:
+        vals = [r.get(field) for d, r in by_date
+                if d < latest_day and isinstance(r.get(field), (int, float))]
+        return sum(vals) / len(vals) if len(vals) >= MIN_BASELINE_SAMPLES else None
+
+    hrv = latest.get("hrv_ms")
+    hrv_base = _baseline("hrv_ms")
+    if isinstance(hrv, (int, float)) and hrv_base and hrv < HRV_SUPPRESSED_RATIO * hrv_base:
+        flags.append(
+            f"HRV suppressed: {hrv:.0f} ms vs your ~{hrv_base:.0f} ms baseline "
+            f"({hrv / hrv_base:.0%}) — the nervous system wants an easy day."
+        )
+
+    rhr = latest.get("rhr_bpm")
+    rhr_base = _baseline("rhr_bpm")
+    if isinstance(rhr, (int, float)) and rhr_base and rhr > rhr_base + RHR_ELEVATED_BPM:
+        flags.append(
+            f"Resting HR elevated: {rhr:.0f} bpm vs your ~{rhr_base:.0f} bpm baseline — "
+            "watch for illness or accumulated fatigue."
+        )
+    return flags
