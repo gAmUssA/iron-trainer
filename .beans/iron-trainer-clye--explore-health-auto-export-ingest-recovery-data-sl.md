@@ -5,8 +5,22 @@ status: todo
 type: task
 priority: normal
 created_at: 2026-07-14T20:29:05Z
-updated_at: 2026-07-15T02:33:12Z
+updated_at: 2026-07-15T02:42:42Z
 parent: iron-trainer-udbc
 ---
 
 Explore the Health Auto Export app (https://www.healthyapps.dev/apps/health-auto-export/) as a zero-API-compliance path for recovery data: it pushes Apple Health metrics (150+ incl. sleep, HRV, heart rate) as JSON/CSV to a REST endpoint on a schedule — no Garmin/Oura/Whoop API needed, data stays user-controlled. Investigate the JSON payload schema (docs + a real sample export), then prototype a POST /api/health/ingest endpoint storing daily sleep/HRV/RHR/readiness inputs. Alternative/complement: read HealthKit directly in the iOS app and upload. Feeds the readiness call (iron-trainer-vhef) with real recovery signals and the feel-vs-data check-in (iron-trainer-p526).
+
+## Research complete (2026-07-14)
+
+Full report: docs/research/health-auto-export-rest-api.md. Key findings: payload is {data:{metrics:[{name,units,data:[{qty,date,...}]}]}}; sleep_analysis (Summarize ON) gives per-night core/deep/rem/awake/totalSleep hours; identifiers heart_rate_variability (ms) + resting_heart_rate (bpm); custom Authorization: Bearer header officially supported (our auth); dates are NON-ISO 'yyyy-MM-dd HH:mm:ss Z' with 12h/U+202F locale variants; overlapping windows re-sent → upsert on (athlete_id, local_date); delivery timing unguaranteed (iOS) → eventually-consistent consumers; REST automations are app Premium tier.
+
+## Implementation todos
+
+- [ ] daily_recovery table + migration (wide row, upsert last-write-wins)
+- [ ] POST /api/health/ingest (bearer device-token auth, lenient parsing, fast 200)
+- [ ] Date parser with %z + 12-hour/U+202F fallback; unit normalization (lb→kg, degF→degC)
+- [ ] readiness.compute(): HRV/RHR-vs-baseline + short-sleep modifiers (signal-not-noise)
+- [ ] Feed sleep/HRV into check-in feel-vs-data line + LLM context
+- [ ] Settings: mint/display ingest token + setup guide for the app config
+- [ ] Tests incl. real fixture payloads
