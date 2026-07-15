@@ -61,7 +61,8 @@ export function RecoveryCard({ days }: { days: RecoveryDay[] }) {
         {tiles.map((t) => {
           const points = series
             .filter((d) => d[t.field] != null)
-            .map((d) => ({ v: d[t.field] as number }));
+            .map((d) => ({ v: d[t.field] as number }))
+            .slice(-7); // sparkline shows the last 7 samples; fetch window is wider for baselines
           // Baseline = mean of everything before the latest sample.
           const prior = points.slice(0, -1).map((p) => p.v);
           const base = prior.length >= 3 ? prior.reduce((a, b) => a + b, 0) / prior.length : null;
@@ -71,8 +72,14 @@ export function RecoveryCard({ days }: { days: RecoveryDay[] }) {
             <div className="recovery-tile" key={t.label}>
               <div className="label">{t.label}</div>
               <div className="value">
-                {t.value != null ? t.fmt(t.value) : "–"}
-                <span className="unit">{t.unit}</span>
+                {t.value != null ? (
+                  <>
+                    {t.fmt(t.value)}
+                    <span className="unit">{t.unit}</span>
+                  </>
+                ) : (
+                  "–"
+                )}
               </div>
               {t.sub && <div className="tile-sub">{t.sub}</div>}
               {delta != null && (
