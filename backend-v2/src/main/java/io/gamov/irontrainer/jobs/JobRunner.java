@@ -2,6 +2,7 @@ package io.gamov.irontrainer.jobs;
 
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
+import org.jboss.logging.Logger;
 
 import java.time.OffsetDateTime;
 import java.util.function.Supplier;
@@ -14,6 +15,8 @@ import java.util.function.Supplier;
 @ApplicationScoped
 public class JobRunner {
 
+    private static final Logger LOG = Logger.getLogger(JobRunner.class);
+
     public Integer submit(int athleteId, String kind, Supplier<String> work) {
         Integer jobId = QuarkusTransaction.requiringNew().call(() -> {
             Job j = new Job();
@@ -24,15 +27,18 @@ public class JobRunner {
             j.persist();
             return j.id;
         });
+        LOG.infof("Job submitted: id=%d kind=%s athlete=%d", jobId, kind, athleteId);
         Thread.ofVirtual().name("job-" + jobId).start(() -> run(jobId, work));
         return jobId;
     }
 
     private void run(Integer jobId, Supplier<String> work) {
+        long startNanos = System.nanoTime();
         transition(jobId, j -> {
             j.status = "running";
             j.startedAt = OffsetDateTime.now().toString();
         });
+        LOG.debugf("Job running: id=%d", jobId);
         try {
             String result = work.get();
             transition(jobId, j -> {
@@ -40,13 +46,22 @@ public class JobRunner {
                 j.resultJson = result;
                 j.finishedAt = OffsetDateTime.now().toString();
             });
+            LOG.infof("Job succeeded: id=%d (%dms)", jobId, elapsedMs(startNanos));
         } catch (Exception e) {
             transition(jobId, j -> {
                 j.status = "failed";
                 j.error = e.getMessage();
                 j.finishedAt = OffsetDateTime.now().toString();
             });
+            // Job failures are the load-bearing observability event — WARN with
+            // the cause; the exception is expected control flow, not a crash.
+            LOG.warnf("Job failed: id=%d (%dms): %s", jobId, elapsedMs(startNanos),
+                    e.getMessage());
         }
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
     private void transition(Integer jobId, java.util.function.Consumer<Job> mutate) {

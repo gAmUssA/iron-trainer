@@ -6,17 +6,22 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import java.util.Map;
+import org.jboss.logging.Logger;
 
 /** First domain-math vertical: same contract as FastAPI's /api/athlete/zones. */
 @Path("/api/athlete/zones")
 public class ZonesResource {
+
+    private static final Logger LOG = Logger.getLogger(ZonesResource.class);
 
     @Inject
     CurrentAthlete current;
 
     @GET
     public Map<String, Object> zones() {
-        Athlete a = Athlete.findById(current.require());
+        int aid = current.require();
+        Athlete a = Athlete.findById(aid);
+        LOG.debugf("Zones: athlete=%d", aid);
         Integer thr = a == null ? null : a.thresholdHr;
         Integer max = a == null ? null : a.maxHr;
         Map<String, Object> out = new java.util.LinkedHashMap<>(HrZones.hrZones(thr, max));
