@@ -55,3 +55,5 @@ form flag and compliance honestly.
 ## Follow-up
 
 iOS check-in button hitting the same endpoint (tracked as a bean).
+
+> **Update (2026-07-15):** the follow-up shipped — iOS Weekly Check-in button on the Today view (PR #20, bean iron-trainer-6x3a); it later adopted the async job API with submit + poll + resume (PR #22, [ADR 0015](0015-async-jobs.md)).

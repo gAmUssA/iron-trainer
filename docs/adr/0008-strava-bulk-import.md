@@ -73,3 +73,5 @@ the `POST /api/strava/import` endpoint loads + rebuilds metrics; a non-export ZI
 400. 78 backend tests pass; ruff clean; frontend builds; Import control verified
 in-browser. FIT-binary path verified manually with a real export (handcrafting `.fit`
 is impractical; GPX + CSV cover the parsing logic).
+
+> **Update (2026-07-15):** the deferred background/async import shipped — `POST /api/strava/import` gained a `?async=1` job path (PR #21, [ADR 0015](0015-async-jobs.md)).

@@ -62,3 +62,5 @@ reads 404; stale-running sweep; summary shape. Full suite 163 green; ruff;
 frontend build. Live browser pass: Generate ran as a background job (~19s of
 real Claude work) with `/api/jobs/summary` showing `running` mid-flight, then
 "Plan generated just now · Claude" and "Strava last called 1 min ago" rendered.
+
+> **Update (2026-07-15):** the iOS-adoption follow-up shipped — the iOS Weekly Check-in submits `?async=1` and polls the job API with resume-on-appear (PR #22, bean iron-trainer-tcso, TestFlight 202607131537).

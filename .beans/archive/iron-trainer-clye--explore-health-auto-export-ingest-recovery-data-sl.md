@@ -5,7 +5,7 @@ status: completed
 type: task
 priority: normal
 created_at: 2026-07-14T20:29:05Z
-updated_at: 2026-07-15T03:11:07Z
+updated_at: 2026-07-15T04:11:08Z
 parent: iron-trainer-udbc
 ---
 
@@ -26,3 +26,7 @@ Full report: docs/research/health-auto-export-rest-api.md. Key findings: payload
 - [x] Tests incl. real fixture payloads (6 new; suite 192)
 
 Shipped in PR #27. Observability round added post-review: malformed-JSON + zero-days-stored warnings (metric names only, never values), parsed{} debug block in responses.
+
+## Summary of Changes
+
+Shipped in PR #27: daily_recovery table (migration a1b3c5d7e9f1), POST /api/health/ingest (bearer device-token auth, lenient date/unit parsing, fast 200) + GET /api/health/recovery, readiness HRV/RHR/short-sleep downgrade-only modifiers, sleep/HRV in check-in story + LLM context, 6 new tests (suite 192). Research report: docs/research/health-auto-export-rest-api.md. Settings ingest-token card deferred to follow-up bean iron-trainer-nl31 (since shipped in PR #28). ADR 0019.

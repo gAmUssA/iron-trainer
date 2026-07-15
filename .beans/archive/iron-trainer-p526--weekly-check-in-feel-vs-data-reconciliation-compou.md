@@ -13,11 +13,11 @@ As an athlete I want the weekly check-in to ask how the week FELT (energy, sleep
 
 ## Todos
 
-- [ ] Optional subjective inputs on check-in (energy/sleep/soreness/stress, 1-5 + free text)
-- [ ] Persist check-in stories (+ inputs) in DB
-- [ ] Feed last few check-ins + subjective inputs into check-in LLM prompt; reconcile feel vs data, call out disagreements
-- [ ] Web + iOS input UI (skippable in one tap)
-- [ ] Tests + ADR
+- [x] Optional subjective inputs on check-in (energy/sleep/soreness/stress, 1-5 + free text)
+- [x] Persist check-in stories (+ inputs) in DB
+- [x] Feed last few check-ins + subjective inputs into check-in LLM prompt; reconcile feel vs data, call out disagreements
+- [x] Web + iOS input UI (skippable in one tap)
+- [x] Tests + ADR
 
 ## Summary of Changes
 

@@ -37,3 +37,5 @@ Bean: iron-trainer-clye · Research: docs/research/health-auto-export-rest-api.m
 - Workouts array ingestion — noted on k5d0 as a potential full Strava
   escape hatch (Garmin → Apple Health → us); this endpoint is the
   foundation it would extend.
+
+> **Update (2026-07-15):** the ingest-token card shipped in PR #28 (web Settings HealthIngestCard + iOS Health Data section, TestFlight 202607142334). A web dashboard Recovery card (sleep/HRV/RHR + sparklines) is in flight as PR #29 (feature/recovery-card, open).

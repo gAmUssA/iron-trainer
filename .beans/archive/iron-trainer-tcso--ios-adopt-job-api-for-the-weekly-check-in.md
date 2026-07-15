@@ -10,9 +10,9 @@ parent: iron-trainer-03qt
 ---
 
 The iOS check-in held one HTTP request open for 90s — fragile on cellular / app backgrounding. Adopt PR #21's job API:
-- [ ] PlanNetworkSource.checkin(): POST ?async=1 → poll GET /api/jobs/{id} (2s, 10min cap, transient tolerance, cancellation-cooperative)
-- [ ] activeCheckinJobID() via /api/jobs/summary; TodayView resumes an in-flight check-in on appear (started on web or before app was killed)
-- [ ] Sim verify: async round-trip in uvicorn log + story sheet; resume after simctl terminate/relaunch
+- [x] PlanNetworkSource.checkin(): POST ?async=1 → poll GET /api/jobs/{id} (2s, 10min cap, transient tolerance, cancellation-cooperative)
+- [x] activeCheckinJobID() via /api/jobs/summary; TodayView resumes an in-flight check-in on appear (started on web or before app was killed)
+- [x] Sim verify: async round-trip in uvicorn log + story sheet; resume after simctl terminate/relaunch
 - [x] PR #22 merged (incl. Copilot 4xx fail-fast fix); TestFlight 0.1.0 (202607131537) uploaded 2026-07-13
 
 ## Summary of Changes
