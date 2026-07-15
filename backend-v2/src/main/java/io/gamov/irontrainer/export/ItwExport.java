@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.gamov.irontrainer.athlete.Athlete;
+import io.gamov.irontrainer.plan.Plan;
 import io.gamov.irontrainer.plan.PlannedWorkout;
 import jakarta.enterprise.context.ApplicationScoped;
 
@@ -17,6 +18,29 @@ public class ItwExport {
     public static final int SCHEMA_VERSION = 1;
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    public String planItw(java.util.List<PlannedWorkout> workouts, Plan plan, Athlete a) {
+        try {
+            ObjectNode doc = mapper.createObjectNode();
+            doc.put("schema_version", SCHEMA_VERSION);
+            doc.put("generator", "iron-trainer");
+            if (plan == null) {
+                doc.putNull("plan");
+            } else {
+                ObjectNode meta = doc.putObject("plan");
+                meta.put("race_name", plan.raceName);
+                meta.put("race_date", plan.raceDate);
+                meta.put("summary", plan.summary);
+            }
+            ArrayNode arr = doc.putArray("workouts");
+            for (PlannedWorkout w : workouts) {
+                arr.add(doc(w, a));
+            }
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(doc);
+        } catch (Exception e) {
+            throw new IllegalStateException("plan ITW serialization failed", e);
+        }
+    }
 
     public String workoutItw(PlannedWorkout w, Athlete a) {
         try {

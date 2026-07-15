@@ -71,6 +71,20 @@ public class ExportResource {
                 .build();
     }
 
+    @GET
+    @Path("/plan.itw")
+    @Produces("application/json")
+    public Response planItw() {
+        int athleteId = current.require();
+        io.gamov.irontrainer.plan.Plan plan = io.gamov.irontrainer.plan.Plan.activeFor(athleteId);
+        java.util.List<PlannedWorkout> workouts = plan == null ? java.util.List.of()
+                : PlannedWorkout.list("planId = ?1 and athleteId = ?2 order by date", plan.id, athleteId);
+        Athlete a = Athlete.findById(athleteId);
+        return Response.ok(itw.planItw(workouts, plan, a))
+                .header("Content-Disposition", "attachment; filename=\"iron-trainer-plan.itw\"")
+                .build();
+    }
+
     private PlannedWorkout owned(int id, int athleteId) {
         PlannedWorkout w = PlannedWorkout
                 .find("id = ?1 and athleteId = ?2", id, athleteId).firstResult();

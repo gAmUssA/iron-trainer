@@ -111,6 +111,29 @@ class ExportItwTest {
     }
 
     @Test
+    void planItwEnvelope() {
+        QuarkusTransaction.requiringNew().run(() -> {
+            io.gamov.irontrainer.plan.Plan p = new io.gamov.irontrainer.plan.Plan();
+            p.athleteId = athleteId;
+            p.raceName = "IRONMAN 70.3 New York";
+            p.raceDate = "2026-09-26";
+            p.status = "active";
+            p.summary = "Test season";
+            p.persist();
+            PlannedWorkout w = PlannedWorkout.findById(workoutId);
+            w.planId = p.id;
+        });
+        given().header("Authorization", "Bearer " + token)
+                .when().get("/api/export/plan.itw")
+                .then().statusCode(200)
+                .body("schema_version", equalTo(1))
+                .body("plan.race_name", equalTo("IRONMAN 70.3 New York"))
+                .body("workouts", hasSize(1))
+                .body("workouts[0].schema_version", equalTo(1))
+                .body("workouts[0].athlete.ftp", equalTo(228.0f));
+    }
+
+    @Test
     void crossTenantIs404() {
         given().header("Authorization", "Bearer " + otherToken)
                 .when().get("/api/export/workout/" + workoutId + ".itw")
