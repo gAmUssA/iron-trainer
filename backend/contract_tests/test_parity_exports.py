@@ -5,7 +5,7 @@ provides it plus a real bearer paired through the FastAPI API)."""
 import json
 import os
 import subprocess
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -60,13 +60,13 @@ def seeded_metrics(bearer) -> bool:
     aid = _psql("SELECT athlete_id FROM device_token ORDER BY id DESC LIMIT 1")
     assert aid.isdigit(), f"could not resolve bearer athlete id (got {aid!r})"
 
-    # Dates are computed with the TEST's date.today() (host-local tz), NOT
-    # Postgres CURRENT_DATE. The FastAPI/Quarkus apps read "today" as the host's
-    # local date; the Postgres container runs UTC. When those differ (evening in
-    # a UTC-behind tz), a CURRENT_DATE-based "today" recovery row lands in the
-    # app's future and _recovery_flags drops it — the suppressed-HRV signal
-    # vanishes. Seeding host-local dates keeps the seed and the app aligned.
-    today = date.today()
+    # Dates are computed in UTC, matching how BOTH backends now resolve the
+    # readiness "today" (FastAPI _utcnow / backend-v2 Clock.systemUTC — bean
+    # readiness-tz). If the seed used a different basis (host-local, or Postgres
+    # CURRENT_DATE) than the app, the suppressed-HRV "today" recovery row could
+    # land in the app's future and _recovery_flags would drop it, breaking the
+    # green→easy parity. UTC everywhere keeps seed and apps aligned on any host.
+    today = datetime.now(timezone.utc).date()
     day = lambda g: (today - timedelta(days=g)).isoformat()
     # Mostly-steady 50 TSS/day, but bump the two most-recent days so the derived
     # numbers are FRACTIONAL, not round. This is the point of the parity test:
