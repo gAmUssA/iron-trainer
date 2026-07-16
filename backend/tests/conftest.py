@@ -1,6 +1,44 @@
 import os
 
+import httpx
 import pytest
+
+
+@pytest.fixture()
+def proxy_stub(monkeypatch):
+    """Factory that replaces strangler.fetch with a recording stub and returns
+    the record dict (url/authz seen by the proxy). Shared by the strangler +
+    export-proxy suites so the stub shape lives in one place."""
+    from app import strangler
+
+    def _make(*, content=b'{"schema_version": 1}', status=200, ct="application/json"):
+        rec: dict = {}
+
+        async def fake(url, authz):
+            rec["url"] = url
+            rec["authz"] = authz
+            return httpx.Response(status, content=content, headers={"content-type": ct})
+
+        monkeypatch.setattr(strangler, "fetch", fake)
+        return rec
+
+    return _make
+
+
+@pytest.fixture()
+def block_proxy(monkeypatch):
+    """Make any proxy call fail loudly — for asserting a request stays local."""
+    from app import strangler
+
+    def _install(exc: Exception | None = None):
+        async def boom(*a, **k):
+            if exc is not None:
+                raise exc
+            raise AssertionError("proxy called when it must serve locally")
+
+        monkeypatch.setattr(strangler, "fetch", boom)
+
+    return _install
 
 
 def pytest_addoption(parser):

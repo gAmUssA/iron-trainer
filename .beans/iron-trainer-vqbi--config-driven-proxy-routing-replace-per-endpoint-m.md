@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-07-15T23:56:54Z
-updated_at: 2026-07-16T01:49:05Z
+updated_at: 2026-07-16T02:11:15Z
 parent: iron-trainer-eom4
 ---
 
@@ -24,3 +24,18 @@ Generalized the per-handler export proxy into one config-driven seam:
 Flipping a vertical is now a one-line PROXY_PATHS config change. Readiness (parity-green) can be flipped by appending /api/metrics/readiness/today — NOT done here (kept behaviour-neutral); it's the explicit next step.
 
 204 unit tests + 19 parity tests green.
+
+## Code-review fixes (local, high effort)
+
+Addressed all in-scope findings:
+- **5xx fallback**: a backend-v2 5xx now falls back to local serving (4xx pass through as legitimate parity-matched outcomes) — makes the 'never break a client' guarantee real.
+- **Multi-value headers**: proxied responses preserve repeated headers (e.g. Set-Cookie) via multi_items() + MutableHeaders.append (was a dict-comprehension that collapsed them).
+- **Pure ASGI middleware**: rewrote from BaseHTTPMiddleware → pure ASGI so pass-through traffic (SPA/StaticFiles, StreamingResponse) is never buffered.
+- **Shared httpx client** (keep-alive pool, lazy, closed in lifespan) instead of per-request AsyncClient.
+- **Cached PROXY_PATHS parse** (lru_cache) on the hot path.
+- **Shared test fixtures** (proxy_stub / block_proxy in conftest) — de-duped stub scaffolding.
+- Path-param 422-bypass: accepted (inherent to proxy-before-routing; the 5xx fallback covers the dangerous v2-500 case).
+
+Out-of-scope readiness findings filed as follow-ups: [[iron-trainer-umwz]] (TZ, blocks the readiness flip), [[iron-trainer-t4md]] (f0signed -0).
+
+206 unit + 19 parity tests green.

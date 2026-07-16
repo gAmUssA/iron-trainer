@@ -68,6 +68,7 @@ async def lifespan(app: FastAPI):
         log.error("Startup init_db() failed — serving anyway; check DATABASE_URL.\n%s",
                   traceback.format_exc())
     yield
+    await strangler.aclose_client()  # release the shared proxy connection pool
 
 
 app = FastAPI(title="Iron Trainer API", version=__version__, lifespan=lifespan)

@@ -104,8 +104,9 @@ class Settings(BaseSettings):
 
     @property
     def proxy_path_list(self) -> list[str]:
-        """Allowlist of paths backend-v2 owns (see proxy_paths / strangler.py)."""
-        return [p.strip() for p in self.proxy_paths.split(",") if p.strip()]
+        """Allowlist of paths backend-v2 owns (see proxy_paths / strangler.py).
+        The parse is cached: this is read on every proxied request's hot path."""
+        return list(_split_paths(self.proxy_paths))
 
     @property
     def allowed_strava_id_set(self) -> set[int]:
@@ -140,6 +141,12 @@ class Settings(BaseSettings):
     @property
     def anthropic_configured(self) -> bool:
         return bool(self.anthropic_api_key)
+
+
+@lru_cache(maxsize=8)
+def _split_paths(csv: str) -> tuple[str, ...]:
+    """Parse the PROXY_PATHS allowlist once per distinct value (hot-path cache)."""
+    return tuple(p.strip() for p in csv.split(",") if p.strip())
 
 
 @lru_cache
