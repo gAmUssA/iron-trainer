@@ -38,7 +38,12 @@ public class PlannedWorkout extends PanacheEntityBase {
     @Column(name = "distance_m")
     public Double distanceM;
 
-    // Write side (fitness-test schedule): save_workouts also sets these.
+    // Write side (fitness-test schedule): save_workouts / the SQLModel defaults
+    // also set these. status defaults to "planned" (reconcile.py skips anything
+    // that isn't "planned"); the Python model default is app-level, so the Java
+    // writer must set it explicitly or the row stores NULL.
+    public String status;
+
     @Column(name = "planned_tss")
     public Double plannedTss;
 

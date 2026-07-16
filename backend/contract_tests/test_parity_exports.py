@@ -344,3 +344,18 @@ def test_tests_record_unknown_slug_404_parity(v1, v2):
     body = {"test_slug": "nope", "inputs": {}}
     assert v1.post("/api/tests/result", json=body).status_code == 404
     assert v2.post("/api/tests/result", json=body).status_code == 404
+
+
+def test_tests_record_missing_inputs_422_parity(v1, v2):
+    """inputs is a required field — FastAPI 422 before compute; v2 must match
+    (not a 400/500 from coercing a missing inputs to an empty map)."""
+    body = {"test_slug": "bike-ftp-20"}  # no inputs
+    assert v1.post("/api/tests/result", json=body).status_code == 422
+    assert v2.post("/api/tests/result", json=body).status_code == 422
+
+
+def test_tests_schedule_missing_date_422_parity(v1, v2):
+    """date is required — FastAPI 422 before any write; v2 must match (not a 500
+    from persisting a null into the NOT NULL date column)."""
+    assert v1.post("/api/tests/bike-ftp-20/schedule", json={}).status_code == 422
+    assert v2.post("/api/tests/bike-ftp-20/schedule", json={}).status_code == 422

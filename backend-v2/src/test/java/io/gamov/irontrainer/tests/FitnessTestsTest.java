@@ -74,6 +74,13 @@ class FitnessTestsTest {
     }
 
     @Test
+    void computeAcceptsBooleanLikePython() {
+        // Python bool is an int subclass: round(True * 0.95) = round(0.95) = 1.
+        assertEquals(Map.of("ftp", 1L),
+                FitnessTests.compute("bike-ftp-20", Map.of("avg_power_w", true)));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void toWorkoutShape() {
         Map<String, Object> w = FitnessTests.toWorkout("bike-ftp-20");

@@ -1,13 +1,12 @@
 package io.gamov.irontrainer.tests;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.auth.CurrentAthlete;
 import io.gamov.irontrainer.plan.Plan;
 import io.gamov.irontrainer.plan.PlannedWorkout;
 import io.gamov.irontrainer.util.Py;
+import io.gamov.irontrainer.util.PyJson;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
@@ -18,8 +17,8 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.WebApplicationException;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -36,7 +35,6 @@ import org.jboss.logging.Logger;
 public class FitnessTestsResource {
 
     private static final Logger LOG = Logger.getLogger(FitnessTestsResource.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     @Inject
     CurrentAthlete current;
@@ -162,12 +160,17 @@ public class FitnessTestsResource {
     @Transactional
     public Map<String, Object> recordResult(RecordRequest body) {
         int aid = current.require();
+        // FastAPI's RecordRequest requires test_slug + inputs (date is optional);
+        // a missing required field / absent body is a 422 there, BEFORE the
+        // handler runs — so validate before touching compute or the DB.
+        if (body == null || body.testSlug == null || body.inputs == null) {
+            throw new WebApplicationException("field required", 422);
+        }
         Map<String, Object> proto = FitnessTests.get(body.testSlug);
         if (proto == null) throw new NotFoundException("Unknown test protocol");
-        Map<String, Object> inputs = body.inputs == null ? Map.of() : body.inputs;
         Map<String, Object> result;
         try {
-            result = FitnessTests.compute(body.testSlug, inputs);
+            result = FitnessTests.compute(body.testSlug, body.inputs);
         } catch (FitnessTests.BadInput e) {
             throw new BadRequestException("Missing or invalid inputs: " + e.getMessage());
         }
@@ -179,10 +182,10 @@ public class FitnessTestsResource {
         row.testSlug = body.testSlug;
         row.sport = (String) proto.getOrDefault("sport", "");
         row.date = date;
-        row.inputsJson = writeJson(inputs);
-        row.resultJson = writeJson(result);
+        row.inputsJson = PyJson.dumps(body.inputs);
+        row.resultJson = PyJson.dumps(result);
         row.applied = false;
-        row.createdAt = OffsetDateTime.now(ZoneOffset.UTC).toString();
+        row.createdAt = PyJson.utcNowIso();
         row.persist();
         LOG.infof("Fitness test recorded: athlete=%d slug=%s", aid, body.testSlug);
         return row.toRow();
@@ -193,6 +196,11 @@ public class FitnessTestsResource {
     @Transactional
     public Map<String, Object> scheduleTest(@PathParam("slug") String slug, ScheduleRequest body) {
         int aid = current.require();
+        // FastAPI's ScheduleRequest requires date → 422 before the handler; and
+        // planned_workouts.date is NOT NULL, so persisting a null date would 500.
+        if (body == null || body.date == null || body.date.isEmpty()) {
+            throw new WebApplicationException("field required", 422);
+        }
         if (FitnessTests.get(slug) == null) throw new NotFoundException("Unknown test protocol");
         Plan plan = Plan.activeFor(aid);
         if (plan == null) {
@@ -208,21 +216,14 @@ public class FitnessTestsResource {
         pw.sport = (String) workout.get("sport");
         pw.title = (String) workout.get("title");
         pw.description = (String) workout.get("description");
-        pw.structureJson = writeJson(workout.get("steps"));
+        pw.structureJson = PyJson.dumps(workout.get("steps"));
         pw.durationS = (Integer) workout.get("duration_s");
         pw.intensity = (String) workout.get("intensity");
-        pw.createdAt = OffsetDateTime.now(ZoneOffset.UTC).toString();
+        pw.status = "planned";  // SQLModel default; reconcile skips non-"planned"
+        pw.createdAt = PyJson.utcNowIso();
         pw.persist();
         LOG.infof("Test workout scheduled: athlete=%d slug=%s plan=%d", aid, slug, plan.id);
         return workout;
-    }
-
-    private static String writeJson(Object o) {
-        try {
-            return JSON.writeValueAsString(o);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("failed to serialize JSON", e);
-        }
     }
 
     /** Python truthiness for a nullable number: present and non-zero. */

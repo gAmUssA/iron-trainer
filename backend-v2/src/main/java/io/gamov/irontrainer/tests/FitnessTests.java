@@ -89,6 +89,8 @@ public final class FitnessTests {
     private static double num(Map<String, Object> inputs, String key) {
         Object v = inputs.get(key);
         if (v == null) throw new BadInput("'" + key + "'");        // ~ Python KeyError
+        // Python's bool is an int subclass, so True/False are valid numeric input.
+        if (v instanceof Boolean) return ((Boolean) v) ? 1.0 : 0.0;
         if (!(v instanceof Number)) throw new BadInput("invalid '" + key + "'");
         return ((Number) v).doubleValue();
     }
