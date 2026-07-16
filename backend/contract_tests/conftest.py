@@ -35,6 +35,9 @@ def seeded(api: httpx.Client) -> httpx.Client:
     api.put("/api/athlete/profile", json={
         "ftp": 228, "threshold_hr": 160, "max_hr": 182,
         "threshold_pace_run": 300, "css_swim": 105, "weekly_hours_target": 8,
+        # body_weight_kg (no gel/sweat override) so the nutrition parity tests
+        # exercise the real carb/hydration math + the estimate_sweat_rate path.
+        "body_weight_kg": 72,
     }).raise_for_status()
     api.post("/api/plan/generate?use_llm=false").raise_for_status()
     return api

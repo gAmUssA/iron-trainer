@@ -27,6 +27,7 @@ public class PlannedWorkout extends PanacheEntityBase {
     public String sport;
     public String title;
     public String description;
+    public String intensity;
 
     @Column(name = "structure_json")
     public String structureJson;
