@@ -103,6 +103,83 @@ class ReadinessTest {
     }
 
     @Test
+    void insufficientChronicLoad() {
+        // Enough history (42 days) but chronic weekly TSS below the 30 floor.
+        Map<String, Object> out = Readiness.compute(flat(10, 0.0, 42), List.of(), TODAY);
+        assertEquals("insufficient_data", out.get("status"));
+    }
+
+    @Test
+    void acwrElevatedIsAmberEasy() {
+        // acute 600, chronic (600 + 3*400)/4 = 450 -> ~1.33 (elevated band).
+        Map<Integer, Double> daily = new HashMap<>();
+        for (int a = 1; a <= 28; a++) daily.put(a, 400.0 / 7);
+        for (int a = 1; a <= 7; a++) daily.put(a, 600.0 / 7);
+        Map<String, Object> out = Readiness.compute(rows(daily, 0.0, 42), List.of(), TODAY);
+        assertEquals("easy", out.get("call"));
+        assertEquals("amber", out.get("level"));
+        double acwr = (double) out.get("acwr");
+        assertTrue(acwr > 1.3 && acwr <= 1.5, "acwr in elevated band, was " + acwr);
+    }
+
+    @Test
+    void backToBackHardDaysAmber() {
+        // Steady ~400/wk, but yesterday and the day before were ~120 TSS each:
+        // acute stays under the 1.3 band, so the streak (not ACWR) drives the call.
+        Map<Integer, Double> daily = new HashMap<>();
+        for (int a = 1; a <= 42; a++) daily.put(a, 400.0 / 7);
+        daily.put(1, 120.0);
+        daily.put(2, 120.0);
+        Map<String, Object> out = Readiness.compute(rows(daily, 0.0, 42), List.of(), TODAY);
+        assertTrue((double) out.get("acwr") < 1.3);
+        assertEquals("easy", out.get("call"));
+        assertEquals("amber", out.get("level"));
+        assertEquals(2, out.get("hard_day_streak"));
+    }
+
+    @Test
+    void freshAndUnderloadedNotesKeySession() {
+        // Nothing in the last 7 days -> acute well under chronic (ACWR < 0.8).
+        Map<Integer, Double> daily = new HashMap<>();
+        for (int a = 8; a <= 42; a++) daily.put(a, 400.0 / 7);
+        for (int a = 1; a <= 7; a++) daily.put(a, 200.0 / 7);
+        Map<String, Object> out = Readiness.compute(rows(daily, 15.0, 42), List.of(), TODAY);
+        assertEquals("hard", out.get("call"));
+        assertEquals("green", out.get("level"));
+        assertTrue((double) out.get("acwr") < 0.8);
+        assertTrue(reasons(out).get(0).contains("key session"));
+    }
+
+    @Test
+    void staleTsbCannotVetoTheCall() {
+        // A series that stopped updating 18 days ago (lapsed sync) must not
+        // produce a phantom deep-fatigue call off its last stored TSB of -30.
+        Map<Integer, Double> daily = new HashMap<>();
+        for (int a = 19; a <= 42; a++) daily.put(a, 400.0 / 7);
+        String cutoff = TODAY.minusDays(18).toString();
+        List<Map<String, Object>> series = new ArrayList<>();
+        for (Map<String, Object> r : rows(daily, -30.0, 42)) {
+            if (((String) r.get("date")).compareTo(cutoff) < 0) series.add(r);
+        }
+        Map<String, Object> out = Readiness.compute(series, List.of(), TODAY);
+        assertEquals("ok", out.get("status"));
+        assertEquals("hard", out.get("call")); // acwr ~0 and TSB too stale to trust
+    }
+
+    @Test
+    void todayExcludedFromWindow() {
+        // This morning's just-logged ride (today's row) must not flip today's call.
+        List<Map<String, Object>> series = new ArrayList<>(flat(400, 0.0, 42));
+        Map<String, Object> todayRow = new HashMap<>();
+        todayRow.put("date", TODAY.toString());
+        todayRow.put("tss", 500.0);
+        todayRow.put("ctl", 50.0); todayRow.put("atl", 50.0); todayRow.put("tsb", 0.0);
+        series.add(todayRow);
+        Map<String, Object> out = Readiness.compute(series, List.of(), TODAY);
+        assertEquals(1.0, out.get("acwr"));
+    }
+
+    @Test
     void bankerRoundingPct() {
         assertEquals("67%", Py.pct0(40.0 / 60.0));
     }

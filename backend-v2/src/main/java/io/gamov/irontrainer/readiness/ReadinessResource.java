@@ -23,13 +23,7 @@ public class ReadinessResource {
         int aid = current.require();
         List<Map<String, Object>> metrics = new ArrayList<>();
         for (MetricDaily m : MetricDaily.<MetricDaily>list("athleteId = ?1 order by date", aid)) {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("date", m.date);
-            r.put("tss", m.tss);
-            r.put("ctl", m.ctl);
-            r.put("atl", m.atl);
-            r.put("tsb", m.tsb);
-            metrics.add(r);
+            metrics.add(m.toRow());  // shared model_dump() shape (see MetricDaily.toRow)
         }
         List<Map<String, Object>> recovery = new ArrayList<>();
         // recent_recovery(35), newest-first.

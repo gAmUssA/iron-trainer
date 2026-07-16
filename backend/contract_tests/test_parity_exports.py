@@ -38,7 +38,7 @@ def _psql(sql: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def seeded_metrics(bearer) -> None:
+def seeded_metrics(bearer) -> bool:
     """Seed a steady 42-day load + suppressed-HRV recovery straight into the
     shared Postgres, for the bearer's athlete, AFTER `seeded` has run.
 
@@ -47,9 +47,15 @@ def seeded_metrics(bearer) -> None:
     profile PUT calls rebuild_metrics(), which DELETEs the athlete's rows. Any
     seed done before that wipe vanishes. This fixture depends on `bearer` (hence
     `seeded`), so it runs after the last rebuild. Requires PARITY_PG_ID, set by
-    run_parity.sh; skips cleanly outside the parity runner."""
+    run_parity.sh.
+
+    Returns True if it seeded, False if PARITY_PG_ID is absent (manual mode, e.g.
+    two already-running backends). It is a NO-OP rather than a skip so that
+    consumers which merely benefit from real data (test_pmc_parity) still run in
+    manual mode against whatever the DB holds; consumers that strictly REQUIRE
+    the seed (test_readiness_parity) skip themselves on a False return."""
     if not os.environ.get("PARITY_PG_ID"):
-        pytest.skip("PARITY_PG_ID not set (parity runner only)")
+        return False
     # The bearer's athlete is the most-recently paired device_token row.
     aid = _psql("SELECT athlete_id FROM device_token ORDER BY id DESC LIMIT 1")
     assert aid.isdigit(), f"could not resolve bearer athlete id (got {aid!r})"
@@ -62,7 +68,17 @@ def seeded_metrics(bearer) -> None:
     # vanishes. Seeding host-local dates keeps the seed and the app aligned.
     today = date.today()
     day = lambda g: (today - timedelta(days=g)).isoformat()
-    metrics_vals = ",".join(f"({aid}, '{day(g)}', 50, 50, 50, 0)" for g in range(1, 43))
+    # Mostly-steady 50 TSS/day, but bump the two most-recent days so the derived
+    # numbers are FRACTIONAL, not round. This is the point of the parity test:
+    # Py.java exists solely to make Python round()/format and Java BigDecimal
+    # HALF_EVEN agree char-for-char. With day1=57, day2=53 the chronic weekly
+    # works out to exactly 352.5 — a banker's-rounding TIE — so the reason
+    # string's `{chronic_weekly:.0f}` ("352", ties-to-even) and `{acwr:.2f}`
+    # ("1.02") only stay byte-identical across backends if HALF_EVEN is correct.
+    # Both stay well under the hard-day cut, so the call is still green→easy.
+    tss_of = {1: 57, 2: 53}
+    metrics_vals = ",".join(
+        f"({aid}, '{day(g)}', {tss_of.get(g, 50)}, 50, 50, 0)" for g in range(1, 43))
     base_vals = ",".join(f"({aid}, '{day(g)}', 7.5, 60, 46)" for g in range(1, 10))
     _psql(f"""
         INSERT INTO metrics_daily (athlete_id, date, tss, ctl, atl, tsb)
@@ -75,6 +91,7 @@ def seeded_metrics(bearer) -> None:
         VALUES ({aid}, '{today.isoformat()}', 7.5, 40, 46)
         ON CONFLICT (athlete_id, date) DO NOTHING;
     """)
+    return True
 
 
 @pytest.fixture(scope="session")
@@ -172,13 +189,21 @@ def test_pmc_parity(v1, v2, seeded_metrics):
 def test_readiness_parity(v1, v2, seeded_metrics):
     """Readiness call: identical status/call/level, numeric fields, AND reason
     strings (the hard part — Python vs Java float formatting must match). The
-    parity runner seeds a steady load + suppressed-HRV recovery so this
-    exercises the ACWR path, the recovery-flag path, and the green→easy merge."""
+    runner seeds a near-steady load (with fractional derived numbers, incl. a
+    352.5 banker's-rounding tie) + suppressed-HRV recovery so this exercises the
+    ACWR path, the HALF_EVEN reason-string formatting, the recovery-flag path,
+    and the green→easy merge. Requires the DB seed (parity runner only)."""
+    if not seeded_metrics:
+        pytest.skip("readiness parity needs the DB seed (PARITY_PG_ID / parity runner only)")
     a = v1.get("/api/metrics/readiness/today")
     b = v2.get("/api/metrics/readiness/today")
     assert a.status_code == b.status_code == 200
     aj, bj = a.json(), b.json()
     assert aj == bj
     assert aj["status"] == "ok"
-    assert aj["call"] == "easy"  # steady load, downgraded by suppressed HRV
+    assert aj["call"] == "easy"  # near-steady load, downgraded by suppressed HRV
     assert any("HRV suppressed" in r for r in aj["reasons"])
+    # The reason strings must carry the FRACTIONAL derived numbers verbatim —
+    # if Java's HALF_EVEN diverged from Python's format, aj == bj above fails.
+    assert any("ratio 1.02" in r for r in aj["reasons"])
+    assert any("352/wk" in r for r in aj["reasons"])

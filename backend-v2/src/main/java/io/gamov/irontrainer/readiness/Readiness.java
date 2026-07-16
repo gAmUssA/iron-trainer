@@ -2,7 +2,6 @@ package io.gamov.irontrainer.readiness;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,8 +44,17 @@ public final class Readiness {
 
         final LocalDate t = today;
         List<LocalDate> present = byDay.keySet().stream().filter(d -> d.isBefore(t)).toList();
-        if (present.isEmpty()
-                || daysBetween(present.stream().min(Comparator.naturalOrder()).get(), today) < MIN_HISTORY_DAYS) {
+        if (present.isEmpty()) {
+            return insufficient("Not enough training history yet for a readiness call (need ~2 weeks of data).");
+        }
+        // Earliest (history-length guard) and latest (freshness) day in one pass —
+        // no assumption that `present` is sorted.
+        LocalDate earliestDay = present.get(0), latestDay = present.get(0);
+        for (LocalDate d : present) {
+            if (d.isBefore(earliestDay)) earliestDay = d;
+            if (d.isAfter(latestDay)) latestDay = d;
+        }
+        if (daysBetween(earliestDay, today) < MIN_HISTORY_DAYS) {
             return insufficient("Not enough training history yet for a readiness call (need ~2 weeks of data).");
         }
 
@@ -55,7 +63,6 @@ public final class Readiness {
         for (int i = 1; i <= 28; i++) total28 += tss(byDay, today.minusDays(i));
         double chronicWeekly = total28 / 4.0;
 
-        LocalDate latestDay = present.stream().max(Comparator.naturalOrder()).get();
         Map<String, Object> latest = byDay.get(latestDay);
         Double tsb = asDouble(latest.get("tsb"));
         Double ctl = asDouble(latest.get("ctl"));
