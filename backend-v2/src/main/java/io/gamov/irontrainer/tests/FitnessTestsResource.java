@@ -1,16 +1,25 @@
 package io.gamov.irontrainer.tests;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.plan.Plan;
+import io.gamov.irontrainer.plan.PlannedWorkout;
 import io.gamov.irontrainer.util.Py;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.QueryParam;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -20,15 +29,28 @@ import java.util.List;
 import java.util.Map;
 import org.jboss.logging.Logger;
 
-/** Fitness-test reads — contract parity with FastAPI's /api/tests catalog,
- * results, and prefill. Bearer surface. Writes live in the write vertical. */
+/** Fitness-test vertical — contract parity with FastAPI's /api/tests: catalog,
+ * results, prefill (reads) + record & schedule (writes). Bearer surface.
+ * (apply — the cascade write — waits on the metrics-write vertical.) */
 @Path("/api/tests")
 public class FitnessTestsResource {
 
     private static final Logger LOG = Logger.getLogger(FitnessTestsResource.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     @Inject
     CurrentAthlete current;
+
+    public static class RecordRequest {
+        @JsonProperty("test_slug")
+        public String testSlug;
+        public String date;
+        public Map<String, Object> inputs;
+    }
+
+    public static class ScheduleRequest {
+        public String date;
+    }
 
     // Results ordered by `date` only — deliberately the SAME clause as FastAPI's
     // list_test_results (no tie-break), so both backends read the identical order
@@ -133,6 +155,74 @@ public class FitnessTestsResource {
         }
         resp.put("candidates", candidates);
         return resp;
+    }
+
+    @POST
+    @Path("/result")
+    @Transactional
+    public Map<String, Object> recordResult(RecordRequest body) {
+        int aid = current.require();
+        Map<String, Object> proto = FitnessTests.get(body.testSlug);
+        if (proto == null) throw new NotFoundException("Unknown test protocol");
+        Map<String, Object> inputs = body.inputs == null ? Map.of() : body.inputs;
+        Map<String, Object> result;
+        try {
+            result = FitnessTests.compute(body.testSlug, inputs);
+        } catch (FitnessTests.BadInput e) {
+            throw new BadRequestException("Missing or invalid inputs: " + e.getMessage());
+        }
+        // Python: body.date or _today() (UTC).
+        String date = (body.date != null && !body.date.isEmpty())
+                ? body.date : LocalDate.now(ZoneOffset.UTC).toString();
+        FitnessTestResult row = new FitnessTestResult();
+        row.athleteId = aid;
+        row.testSlug = body.testSlug;
+        row.sport = (String) proto.getOrDefault("sport", "");
+        row.date = date;
+        row.inputsJson = writeJson(inputs);
+        row.resultJson = writeJson(result);
+        row.applied = false;
+        row.createdAt = OffsetDateTime.now(ZoneOffset.UTC).toString();
+        row.persist();
+        LOG.infof("Fitness test recorded: athlete=%d slug=%s", aid, body.testSlug);
+        return row.toRow();
+    }
+
+    @POST
+    @Path("/{slug}/schedule")
+    @Transactional
+    public Map<String, Object> scheduleTest(@PathParam("slug") String slug, ScheduleRequest body) {
+        int aid = current.require();
+        if (FitnessTests.get(slug) == null) throw new NotFoundException("Unknown test protocol");
+        Plan plan = Plan.activeFor(aid);
+        if (plan == null) {
+            throw new BadRequestException("No active plan — generate a plan before scheduling a test.");
+        }
+        Map<String, Object> workout = FitnessTests.toWorkout(slug);
+        workout.put("date", body.date);
+        // save_workouts(plan_id, [workout], replace_all=False): insert one row.
+        PlannedWorkout pw = new PlannedWorkout();
+        pw.athleteId = aid;
+        pw.planId = plan.id;
+        pw.date = body.date;
+        pw.sport = (String) workout.get("sport");
+        pw.title = (String) workout.get("title");
+        pw.description = (String) workout.get("description");
+        pw.structureJson = writeJson(workout.get("steps"));
+        pw.durationS = (Integer) workout.get("duration_s");
+        pw.intensity = (String) workout.get("intensity");
+        pw.createdAt = OffsetDateTime.now(ZoneOffset.UTC).toString();
+        pw.persist();
+        LOG.infof("Test workout scheduled: athlete=%d slug=%s plan=%d", aid, slug, plan.id);
+        return workout;
+    }
+
+    private static String writeJson(Object o) {
+        try {
+            return JSON.writeValueAsString(o);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("failed to serialize JSON", e);
+        }
     }
 
     /** Python truthiness for a nullable number: present and non-zero. */

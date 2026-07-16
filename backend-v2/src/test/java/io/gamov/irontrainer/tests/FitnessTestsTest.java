@@ -7,6 +7,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The catalog is fixed data; endpoint byte-parity is the gate. These pin the
@@ -43,6 +44,54 @@ class FitnessTestsTest {
     void getUnknownIsNull() {
         assertNull(FitnessTests.get("nope"));
         assertTrue(FitnessTests.get("run-lthr-30") != null);
+    }
+
+    @Test
+    void computeThresholds() {
+        assertEquals(Map.of("ftp", 238L),
+                FitnessTests.compute("bike-ftp-20", Map.of("avg_power_w", 250)));
+        Map<String, Object> run = FitnessTests.compute("run-lthr-30",
+                Map.of("distance_m", 6000, "time_s", 1800, "avg_hr_last20", 160));
+        assertEquals(160L, run.get("threshold_hr"));
+        assertEquals(300L, run.get("threshold_pace_run"));
+        assertEquals(List.of("threshold_hr", "threshold_pace_run"), List.copyOf(run.keySet()));
+        assertEquals(Map.of("css_swim", 95L),
+                FitnessTests.compute("swim-css-400-200", Map.of("t400_s", 360, "t200_s", 170)));
+    }
+
+    @Test
+    void computeSkipsPaceWhenNoDistance() {
+        // Python: threshold_pace_run only when distance_m > 0.
+        Map<String, Object> run = FitnessTests.compute("run-lthr-30",
+                Map.of("distance_m", 0, "time_s", 1800, "avg_hr_last20", 160));
+        assertEquals(Map.of("threshold_hr", 160L), run);
+    }
+
+    @Test
+    void computeMissingInputThrows() {
+        assertThrows(FitnessTests.BadInput.class,
+                () -> FitnessTests.compute("bike-ftp-20", Map.of()));  // no avg_power_w
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void toWorkoutShape() {
+        Map<String, Object> w = FitnessTests.toWorkout("bike-ftp-20");
+        assertEquals("Bike", w.get("sport"));
+        assertEquals("Bike — 20-min FTP (test)", w.get("title"));
+        assertEquals("test", w.get("intensity"));
+        assertEquals(2700, w.get("duration_s"));  // 900 + 1200 + 600
+        assertEquals(List.of("sport", "title", "description", "intensity", "steps", "duration_s"),
+                List.copyOf(w.keySet()));
+        List<Map<String, Object>> steps = (List<Map<String, Object>>) w.get("steps");
+        assertEquals(3, steps.size());
+        assertEquals("warmup", steps.get(0).get("type"));
+        assertEquals("interval", steps.get(1).get("type"));
+        assertEquals(1200, steps.get(1).get("duration_s"));
+        List<Map<String, Object>> swim =
+                (List<Map<String, Object>>) FitnessTests.toWorkout("swim-css-400-200").get("steps");
+        assertEquals(5, swim.size());
+        assertEquals(400, swim.get(1).get("distance_m"));
     }
 
     @Test

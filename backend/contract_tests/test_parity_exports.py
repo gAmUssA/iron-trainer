@@ -298,3 +298,49 @@ def test_readiness_parity(v1, v2, seeded_metrics):
     # if Java's HALF_EVEN diverged from Python's format, aj == bj above fails.
     assert any("ratio 1.02" in r for r in aj["reasons"])
     assert any("352/wk" in r for r in aj["reasons"])
+
+
+# ── Fitness-test WRITES (record + schedule) ───────────────────────────────────
+# Defined LAST so every read-parity test above runs on clean, un-mutated state:
+# these POST to BOTH backends against the shared DB (record adds two
+# fitness_test_result rows, schedule adds two planned_workouts). Compare the
+# responses modulo volatile id/created_at. apply — the cascade write — is
+# deferred to the metrics-write vertical (bean iron-trainer-adix).
+
+def test_tests_record_parity(v1, v2):
+    """POST /result: compute (round()→int) + the saved _test_result_dict shape
+    must match, modulo the serial id + created_at timestamp."""
+    body = {"test_slug": "bike-ftp-20", "date": "2026-07-15",
+            "inputs": {"avg_power_w": 250}}
+    a = v1.post("/api/tests/result", json=body)
+    b = v2.post("/api/tests/result", json=body)
+    assert a.status_code == b.status_code == 200
+    aj, bj = a.json(), b.json()
+    for k in ("id", "created_at"):  # serial id / wall-clock timestamp
+        aj.pop(k, None)
+        bj.pop(k, None)
+    assert aj == bj
+    assert aj["test_slug"] == "bike-ftp-20"
+    assert aj["sport"] == "Bike"
+    assert aj["date"] == "2026-07-15"
+    assert aj["applied"] is False
+    assert aj["inputs"] == {"avg_power_w": 250}
+    assert aj["result"] == {"ftp": 238}  # round(250 * 0.95) = round(237.5) → 238
+
+
+def test_tests_schedule_parity(v1, v2):
+    """POST /{slug}/schedule: the materialized test workout (to_workout + date)
+    has no volatile fields, so it must be byte-identical."""
+    body = {"date": "2026-08-01"}
+    a = v1.post("/api/tests/bike-ftp-20/schedule", json=body)
+    b = v2.post("/api/tests/bike-ftp-20/schedule", json=body)
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    assert a.json()["intensity"] == "test"
+    assert a.json()["date"] == "2026-08-01"
+
+
+def test_tests_record_unknown_slug_404_parity(v1, v2):
+    body = {"test_slug": "nope", "inputs": {}}
+    assert v1.post("/api/tests/result", json=body).status_code == 404
+    assert v2.post("/api/tests/result", json=body).status_code == 404

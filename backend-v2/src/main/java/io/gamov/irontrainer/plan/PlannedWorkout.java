@@ -37,4 +37,11 @@ public class PlannedWorkout extends PanacheEntityBase {
 
     @Column(name = "distance_m")
     public Double distanceM;
+
+    // Write side (fitness-test schedule): save_workouts also sets these.
+    @Column(name = "planned_tss")
+    public Double plannedTss;
+
+    @Column(name = "created_at")
+    public String createdAt;
 }
