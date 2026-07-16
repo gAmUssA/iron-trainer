@@ -84,22 +84,71 @@ class ReadinessTest {
         assertTrue(Readiness.storyLine(out).startsWith("Today's call: GO HARD — "));
     }
 
-    @Test
-    void recoveryFlagDowngradesGreenToEasy() {
+    /** 10 baseline days (sleep/hrv/rhr) ending the day before `latest`, plus a
+     * latest row `latestAgo` days ago with its own values. Mirrors the shape
+     * repo.recent_recovery() feeds compute(). */
+    private static List<Map<String, Object>> recovery(
+            double latestSleep, double latestHrv, double latestRhr,
+            double baseSleep, double baseHrv, double baseRhr, int latestAgo) {
         List<Map<String, Object>> rec = new ArrayList<>();
         for (int ago = 10; ago >= 1; ago--) {
             Map<String, Object> r = new HashMap<>();
-            r.put("date", TODAY.minusDays(ago).toString());
-            r.put("sleep_h", 7.5); r.put("hrv_ms", 60.0); r.put("rhr_bpm", 46.0);
+            r.put("date", TODAY.minusDays(ago + latestAgo).toString());
+            r.put("sleep_h", baseSleep); r.put("hrv_ms", baseHrv); r.put("rhr_bpm", baseRhr);
             rec.add(r);
         }
         Map<String, Object> latest = new HashMap<>();
-        latest.put("date", TODAY.toString());
-        latest.put("sleep_h", 7.5); latest.put("hrv_ms", 40.0); latest.put("rhr_bpm", 46.0);
+        latest.put("date", TODAY.minusDays(latestAgo).toString());
+        latest.put("sleep_h", latestSleep); latest.put("hrv_ms", latestHrv); latest.put("rhr_bpm", latestRhr);
         rec.add(latest);
+        return rec;
+    }
+
+    @Test
+    void recoveryFlagDowngradesGreenToEasy() {
+        // Today's HRV 40 vs the ~60 baseline (< 0.80x) → suppressed → green→easy.
+        List<Map<String, Object>> rec = recovery(7.5, 40.0, 46.0, 7.5, 60.0, 46.0, 0);
         Map<String, Object> out = Readiness.compute(flat(400, 0.0, 42), rec, TODAY);
         assertEquals("easy", out.get("call"));
         assertTrue(reasons(out).get(0).contains("HRV suppressed"));
+    }
+
+    @Test
+    void shortSleepDowngradesGreenToEasy() {
+        // Latest sleep 5.0h (< 6h) → short-sleep flag leads and downgrades.
+        List<Map<String, Object>> rec = recovery(5.0, 60.0, 46.0, 7.5, 60.0, 46.0, 0);
+        Map<String, Object> out = Readiness.compute(flat(400, 0.0, 42), rec, TODAY);
+        assertEquals("easy", out.get("call"));
+        assertTrue(reasons(out).get(0).contains("Short sleep"));
+    }
+
+    @Test
+    void elevatedRhrDowngradesGreenToEasy() {
+        // Latest RHR 55 vs ~46 baseline (> +5 bpm) → elevated-RHR flag downgrades.
+        List<Map<String, Object>> rec = recovery(7.5, 60.0, 55.0, 7.5, 60.0, 46.0, 0);
+        Map<String, Object> out = Readiness.compute(flat(400, 0.0, 42), rec, TODAY);
+        assertEquals("easy", out.get("call"));
+        assertTrue(reasons(out).stream().anyMatch(r -> r.contains("Resting HR elevated")));
+    }
+
+    @Test
+    void staleRecoveryIsIgnored() {
+        // Latest recovery is 5 days old (> RECOVERY_FRESH_DAYS): a phone that
+        // stopped pushing is not a bad night — no flags, call stays hard.
+        List<Map<String, Object>> rec = recovery(4.0, 30.0, 60.0, 7.5, 60.0, 46.0, 5);
+        Map<String, Object> out = Readiness.compute(flat(400, 0.0, 42), rec, TODAY);
+        assertEquals("hard", out.get("call"));
+        assertTrue(reasons(out).stream().noneMatch(
+                r -> r.contains("Short sleep") || r.contains("HRV") || r.contains("Resting HR")));
+    }
+
+    @Test
+    void normalRecoveryLeavesCallUnchanged() {
+        // Recovery present but all within baseline → no flags, call stays hard.
+        List<Map<String, Object>> rec = recovery(7.5, 60.0, 46.0, 7.5, 60.0, 46.0, 0);
+        Map<String, Object> out = Readiness.compute(flat(400, 0.0, 42), rec, TODAY);
+        assertEquals("hard", out.get("call"));
+        assertEquals("green", out.get("level"));
     }
 
     @Test
@@ -181,6 +230,12 @@ class ReadinessTest {
 
     @Test
     void bankerRoundingPct() {
+        // Realistic value (matches the "67%" reason string), plus two exact
+        // rounding TIES that actually distinguish the mode: 0.125 -> 12.5 rounds
+        // DOWN to even 12 (HALF_UP would give 13); 0.375 -> 37.5 rounds UP to
+        // even 38 (HALF_DOWN would give 37). Together they pin ties-to-even.
         assertEquals("67%", Py.pct0(40.0 / 60.0));
+        assertEquals("12%", Py.pct0(0.125));
+        assertEquals("38%", Py.pct0(0.375));
     }
 }

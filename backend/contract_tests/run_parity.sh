@@ -47,7 +47,8 @@ done
 # fixture (test_parity_exports.py::seeded_metrics), NOT here: the `seeded`
 # fixture's profile PUT calls rebuild_metrics() which DELETEs the athlete's
 # metrics_daily rows, so anything seeded before pytest gets wiped. The fixture
-# runs after `seeded` and connects with PARITY_DB_DSN below.
+# runs after `seeded` and reaches Postgres via `docker exec` using PARITY_PG_ID
+# (the container id) set below.
 CONTRACT_BASE_URL="http://127.0.0.1:$V1_PORT" V2_BASE_URL="http://127.0.0.1:$V2_PORT" \
   PARITY_PG_ID="$PG_ID" \
   uv run pytest contract_tests -q "$@"

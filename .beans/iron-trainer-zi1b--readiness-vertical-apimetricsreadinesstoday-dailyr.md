@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-07-16T00:01:25Z
-updated_at: 2026-07-16T00:26:58Z
+updated_at: 2026-07-16T01:00:45Z
 parent: iron-trainer-eg0j
 ---
 
@@ -22,4 +22,4 @@ Ported `app/readiness.py` → backend-v2:
 
 Parity gate: added `seeded_metrics` fixture (test_parity_exports.py) that seeds a steady 42-day load + suppressed-HRV recovery for the bearer's athlete **after** the `seeded` fixture's profile PUT (which calls rebuild_metrics → DELETEs the athlete's rows). Dates computed host-local (date.today()), not Postgres CURRENT_DATE, to stay aligned with the app's tz. test_readiness_parity + test_pmc_parity now exercise real data; `aj == bj` proves Python/Java byte-parity incl. reason strings.
 
-Result: 23 Java tests + 19 parity tests all green.
+Result: 33 Java tests + 19 parity tests all green (17 readiness unit tests incl. all recovery-flag paths + banker's-rounding ties; parity seeds fractional derived numbers so HALF_EVEN formatting is compared Python↔Java).
