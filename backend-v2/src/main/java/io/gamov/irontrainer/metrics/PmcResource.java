@@ -40,7 +40,7 @@ public class PmcResource {
                                    athleteId, cutoff);
         List<Map<String, Object>> rows = new ArrayList<>();
         for (MetricDaily m : windowed) {
-            rows.add(row(m));
+            rows.add(m.toRow());
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("days", rows);
@@ -56,15 +56,4 @@ public class PmcResource {
         return LocalDate.now().minusDays(days - 1L).toString();
     }
 
-    /** Same key set as SQLModel model_dump(): athlete_id, date, tss/ctl/atl/tsb. */
-    private static Map<String, Object> row(MetricDaily m) {
-        Map<String, Object> r = new LinkedHashMap<>();
-        r.put("athlete_id", m.athleteId);
-        r.put("date", m.date);
-        r.put("tss", m.tss);
-        r.put("ctl", m.ctl);
-        r.put("atl", m.atl);
-        r.put("tsb", m.tsb);
-        return r;
-    }
 }

@@ -7,6 +7,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 import java.io.Serializable;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /** Shared metrics_daily table (read side). Composite PK (athlete_id, date),
@@ -27,6 +29,20 @@ public class MetricDaily extends PanacheEntityBase {
     public Double ctl;
     public Double atl;
     public Double tsb;
+
+    /** Same key set + order as the FastAPI SQLModel model_dump(): athlete_id,
+     * date, tss/ctl/atl/tsb. The one place this shape is defined — PMC and
+     * readiness both consume it, so a schema change updates a single method. */
+    public Map<String, Object> toRow() {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("athlete_id", athleteId);
+        r.put("date", date);
+        r.put("tss", tss);
+        r.put("ctl", ctl);
+        r.put("atl", atl);
+        r.put("tsb", tsb);
+        return r;
+    }
 
     /** Composite key. */
     public static class PK implements Serializable {
