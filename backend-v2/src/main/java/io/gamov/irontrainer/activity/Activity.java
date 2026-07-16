@@ -1,0 +1,45 @@
+package io.gamov.irontrainer.activity;
+
+import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+/** Shared activities table (read side). Strava activity id is explicit (not
+ * generated). Read-mostly subset of columns for the verticals that need history
+ * (fitness-test prefill; later, race_readiness). */
+@Entity
+@Table(name = "activities")
+public class Activity extends PanacheEntityBase {
+
+    @Id  // Strava id, not auto-assigned
+    public Long id;
+
+    @Column(name = "athlete_id")
+    public Integer athleteId;
+
+    public String sport;
+
+    @Column(name = "start_date")
+    public String startDate;
+
+    public String name;
+
+    @Column(name = "moving_time")
+    public Integer movingTime;
+
+    public Double distance;
+
+    @Column(name = "avg_power")
+    public Double avgPower;
+
+    @Column(name = "weighted_power")
+    public Double weightedPower;
+
+    @Column(name = "avg_hr")
+    public Double avgHr;
+
+    @Column(name = "is_duplicate")
+    public Integer isDuplicate;
+}

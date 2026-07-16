@@ -95,6 +95,37 @@ def seeded_metrics(bearer) -> bool:
 
 
 @pytest.fixture(scope="session")
+def seeded_tests(bearer) -> bool:
+    """Seed one fitness_test_result + two activities (Bike, Run) for the bearer's
+    athlete so the fitness-test read parity tests exercise real data: /results +
+    the catalog's last_tested/due, and /prefill's activity→inputs mapping. Neither
+    table is touched by the `seeded` profile PUT, but seeding after `bearer` keeps
+    it simple + athlete-scoped. Returns False (no-op) outside the parity runner."""
+    if not os.environ.get("PARITY_PG_ID"):
+        return False
+    aid = _psql("SELECT athlete_id FROM device_token ORDER BY id DESC LIMIT 1")
+    assert aid.isdigit(), f"could not resolve bearer athlete id (got {aid!r})"
+    # Fixed absolute date/created_at + explicit activity ids so BOTH backends read
+    # the identical rows (byte-parity depends on same id/created_at/date).
+    _psql(f"""
+        INSERT INTO fitness_test_result
+            (athlete_id, test_slug, sport, date, inputs_json, result_json, applied, created_at)
+        VALUES ({aid}, 'bike-ftp-20', 'Bike', '2026-06-01',
+                '{{"avg_power_w": 250}}', '{{"ftp": 238}}', false, '2026-06-01T10:00:00+00:00');
+        INSERT INTO activities
+            (id, athlete_id, sport, start_date, name, moving_time, distance,
+             avg_power, weighted_power, avg_hr, is_duplicate)
+        VALUES
+            (900001, {aid}, 'Bike', '2026-07-10T08:00:00', 'Morning Ride',
+             3600, 30000, 210, 225, 145, 0),
+            (900002, {aid}, 'Run', '2026-07-11T07:00:00', 'Tempo Run',
+             1800, 6000, NULL, NULL, 160, 0)
+        ON CONFLICT (id) DO NOTHING;
+    """)
+    return True
+
+
+@pytest.fixture(scope="session")
 def v2(bearer) -> httpx.Client:
     c = httpx.Client(base_url=V2_BASE_URL, timeout=60,
                      headers={"Authorization": f"Bearer {bearer}"})
@@ -181,6 +212,39 @@ def test_nutrition_workout_parity(v1, v2):
 def test_nutrition_cross_tenant_404_parity(v1, v2):
     assert v1.get("/api/nutrition/workout/999999").status_code == 404
     assert v2.get("/api/nutrition/workout/999999").status_code == 404
+
+
+def test_tests_catalog_parity(v1, v2, seeded_tests):
+    """The fixed protocol catalog + last_tested/due (a seeded 2026-06-01 Bike
+    result makes Bike's last_tested non-null) must be byte-identical."""
+    a = v1.get("/api/tests")
+    b = v2.get("/api/tests")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+
+
+def test_tests_results_parity(v1, v2, seeded_tests):
+    """GET /results: _test_result_dict shape (key order, parsed inputs/result
+    JSON) on the identical seeded row must match."""
+    a = v1.get("/api/tests/results")
+    b = v2.get("/api/tests/results")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+
+
+def test_tests_prefill_parity(v1, v2, seeded_tests):
+    """Prefill maps a synced activity to candidate inputs (round()→int); bike
+    (weighted_power), run (distance/time/hr), and swim (no prefill_sport → [])."""
+    for slug in ("bike-ftp-20", "run-lthr-30", "swim-css-400-200"):
+        a = v1.get(f"/api/tests/{slug}/prefill")
+        b = v2.get(f"/api/tests/{slug}/prefill")
+        assert a.status_code == b.status_code == 200, slug
+        assert a.json() == b.json(), slug
+
+
+def test_tests_prefill_unknown_slug_404_parity(v1, v2):
+    assert v1.get("/api/tests/nope/prefill").status_code == 404
+    assert v2.get("/api/tests/nope/prefill").status_code == 404
 
 
 def test_zones_parity(v1, v2):
