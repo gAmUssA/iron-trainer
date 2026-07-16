@@ -50,4 +50,8 @@ public class Athlete extends PanacheEntityBase {
 
     @Column(name = "sweat_rate_l_h")
     public Double sweatRateLH;
+
+    // save_profile bumps this on any threshold change (iOS delta-sync watches it).
+    @Column(name = "updated_at")
+    public String updatedAt;
 }

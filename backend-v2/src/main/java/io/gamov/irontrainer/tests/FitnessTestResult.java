@@ -70,4 +70,10 @@ public class FitnessTestResult extends PanacheEntityBase {
         r.put("result", parse(resultJson));
         return r;
     }
+
+    /** The computed thresholds (result_json parsed) — what apply writes to the
+     * athlete profile. Empty ({}) when there are none, matching json.loads(x or "{}"). */
+    public Map<String, Object> parsedResult() {
+        return parse(resultJson);
+    }
 }

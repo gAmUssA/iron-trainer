@@ -12,6 +12,15 @@ public final class Py {
 
     private Py() {}
 
+    /** Python truthiness for a nullable number: present and non-zero. */
+    public static boolean truthy(Double x) {
+        return x != null && x != 0.0;
+    }
+
+    public static boolean truthy(Integer x) {
+        return x != null && x != 0;
+    }
+
     /** Python round(x, n) → double. */
     public static double round(double x, int n) {
         return new BigDecimal(x).setScale(n, RoundingMode.HALF_EVEN).doubleValue();

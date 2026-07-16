@@ -3,6 +3,7 @@ package io.gamov.irontrainer.tests;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.plan.Plan;
 import io.gamov.irontrainer.plan.PlannedWorkout;
 import io.gamov.irontrainer.util.Py;
@@ -29,8 +30,9 @@ import java.util.Map;
 import org.jboss.logging.Logger;
 
 /** Fitness-test vertical — contract parity with FastAPI's /api/tests: catalog,
- * results, prefill (reads) + record & schedule (writes). Bearer surface.
- * (apply — the cascade write — waits on the metrics-write vertical.) */
+ * results, prefill (reads) + record, schedule & apply (writes). Bearer surface.
+ * apply delegates the save_profile → recompute_tss → rebuild_metrics cascade to
+ * metrics.MetricsWrite. */
 @Path("/api/tests")
 public class FitnessTestsResource {
 
@@ -131,14 +133,14 @@ public class FitnessTestsResource {
             if (!sport.equals(a.sport)) continue;
             Map<String, Object> inputs = new LinkedHashMap<>();
             if ("bike-ftp-20".equals(slug)) {
-                Double p = truthy(a.weightedPower) ? a.weightedPower : a.avgPower;
-                if (!truthy(p)) continue;
+                Double p = Py.truthy(a.weightedPower) ? a.weightedPower : a.avgPower;
+                if (!Py.truthy(p)) continue;
                 inputs.put("avg_power_w", Py.roundInt(p));
             } else if ("run-lthr-30".equals(slug)) {
-                if (!truthy(a.distance) || !truthy(a.movingTime)) continue;
+                if (!Py.truthy(a.distance) || !Py.truthy(a.movingTime)) continue;
                 inputs.put("distance_m", Py.roundInt(a.distance));
                 inputs.put("time_s", Py.roundInt(a.movingTime));
-                inputs.put("avg_hr_last20", truthy(a.avgHr) ? Py.roundInt(a.avgHr) : null);
+                inputs.put("avg_hr_last20", Py.truthy(a.avgHr) ? Py.roundInt(a.avgHr) : null);
             }
             if (!inputs.isEmpty()) {
                 Map<String, Object> c = new LinkedHashMap<>();
@@ -226,12 +228,21 @@ public class FitnessTestsResource {
         return workout;
     }
 
-    /** Python truthiness for a nullable number: present and non-zero. */
-    private static boolean truthy(Double x) {
-        return x != null && x != 0.0;
-    }
-
-    private static boolean truthy(Integer x) {
-        return x != null && x != 0;
+    @POST
+    @Path("/result/{id}/apply")
+    @Transactional
+    public Map<String, Object> applyResult(@PathParam("id") int resultId) {
+        int aid = current.require();
+        FitnessTestResult row = FitnessTestResult.findById(resultId);
+        if (row == null || !row.athleteId.equals(aid)) {
+            throw new NotFoundException("Test result not found");
+        }
+        Map<String, Object> result = row.parsedResult();
+        if (!result.isEmpty()) {  // Python: if result — apply thresholds + cascade
+            MetricsWrite.applyResult(aid, result);
+        }
+        row.applied = true;  // managed entity — flushes at commit
+        LOG.infof("Fitness test applied: athlete=%d result=%d", aid, resultId);
+        return row.toRow();
     }
 }
