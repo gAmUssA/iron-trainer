@@ -110,8 +110,11 @@ def seeded_tests(bearer) -> bool:
     _psql(f"""
         INSERT INTO fitness_test_result
             (athlete_id, test_slug, sport, date, inputs_json, result_json, applied, created_at)
-        VALUES ({aid}, 'bike-ftp-20', 'Bike', '2026-06-01',
-                '{{"avg_power_w": 250}}', '{{"ftp": 238}}', false, '2026-06-01T10:00:00+00:00');
+        SELECT {aid}, 'bike-ftp-20', 'Bike', '2026-06-01',
+               '{{"avg_power_w": 250}}', '{{"ftp": 238}}', false, '2026-06-01T10:00:00+00:00'
+        WHERE NOT EXISTS (
+            SELECT 1 FROM fitness_test_result
+            WHERE athlete_id = {aid} AND test_slug = 'bike-ftp-20' AND date = '2026-06-01');
         INSERT INTO activities
             (id, athlete_id, sport, start_date, name, moving_time, distance,
              avg_power, weighted_power, avg_hr, is_duplicate)

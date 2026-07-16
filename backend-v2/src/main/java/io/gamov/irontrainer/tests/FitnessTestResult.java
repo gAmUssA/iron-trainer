@@ -44,7 +44,8 @@ public class FitnessTestResult extends PanacheEntityBase {
     public String createdAt;
 
     private static Map<String, Object> parse(String json) {
-        if (json == null) return new LinkedHashMap<>();  // Python: json.loads(x or "{}")
+        // Python: json.loads(x or "{}") — null OR an empty string is falsy → {}.
+        if (json == null || json.isEmpty()) return new LinkedHashMap<>();
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> m = MAPPER.readValue(json, LinkedHashMap.class);

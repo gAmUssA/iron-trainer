@@ -30,6 +30,9 @@ public class FitnessTestsResource {
     @Inject
     CurrentAthlete current;
 
+    // Results ordered by `date` only — deliberately the SAME clause as FastAPI's
+    // list_test_results (no tie-break), so both backends read the identical order
+    // from the shared DB. Full entities: listResults needs them for toRow().
     private List<FitnessTestResult> results(int aid) {
         return FitnessTestResult.list("athleteId = ?1 order by date", aid);
     }
@@ -38,11 +41,19 @@ public class FitnessTestsResource {
     public Map<String, Object> listTests() {
         int aid = current.require();
         // Most recent test date per sport (string max — ISO dates sort lexically).
+        // Projection query: last_tested only needs (sport, date), not the JSON
+        // blobs, so don't hydrate full result entities on this hot path.
+        List<Object[]> rows = FitnessTestResult.getEntityManager()
+                .createQuery("select r.sport, r.date from FitnessTestResult r "
+                        + "where r.athleteId = ?1", Object[].class)
+                .setParameter(1, aid).getResultList();
         Map<String, String> lastBySport = new LinkedHashMap<>();
-        for (FitnessTestResult r : results(aid)) {
-            if (r.sport != null && r.date != null
-                    && r.date.compareTo(lastBySport.getOrDefault(r.sport, "")) > 0) {
-                lastBySport.put(r.sport, r.date);
+        for (Object[] row : rows) {
+            String sport = (String) row[0];
+            String date = (String) row[1];
+            if (sport != null && date != null
+                    && date.compareTo(lastBySport.getOrDefault(sport, "")) > 0) {
+                lastBySport.put(sport, date);
             }
         }
         // "today" in UTC, matching FastAPI's _today() (datetime.now(timezone.utc)).
@@ -104,7 +115,7 @@ public class FitnessTestsResource {
                 if (!truthy(p)) continue;
                 inputs.put("avg_power_w", Py.roundInt(p));
             } else if ("run-lthr-30".equals(slug)) {
-                if (!truthy(a.distance) || !truthy(a.movingTime == null ? null : (double) a.movingTime)) continue;
+                if (!truthy(a.distance) || !truthy(a.movingTime)) continue;
                 inputs.put("distance_m", Py.roundInt(a.distance));
                 inputs.put("time_s", Py.roundInt(a.movingTime));
                 inputs.put("avg_hr_last20", truthy(a.avgHr) ? Py.roundInt(a.avgHr) : null);
@@ -127,5 +138,9 @@ public class FitnessTestsResource {
     /** Python truthiness for a nullable number: present and non-zero. */
     private static boolean truthy(Double x) {
         return x != null && x != 0.0;
+    }
+
+    private static boolean truthy(Integer x) {
+        return x != null && x != 0;
     }
 }

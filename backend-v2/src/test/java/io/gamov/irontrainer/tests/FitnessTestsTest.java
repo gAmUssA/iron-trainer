@@ -44,4 +44,18 @@ class FitnessTestsTest {
         assertNull(FitnessTests.get("nope"));
         assertTrue(FitnessTests.get("run-lthr-30") != null);
     }
+
+    @Test
+    void emptyOrNullJsonBlobsBecomeEmptyMaps() {
+        // Python json.loads(x or "{}"): both null and "" are falsy → {}, not a
+        // 500. (A real row should never hold "", but the port must be faithful.)
+        FitnessTestResult r = new FitnessTestResult();
+        r.id = 1; r.athleteId = 1; r.testSlug = "bike-ftp-20"; r.sport = "Bike";
+        r.date = "2026-06-01"; r.applied = false; r.createdAt = "2026-06-01T10:00:00+00:00";
+        r.inputsJson = "";       // empty string
+        r.resultJson = null;     // null
+        Map<String, Object> row = r.toRow();
+        assertEquals(Map.of(), row.get("inputs"));
+        assertEquals(Map.of(), row.get("result"));
+    }
 }
