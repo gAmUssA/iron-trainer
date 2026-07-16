@@ -40,15 +40,6 @@ public final class Metrics {
         return SPORT_MAP.getOrDefault(stravaType == null ? "" : stravaType, "Other");
     }
 
-    /** Python truthiness for a nullable number: present and non-zero. */
-    private static boolean truthy(Double x) {
-        return x != null && x != 0.0;
-    }
-
-    private static boolean truthy(Integer x) {
-        return x != null && x != 0;
-    }
-
     /** Guard against absurd values from noisy summary data. */
     static double clampIf(double value) {
         return Math.max(0.3, Math.min(value, 1.25));
@@ -57,13 +48,13 @@ public final class Metrics {
     public static IfResult intensityFactor(String sport, Double movingTime, Double distance,
             Double weightedPower, Double avgPower, Double avgHr, Thresholds th) {
         // 1) Power (bike): IF = NP / FTP
-        if ("Bike".equals(sport) && truthy(th.ftp())) {
-            Double power = truthy(weightedPower) ? weightedPower : avgPower;
-            if (truthy(power)) return new IfResult(clampIf(power / th.ftp()), "power");
+        if ("Bike".equals(sport) && Py.truthy(th.ftp())) {
+            Double power = Py.truthy(weightedPower) ? weightedPower : avgPower;
+            if (Py.truthy(power)) return new IfResult(clampIf(power / th.ftp()), "power");
         }
         // 2) Pace (run): IF = threshold_pace / actual_pace
-        if ("Run".equals(sport) && truthy(th.thresholdPaceRun())
-                && truthy(movingTime) && truthy(distance)) {
+        if ("Run".equals(sport) && Py.truthy(th.thresholdPaceRun())
+                && Py.truthy(movingTime) && Py.truthy(distance)) {
             double km = distance / 1000.0;
             if (km > 0) {
                 double actualPace = movingTime / km;  // sec/km
@@ -71,8 +62,8 @@ public final class Metrics {
             }
         }
         // 3) Pace (swim): IF = css_pace / actual_pace_per_100
-        if ("Swim".equals(sport) && truthy(th.cssSwim())
-                && truthy(movingTime) && truthy(distance)) {
+        if ("Swim".equals(sport) && Py.truthy(th.cssSwim())
+                && Py.truthy(movingTime) && Py.truthy(distance)) {
             double hundreds = distance / 100.0;
             if (hundreds > 0) {
                 double actualPace = movingTime / hundreds;  // sec/100m
@@ -80,7 +71,7 @@ public final class Metrics {
             }
         }
         // 4) Heart rate: IF ≈ avg_hr / threshold_hr
-        if (truthy(avgHr) && truthy(th.thresholdHr())) {
+        if (Py.truthy(avgHr) && Py.truthy(th.thresholdHr())) {
             return new IfResult(clampIf(avgHr / th.thresholdHr()), "hr");
         }
         // 5) Duration-only fallback.
@@ -89,7 +80,7 @@ public final class Metrics {
 
     public static TssResult computeTss(String sport, Double movingTime, Double distance,
             Double weightedPower, Double avgPower, Double avgHr, Thresholds th) {
-        if (!truthy(movingTime) || movingTime <= 0) {
+        if (!Py.truthy(movingTime) || movingTime <= 0) {
             return new TssResult(0.0, 0.0, "none");
         }
         IfResult f = intensityFactor(sport, movingTime, distance, weightedPower, avgPower, avgHr, th);

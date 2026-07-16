@@ -5,22 +5,35 @@ import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.metrics.Metrics.DayMetric;
 import io.gamov.irontrainer.metrics.Metrics.Thresholds;
 import io.gamov.irontrainer.metrics.Metrics.TssResult;
+import io.gamov.irontrainer.util.PyJson;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jboss.logging.Logger;
 
-/** The metrics WRITE cascade — Java port of repo.recompute_tss / rebuild_metrics
- * / store_metrics / save_profile. Static helpers that run inside the caller's
- * @Transactional context (Panache active-record). Shared by the fitness-test
- * apply endpoint and, later, Strava sync. */
+/** The metrics WRITE cascade — Java port of repo.save_profile / recompute_tss /
+ * rebuild_metrics / store_metrics. Static helpers that run inside the caller's
+ * @Transactional context (Panache active-record). The full applyResult cascade
+ * lives HERE (not in a resource) so the Strava-sync vertical reuses the exact
+ * same recompute+rebuild sequence with no drift. */
 public final class MetricsWrite {
 
     private static final Logger LOG = Logger.getLogger(MetricsWrite.class);
 
     private MetricsWrite() {}
+
+    /** The apply cascade: write thresholds, then recompute TSS + rebuild the PMC
+     * from them. Mirrors repo.apply_test_result's save_profile → recompute_tss →
+     * rebuild_metrics. */
+    public static void applyResult(int aid, Map<String, Object> result) {
+        saveProfile(aid, result);
+        recomputeAndRebuild(aid);
+    }
 
     /** athlete_thresholds(): the current athlete's thresholds. */
     public static Thresholds thresholds(int aid) {
@@ -30,23 +43,31 @@ public final class MetricsWrite {
     }
 
     /** save_profile(result): write the computed threshold fields onto the athlete
-     * (only the keys present in `result`, as fitness_tests.compute produces). */
+     * (only the keys fitness_tests.compute produces), bumping updated_at on any
+     * change (iOS delta-sync watches it) — matching repo.save_profile. */
     public static void saveProfile(int aid, Map<String, Object> result) {
         Athlete a = Athlete.findById(aid);
         if (a == null) return;
-        if (result.containsKey("ftp")) a.ftp = asDouble(result.get("ftp"));
-        if (result.containsKey("threshold_hr")) a.thresholdHr = asInt(result.get("threshold_hr"));
-        if (result.containsKey("max_hr")) a.maxHr = asInt(result.get("max_hr"));
-        if (result.containsKey("threshold_pace_run")) a.thresholdPaceRun = asDouble(result.get("threshold_pace_run"));
-        if (result.containsKey("css_swim")) a.cssSwim = asDouble(result.get("css_swim"));
+        boolean changed = false;
+        if (result.containsKey("ftp")) { a.ftp = asDouble(result.get("ftp")); changed = true; }
+        if (result.containsKey("threshold_hr")) { a.thresholdHr = asInt(result.get("threshold_hr")); changed = true; }
+        if (result.containsKey("max_hr")) { a.maxHr = asInt(result.get("max_hr")); changed = true; }
+        if (result.containsKey("threshold_pace_run")) { a.thresholdPaceRun = asDouble(result.get("threshold_pace_run")); changed = true; }
+        if (result.containsKey("css_swim")) { a.cssSwim = asDouble(result.get("css_swim")); changed = true; }
+        if (changed) a.updatedAt = PyJson.utcNowIso();
         // Managed entity — changes flush at commit.
     }
 
-    /** recompute_tss(): recompute TSS for EVERY activity (incl. duplicates, as
-     * FastAPI does) from the current thresholds, writing the values back. */
-    public static int recomputeTss(int aid) {
+    /** recompute_tss + rebuild_metrics over ONE activity load: recompute every
+     * activity's TSS (incl. duplicates, as FastAPI does) from current thresholds,
+     * then build the CTL/ATL/TSB series from the NON-duplicate subset and replace
+     * metrics_daily. "today" is host-local (matches FastAPI's date.today(); both
+     * backends run on the same host, so the series ends on the same day).
+     * Reused by the Strava-sync vertical. */
+    public static void recomputeAndRebuild(int aid) {
         Thresholds th = thresholds(aid);
         List<Activity> acts = Activity.list("athleteId", aid);
+        List<Map.Entry<LocalDate, Double>> pairs = new ArrayList<>();
         for (Activity a : acts) {
             TssResult r = Metrics.computeTss(a.sport,
                     a.movingTime == null ? null : (double) a.movingTime,
@@ -54,24 +75,14 @@ public final class MetricsWrite {
             a.tss = r.tss();
             a.intensityFactor = r.intensityFactor();
             a.tssMethod = r.method();
-        }
-        return acts.size();
-    }
-
-    /** rebuild_metrics(today): (day, tss) from NON-duplicate activities →
-     * performance_management → store_metrics. */
-    public static int rebuildMetrics(int aid, LocalDate today) {
-        List<Activity> acts = Activity.list(
-                "athleteId = ?1 and (isDuplicate = 0 or isDuplicate is null)", aid);
-        List<Map.Entry<LocalDate, Double>> pairs = new ArrayList<>();
-        for (Activity a : acts) {
+            // rebuild_metrics uses list_activities() (non-duplicate only).
+            if (a.isDuplicate != null && a.isDuplicate != 0) continue;
             LocalDate day = parseDay(a.startDate);
             if (day == null) continue;  // Python skips unparseable start_date
-            pairs.add(new AbstractMap.SimpleEntry<>(day, a.tss == null ? 0.0 : a.tss));
+            pairs.add(new AbstractMap.SimpleEntry<>(day, a.tss));
         }
-        List<DayMetric> days = Metrics.performanceManagement(pairs, today, null, 0.0, 0.0);
+        List<DayMetric> days = Metrics.performanceManagement(pairs, LocalDate.now(), null, 0.0, 0.0);
         storeMetrics(aid, days);
-        return days.size();
     }
 
     /** store_metrics(days): replace the athlete's metrics_daily with `days`. */
@@ -90,12 +101,19 @@ public final class MetricsWrite {
         LOG.debugf("store_metrics: athlete=%d days=%d", aid, days.size());
     }
 
-    /** Python: datetime.fromisoformat(start_date.replace("Z","+00:00")).date() —
-     * which is just the calendar-date part (no tz conversion). */
+    /** datetime.fromisoformat(start_date.replace("Z","+00:00")).date() — parse
+     * the full ISO value and take the calendar date; return null (Python skips)
+     * on anything fromisoformat would reject (e.g. garbage past the date part). */
     private static LocalDate parseDay(String startDate) {
-        if (startDate == null || startDate.length() < 10) return null;
+        if (startDate == null) return null;
+        String s = startDate.replace("Z", "+00:00");
         try {
-            return LocalDate.parse(startDate.substring(0, 10));
+            if (s.length() == 10) return LocalDate.parse(s);
+            try {
+                return OffsetDateTime.parse(s).toLocalDate();
+            } catch (DateTimeParseException e) {
+                return LocalDateTime.parse(s).toLocalDate();
+            }
         } catch (Exception e) {
             return null;
         }

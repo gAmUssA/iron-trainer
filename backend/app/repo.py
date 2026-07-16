@@ -383,10 +383,7 @@ def get_metrics() -> list[dict]:
 
 
 def rebuild_metrics(today: date | None = None) -> int:
-    # UTC, matching the readiness "today" basis (bean readiness-tz) and backend-v2
-    # (LocalDate.now(UTC)) — so the metrics_daily series ends on the same day on
-    # both backends regardless of the host timezone.
-    today = today or datetime.now(timezone.utc).date()
+    today = today or date.today()
     pairs: list[tuple[date, float]] = []
     for a in list_activities():
         try:
