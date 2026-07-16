@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import __version__, auth, jobs, repo
+from . import __version__, auth, jobs, repo, strangler
 from .config import REPO_ROOT, get_settings
 from .db import get_engine, init_db
 from .logging_config import get_logger, setup_logging
@@ -68,13 +68,16 @@ async def lifespan(app: FastAPI):
         log.error("Startup init_db() failed — serving anyway; check DATABASE_URL.\n%s",
                   traceback.format_exc())
     yield
+    await strangler.aclose_client()  # release the shared proxy connection pool
 
 
 app = FastAPI(title="Iron Trainer API", version=__version__, lifespan=lifespan)
 
 settings = get_settings()
 # Middleware executes outer→inner in reverse add-order, so the last added runs
-# first. We want: CORS → Session → AuthContext → endpoint (auth reads the session).
+# first. We want: CORS → Strangler → Session → AuthContext → endpoint (auth reads
+# the session). The strangler sits outside Session/Auth so a proxied request
+# skips them entirely, but inside CORS so proxied responses still get CORS headers.
 app.add_middleware(auth.AuthContextMiddleware)
 app.add_middleware(
     SessionMiddleware,
@@ -82,6 +85,7 @@ app.add_middleware(
     same_site="lax",
     https_only=settings.cookie_secure,
 )
+app.add_middleware(strangler.StranglerProxyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,

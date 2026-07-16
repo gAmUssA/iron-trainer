@@ -45,9 +45,20 @@ class Settings(BaseSettings):
     session_secret: str = "dev-insecure-change-me"
     allowed_strava_ids: str = ""  # comma-separated Strava athlete ids (empty = allow all)
     # Strangler flip: when set (e.g. http://backend-v2.railway.internal:8080),
-    # bearer-authenticated export requests are proxied to backend-v2. Empty =
-    # serve locally (instant rollback). Session-cookie traffic always local.
+    # bearer-authenticated requests for allowlisted paths (proxy_paths) are
+    # proxied to backend-v2. Empty = serve locally (instant rollback).
+    # Session-cookie traffic always stays local. (Name kept for env
+    # back-compat; it's the backend-v2 base URL for every proxied vertical.)
     export_proxy_url: str = ""
+    # Comma-separated allowlist of paths backend-v2 owns. A pattern ending in '*'
+    # matches by prefix. Default = today's proxied export set, so enabling the
+    # single-seam middleware changes nothing. Append a vertical's path once its
+    # parity gate is green to flip that vertical's BEARER traffic — e.g. add
+    # "/api/metrics/readiness/today" (parity-verified) to route iOS readiness to
+    # the Quarkus binary. Note the proxy decision is bearer-only: cookie/session
+    # (web) requests never proxy regardless of the allowlist, so web surfaces
+    # like zones/pmc stay local even if their path is listed — until Phase 7.
+    proxy_paths: str = "/api/export/workout/*,/api/export/plan.itw"
     default_athlete_id: int = 1  # identity used in local no-login mode
     cookie_secure: bool = False  # set true behind HTTPS (Secure session cookie)
     log_level: str = "INFO"  # app log verbosity (DEBUG/INFO/WARNING/ERROR)
@@ -94,6 +105,12 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
+    def proxy_path_list(self) -> list[str]:
+        """Allowlist of paths backend-v2 owns (see proxy_paths / strangler.py).
+        The parse is cached: this is read on every proxied request's hot path."""
+        return list(_split_paths(self.proxy_paths))
+
+    @property
     def allowed_strava_id_set(self) -> set[int]:
         out: set[int] = set()
         for tok in self.allowed_strava_ids.split(","):
@@ -126,6 +143,12 @@ class Settings(BaseSettings):
     @property
     def anthropic_configured(self) -> bool:
         return bool(self.anthropic_api_key)
+
+
+@lru_cache(maxsize=8)
+def _split_paths(csv: str) -> tuple[str, ...]:
+    """Parse the PROXY_PATHS allowlist once per distinct value (hot-path cache)."""
+    return tuple(p.strip() for p in csv.split(",") if p.strip())
 
 
 @lru_cache
