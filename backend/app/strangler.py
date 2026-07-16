@@ -41,7 +41,7 @@ _PROXY_TIMEOUT_S = 30.0
 # encoding header would mislabel an already-decoded body).
 _DROP_HEADERS = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-    "te", "trailers", "transfer-encoding", "upgrade",
+    "te", "trailer", "transfer-encoding", "upgrade",
     "content-length", "content-encoding",
 }
 

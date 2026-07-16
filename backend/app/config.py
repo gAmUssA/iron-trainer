@@ -55,7 +55,9 @@ class Settings(BaseSettings):
     # single-seam middleware changes nothing. Append a vertical's path once its
     # parity gate is green to flip that vertical's BEARER traffic — e.g. add
     # "/api/metrics/readiness/today" (parity-verified) to route iOS readiness to
-    # the Quarkus binary. Web/cookie surfaces (zones, pmc) won't proxy regardless.
+    # the Quarkus binary. Note the proxy decision is bearer-only: cookie/session
+    # (web) requests never proxy regardless of the allowlist, so web surfaces
+    # like zones/pmc stay local even if their path is listed — until Phase 7.
     proxy_paths: str = "/api/export/workout/*,/api/export/plan.itw"
     default_athlete_id: int = 1  # identity used in local no-login mode
     cookie_secure: bool = False  # set true behind HTTPS (Secure session cookie)
