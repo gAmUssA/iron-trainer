@@ -159,6 +159,30 @@ def test_cross_tenant_404_parity(v1, v2):
     assert v2.get("/api/export/workout/999999.itw").status_code == 404
 
 
+def test_nutrition_daily_parity(v1, v2):
+    """Deterministic daily-carb math (body weight seeded) must be byte-identical,
+    incl. integer-vs-float JSON emission (round()→int, weekly_hours→float)."""
+    a = v1.get("/api/nutrition/daily")
+    b = v2.get("/api/nutrition/daily")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+
+
+def test_nutrition_workout_parity(v1, v2):
+    """Per-workout fueling on a real planned workout — carb/hydration/sodium/gel
+    math + the estimate_sweat_rate path (no measured sweat) must match exactly."""
+    wid = _bike_id(v1)
+    a = v1.get(f"/api/nutrition/workout/{wid}")
+    b = v2.get(f"/api/nutrition/workout/{wid}")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+
+
+def test_nutrition_cross_tenant_404_parity(v1, v2):
+    assert v1.get("/api/nutrition/workout/999999").status_code == 404
+    assert v2.get("/api/nutrition/workout/999999").status_code == 404
+
+
 def test_zones_parity(v1, v2):
     """First domain-math vertical: identical zone tables from both backends."""
     a = v1.get("/api/athlete/zones")

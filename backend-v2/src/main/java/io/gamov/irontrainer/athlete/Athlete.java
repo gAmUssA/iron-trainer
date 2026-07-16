@@ -40,4 +40,14 @@ public class Athlete extends PanacheEntityBase {
 
     @Column(name = "weekly_hours_target")
     public Double weeklyHoursTarget;
+
+    // Nutrition profile (shared schema columns; read by the nutrition vertical).
+    @Column(name = "body_weight_kg")
+    public Double bodyWeightKg;
+
+    @Column(name = "gel_carb_g")
+    public Double gelCarbG;
+
+    @Column(name = "sweat_rate_l_h")
+    public Double sweatRateLH;
 }
