@@ -2,7 +2,10 @@ package io.gamov.irontrainer.readiness;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -237,5 +240,34 @@ class ReadinessTest {
         assertEquals("67%", Py.pct0(40.0 / 60.0));
         assertEquals("12%", Py.pct0(0.125));
         assertEquals("38%", Py.pct0(0.375));
+    }
+
+    @Test
+    void defaultTodayIsResolvedFromUtcClock() {
+        // The null-today default must resolve "today" via a UTC clock so it
+        // matches FastAPI (readiness._utcnow), regardless of container tz —
+        // otherwise the two backends could disagree on the call near midnight.
+        assertEquals(ZoneOffset.UTC, Readiness.clock.getZone(),
+                "readiness default clock must be UTC");
+        Clock saved = Readiness.clock;
+        try {
+            // Freeze to 2026-07-16T02:30Z (22:30 Jul-15 in New York). A steady
+            // series ending 2026-07-15 is valid history only if "today" resolves
+            // to the 16th via the UTC clock, not LocalDate.now() in another zone.
+            Readiness.clock = Clock.fixed(Instant.parse("2026-07-16T02:30:00Z"), ZoneOffset.UTC);
+            LocalDate anchor = LocalDate.of(2026, 7, 16);
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (int ago = 42; ago >= 1; ago--) {
+                Map<String, Object> r = new HashMap<>();
+                r.put("date", anchor.minusDays(ago).toString());
+                r.put("tss", 400.0 / 7); r.put("ctl", 50.0);
+                r.put("atl", 50.0); r.put("tsb", 0.0);
+                rows.add(r);
+            }
+            Map<String, Object> out = Readiness.compute(rows, List.of(), null);
+            assertEquals("ok", out.get("status"));
+        } finally {
+            Readiness.clock = saved;
+        }
     }
 }

@@ -14,7 +14,7 @@ one quiet line; only amber/red days deserve attention.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 # ACWR bands (rolling-average flavour). Steady is ~0.8-1.3; risk climbs past
 # 1.3 and sharply past 1.5.
@@ -37,6 +37,23 @@ MIN_HISTORY_DAYS = 14
 MIN_CHRONIC_WEEKLY_TSS = 30.0
 
 
+def _utcnow() -> datetime:
+    """Current instant in UTC. The readiness "today" is pinned to UTC on BOTH
+    backends (backend-v2 does the same via Clock.systemUTC) so that FastAPI and
+    the Quarkus port always resolve the same calendar day, regardless of each
+    container's local timezone — otherwise the same athlete could get a
+    different call from each backend near local midnight. Seam for tests to
+    freeze the clock. See bean iron-trainer readiness-tz."""
+    return datetime.now(timezone.utc)
+
+
+def today_utc() -> date:
+    """The readiness "today" (UTC date). The single source every consumer must
+    use so the daily call is identical across the /api/metrics/readiness/today
+    endpoint, the weekly check-in story, and backend-v2 — never date.today()."""
+    return _utcnow().date()
+
+
 def compute(metrics_rows: list[dict], *, today: date | None = None,
             recovery: list[dict] | None = None) -> dict:
     """Compute today's readiness from the daily metrics series.
@@ -44,7 +61,7 @@ def compute(metrics_rows: list[dict], *, today: date | None = None,
     `metrics_rows` is repo.get_metrics() output: dicts with ISO `date`, `tss`,
     `ctl`, `atl`, `tsb`, ordered by date. Pure function; no I/O.
     """
-    today = today or date.today()
+    today = today or today_utc()
     by_day: dict[date, dict] = {}
     for r in metrics_rows:
         try:
@@ -199,7 +216,7 @@ def _recovery_flags(recovery: list[dict], today: date | None) -> list[str]:
     repo.recent_recovery() output: newest-first dicts with date/sleep_h/
     hrv_ms/rhr_bpm. Stale data (no row within RECOVERY_FRESH_DAYS) says
     nothing — a phone that stopped pushing is not a bad night's sleep."""
-    today = today or date.today()
+    today = today or today_utc()
     by_date = []
     for r in recovery:
         try:

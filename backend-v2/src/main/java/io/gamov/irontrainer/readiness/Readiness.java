@@ -1,5 +1,6 @@
 package io.gamov.irontrainer.readiness;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -31,10 +32,16 @@ public final class Readiness {
     static final double RHR_ELEVATED_BPM = 5.0;
     static final int MIN_BASELINE_SAMPLES = 5;
 
+    /** Clock for resolving "today" when the caller passes null. UTC by default so
+     * the readiness day matches FastAPI (also pinned to UTC via _utcnow) no matter
+     * the container timezone — otherwise the two backends could disagree on the
+     * call near local midnight. Package-visible so tests can freeze it. */
+    static Clock clock = Clock.systemUTC();
+
     public static Map<String, Object> compute(List<Map<String, Object>> metricRows,
                                               List<Map<String, Object>> recovery,
                                               LocalDate today) {
-        if (today == null) today = LocalDate.now();
+        if (today == null) today = LocalDate.now(clock);
 
         Map<LocalDate, Map<String, Object>> byDay = new LinkedHashMap<>();
         for (Map<String, Object> r : metricRows) {

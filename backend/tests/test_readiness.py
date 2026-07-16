@@ -1,6 +1,6 @@
 """Daily readiness call: ACWR math, modifiers, endpoint, and check-in story line."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from app import readiness
 
@@ -37,6 +37,31 @@ def test_insufficient_history():
 def test_insufficient_chronic_load():
     out = readiness.compute(_flat(10), today=TODAY)
     assert out["status"] == "insufficient_data"
+
+
+def test_utcnow_is_utc():
+    """The readiness clock is UTC-aware (parity with backend-v2's Clock.systemUTC),
+    not naive/process-local — so both backends resolve the same calendar day and
+    can't disagree on the call near local midnight."""
+    assert readiness._utcnow().tzinfo == timezone.utc
+
+
+def test_compute_default_today_comes_from_utcnow(monkeypatch):
+    """compute() with no explicit `today` resolves it from _utcnow(), not
+    date.today(): freezing the seam shifts the window, proving it's wired in."""
+    rows = _flat(400, days=42)  # spans TODAY-42 .. TODAY-1
+
+    def _at(d: date):
+        return datetime(d.year, d.month, d.day, 12, tzinfo=timezone.utc)
+
+    # "now" == TODAY → the series still ends yesterday → a real call.
+    monkeypatch.setattr(readiness, "_utcnow", lambda: _at(TODAY))
+    assert readiness.compute(rows)["status"] == "ok"
+
+    # "now" 60 days on → the whole series is ancient, chronic load is 0 →
+    # insufficient. Only possible if the default today came from _utcnow.
+    monkeypatch.setattr(readiness, "_utcnow", lambda: _at(TODAY + timedelta(days=60)))
+    assert readiness.compute(rows)["status"] == "insufficient_data"
 
 
 def test_steady_load_is_green_hard():
@@ -129,8 +154,10 @@ def test_checkin_story_includes_readiness_call(monkeypatch):
     from app.main import app
 
     rows = _flat(400, days=42)
-    # Re-anchor the series to end yesterday relative to the real today.
-    offset = date.today() - TODAY
+    # Re-anchor the series to end yesterday relative to the real today. Use UTC —
+    # the readiness endpoint resolves "today" in UTC (readiness._utcnow), so a
+    # host-local anchor would drift the window by a day off-UTC.
+    offset = datetime.now(timezone.utc).date() - TODAY
     for r in rows:
         r["date"] = (date.fromisoformat(r["date"]) + offset).isoformat()
     monkeypatch.setattr(repo, "get_metrics", lambda: rows)
