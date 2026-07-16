@@ -117,10 +117,15 @@ public final class Nutrition {
         long gelsH = gelCount(carbGH, gelG);
 
         boolean hasWeight = bodyWeightKg != null && bodyWeightKg != 0.0;
-        Double sweat = (sweatRateLH != null && sweatRateLH != 0.0) ? sweatRateLH : null;
+        // Mirror Python truthiness EXACTLY. `if sweat is None and weight` only
+        // estimates when sweat is literally absent — a stored 0.0 is present but
+        // falsy, so it is NOT estimated. `if sweat` (and the field's `if sweat
+        // else None`) then treat 0.0 as falsy → no hydration/sodium, null sweat.
+        Double sweat = sweatRateLH;                       // keep 0.0 as-is (not null)
         if (sweat == null && hasWeight) sweat = estimateSweatRate(bodyWeightKg, intensity);
+        boolean sweatTruthy = sweat != null && sweat != 0.0;
         Long fluidMlH = null, sodiumMgH = null;
-        if (sweat != null && sweat != 0.0) {
+        if (sweatTruthy) {
             fluidMlH = hydrationTargetPerHour(sweat);
             sodiumMgH = sodiumTargetPerHour(sweat);
         }
@@ -136,11 +141,13 @@ public final class Nutrition {
         out.put("gels_total", carbGH != 0 ? (long) Math.ceil(carbGH * hours / gelG) : 0L);
         out.put("high_carb_gels_total",
                 carbGH != 0 ? (long) Math.ceil(carbGH * hours / HIGH_CARB_GEL_G) : 0L);
-        out.put("sweat_rate_l_h", sweat != null ? Py.round(sweat, 2) : null);
+        // `round(x, 2) if sweat else None` / `round(rate*h) if rate else None`:
+        // 0 is falsy in Python, so a zero-valued rate emits null, not 0.
+        out.put("sweat_rate_l_h", sweatTruthy ? Py.round(sweat, 2) : null);
         out.put("fluid_ml_h", fluidMlH);
-        out.put("fluid_total_ml", fluidMlH != null ? Py.roundInt(fluidMlH * hours) : null);
+        out.put("fluid_total_ml", (fluidMlH != null && fluidMlH != 0L) ? Py.roundInt(fluidMlH * hours) : null);
         out.put("sodium_mg_h", sodiumMgH);
-        out.put("sodium_total_mg", sodiumMgH != null ? Py.roundInt(sodiumMgH * hours) : null);
+        out.put("sodium_total_mg", (sodiumMgH != null && sodiumMgH != 0L) ? Py.roundInt(sodiumMgH * hours) : null);
         if (hasWeight) {
             out.put("recovery_carb_g", recoveryTarget(bodyWeightKg));
         } else {

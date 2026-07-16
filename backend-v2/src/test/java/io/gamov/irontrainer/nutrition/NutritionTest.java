@@ -81,6 +81,23 @@ class NutritionTest {
     }
 
     @Test
+    void storedZeroSweatIsFalsyNotAbsent() {
+        // Python: a stored sweat_rate_l_h of 0.0 is present-but-falsy — it does
+        // NOT trigger estimate_sweat_rate (that's only for None), and `if sweat`
+        // is false, so hydration/sodium/sweat_rate all emit null even though
+        // body weight is set. (Not reachable via the API, but must stay faithful.)
+        Map<String, Object> out = Nutrition.computeWorkoutFueling(2 * 3600, "endurance", null, 70.0, 0.0);
+        assertNull(out.get("sweat_rate_l_h"));
+        assertNull(out.get("fluid_ml_h"));
+        assertNull(out.get("fluid_total_ml"));
+        assertNull(out.get("sodium_mg_h"));
+        assertNull(out.get("sodium_total_mg"));
+        // carb targets still present; needed driven by carbs alone.
+        assertEquals(60L, out.get("carb_g_h"));
+        assertTrue((boolean) out.get("needed"));
+    }
+
+    @Test
     void dailyWithoutWeightIsNote() {
         Map<String, Object> out = Nutrition.computeDaily(null, 8.0);
         assertNull(out.get("body_weight_kg"));
