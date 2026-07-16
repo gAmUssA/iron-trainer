@@ -3,6 +3,7 @@ package io.gamov.irontrainer.tests;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.plan.Plan;
 import io.gamov.irontrainer.plan.PlannedWorkout;
 import io.gamov.irontrainer.util.Py;
@@ -224,6 +225,26 @@ public class FitnessTestsResource {
         pw.persist();
         LOG.infof("Test workout scheduled: athlete=%d slug=%s plan=%d", aid, slug, plan.id);
         return workout;
+    }
+
+    @POST
+    @Path("/result/{id}/apply")
+    @Transactional
+    public Map<String, Object> applyResult(@PathParam("id") int resultId) {
+        int aid = current.require();
+        FitnessTestResult row = FitnessTestResult.findById(resultId);
+        if (row == null || !row.athleteId.equals(aid)) {
+            throw new NotFoundException("Test result not found");
+        }
+        Map<String, Object> result = row.parsedResult();
+        if (!result.isEmpty()) {  // Python: if result — apply thresholds + cascade
+            MetricsWrite.saveProfile(aid, result);
+            MetricsWrite.recomputeTss(aid);
+            MetricsWrite.rebuildMetrics(aid, LocalDate.now(ZoneOffset.UTC));
+        }
+        row.applied = true;  // managed entity — flushes at commit
+        LOG.infof("Fitness test applied: athlete=%d result=%d", aid, resultId);
+        return row.toRow();
     }
 
     /** Python truthiness for a nullable number: present and non-zero. */

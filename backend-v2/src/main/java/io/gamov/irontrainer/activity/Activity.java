@@ -42,4 +42,13 @@ public class Activity extends PanacheEntityBase {
 
     @Column(name = "is_duplicate")
     public Integer isDuplicate;
+
+    // Write side (recompute_tss): the derived training load per activity.
+    public Double tss;
+
+    @Column(name = "intensity_factor")
+    public Double intensityFactor;
+
+    @Column(name = "tss_method")
+    public String tssMethod;
 }

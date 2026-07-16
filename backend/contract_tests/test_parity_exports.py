@@ -359,3 +359,35 @@ def test_tests_schedule_missing_date_422_parity(v1, v2):
     from persisting a null into the NOT NULL date column)."""
     assert v1.post("/api/tests/bike-ftp-20/schedule", json={}).status_code == 422
     assert v2.post("/api/tests/bike-ftp-20/schedule", json={}).status_code == 422
+
+
+# ── Fitness-test APPLY (the metrics-write cascade) ────────────────────────────
+# apply cascades save_profile → recompute_tss → rebuild_metrics. Defined LAST: it
+# rebuilds metrics_daily from activities, REPLACING the seeded 42-day series the
+# readiness/pmc read-parity tests above rely on.
+
+def test_tests_apply_parity(v1, v2, seeded_tests):
+    """Each backend records + applies its OWN result (same thresholds), so the
+    applied response matches modulo id/created_at AND the rebuilt metrics_daily
+    (via /pmc) is byte-identical — proving the TSS + PMC write math agrees."""
+    body = {"test_slug": "bike-ftp-20", "date": "2026-07-15",
+            "inputs": {"avg_power_w": 250}}
+    ra = v1.post("/api/tests/result", json=body).json()
+    rb = v2.post("/api/tests/result", json=body).json()
+    aa = v1.post(f"/api/tests/result/{ra['id']}/apply")
+    ab = v2.post(f"/api/tests/result/{rb['id']}/apply")
+    assert aa.status_code == ab.status_code == 200
+    aj, bj = aa.json(), ab.json()
+    for k in ("id", "created_at"):
+        aj.pop(k, None)
+        bj.pop(k, None)
+    assert aj == bj
+    assert aj["applied"] is True
+    assert aj["result"] == {"ftp": 238}
+    # The cascade recomputed activity TSS + rebuilt metrics_daily identically.
+    assert v1.get("/api/metrics/pmc").json() == v2.get("/api/metrics/pmc").json()
+
+
+def test_tests_apply_not_found_404_parity(v1, v2):
+    assert v1.post("/api/tests/result/999999/apply").status_code == 404
+    assert v2.post("/api/tests/result/999999/apply").status_code == 404
