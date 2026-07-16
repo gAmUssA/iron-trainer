@@ -47,6 +47,13 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def today_utc() -> date:
+    """The readiness "today" (UTC date). The single source every consumer must
+    use so the daily call is identical across the /api/metrics/readiness/today
+    endpoint, the weekly check-in story, and backend-v2 — never date.today()."""
+    return _utcnow().date()
+
+
 def compute(metrics_rows: list[dict], *, today: date | None = None,
             recovery: list[dict] | None = None) -> dict:
     """Compute today's readiness from the daily metrics series.
@@ -54,7 +61,7 @@ def compute(metrics_rows: list[dict], *, today: date | None = None,
     `metrics_rows` is repo.get_metrics() output: dicts with ISO `date`, `tss`,
     `ctl`, `atl`, `tsb`, ordered by date. Pure function; no I/O.
     """
-    today = today or _utcnow().date()
+    today = today or today_utc()
     by_day: dict[date, dict] = {}
     for r in metrics_rows:
         try:
@@ -209,7 +216,7 @@ def _recovery_flags(recovery: list[dict], today: date | None) -> list[str]:
     repo.recent_recovery() output: newest-first dicts with date/sleep_h/
     hrv_ms/rhr_bpm. Stale data (no row within RECOVERY_FRESH_DAYS) says
     nothing — a phone that stopped pushing is not a bad night's sleep."""
-    today = today or _utcnow().date()
+    today = today or today_utc()
     by_date = []
     for r in recovery:
         try:

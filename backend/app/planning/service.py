@@ -262,7 +262,9 @@ def weekly_checkin(*, today: date | None = None, use_llm: bool = True,
     Composes existing machinery; deliberately adds no new state."""
     from .. import fitness_tests, services  # lazy: services is a peer module
 
-    today = today or date.today()
+    # UTC, matching the readiness endpoint + backend-v2 — so the call in the
+    # check-in story is the same one the daily pill shows (bean readiness-tz).
+    today = today or readiness.today_utc()
     feel = sanitize_feel(inputs)
     story: list[str] = []
     out: dict = {"inputs": feel}

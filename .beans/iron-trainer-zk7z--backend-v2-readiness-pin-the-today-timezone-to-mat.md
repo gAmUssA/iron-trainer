@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: high
 created_at: 2026-07-16T02:35:03Z
-updated_at: 2026-07-16T02:40:45Z
+updated_at: 2026-07-16T03:01:14Z
 ---
 
 ReadinessResource.today() passes today=null → Readiness.compute resolves LocalDate.now() in the JVM default timezone, while FastAPI readiness uses date.today() in the Python process tz. Different container timezones → readiness 'today' window differs by a calendar day near local midnight → different go-hard/go-easy/rest call from backend-v2 vs FastAPI. The in-process parity gate cannot catch this (both read the same wall clock). Fix: pin both backends' readiness 'today' to UTC (matches Railway's UTC containers; footgun-free vs a per-service knob) + tests. Gates flipping /api/metrics/readiness/today to backend-v2 (bean vqbi delivered the mechanism). Source: code-review of feature/proxy-routing (ReadinessResource.java:38, PLAUSIBLE).
@@ -23,3 +23,6 @@ Pinned the readiness 'today' to **UTC on both backends** so they always resolve 
 Unblocks flipping /api/metrics/readiness/today via [[iron-trainer-vqbi]]'s PROXY_PATHS.
 
 208 Python + 34 Java + 19 parity tests green.
+
+## Review follow-up
+Code-review found weekly_checkin still resolved 'today' host-local while the endpoint/backend-v2 moved to UTC — same-athlete inconsistency. Fixed: added readiness.today_utc() as the single source; weekly_checkin now uses it (so the check-in story's call matches the daily pill). Other review findings were pre-existing merged proxy code (stale local main polluted the diff) → filed as a hardening task; f0signed already [[iron-trainer-pp3s]].
