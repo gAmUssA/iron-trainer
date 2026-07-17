@@ -71,8 +71,32 @@ retried — proven by an empty body that would 422 locally yet returns the proxi
 returns 502 (no fallback). Full backend suite 215/215 green. No backend-v2 or
 parity-harness change.
 
+## Review hardening (high-effort multi-agent review, pre-merge)
+
+The review confirmed the asymmetric-fallback design and drove four fixes:
+
+1. **Truncated-body forward** — `_read_body` now raises `ClientDisconnect` on a
+   mid-upload disconnect instead of forwarding the partial buffer as a complete
+   body (which could commit a partial mutation).
+2. **Cookie over-match** — eligibility uses the exact cookie name
+   (`"session" in request.cookies`), not the `"session=" in cookie` substring
+   that matched `websession=`/`mysession=` and could flip an unauthenticated
+   write.
+3. **`PoolTimeout` fallback** — added to the never-delivered set
+   (`_UNDELIVERED_ERRORS`), so a saturated connection pool falls back locally
+   (safe, nothing committed) instead of returning 502.
+4. **Header drop** — writes now forward all request headers except
+   hop-by-hop/host/content-length, so `Content-Encoding`, `Idempotency-Key`,
+   etc. reach backend-v2 (was a 3-header allowlist).
+
+The delivered-but-lost-response 502 remains a documented limitation: a client
+auto-retrying on 5xx can still double-apply. Fully closing it needs idempotency
+keys end-to-end (bean idmp) — the strangler now forwards `Idempotency-Key`, so
+that follow-up only needs backend-v2 dedupe.
+
 ## Not done here (bean gb30 remainder + siblings)
 
 - The actual prod flip of `POST /api/tests/result` (+ `/apply`, `/schedule`) via
   Railway `PROXY_WRITE_PATHS` — a confirmed follow-up.
+- Idempotency-key dedupe on backend-v2 (bean idmp).
 - Cookie reads (if ever wanted) — separate change, see decision 2.

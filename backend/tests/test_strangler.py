@@ -150,7 +150,8 @@ def test_write_in_allowlist_proxies_with_bearer(flipped_tests_write, monkeypatch
         assert rec["url"] == "http://backend-v2.internal:8080/api/tests/result"
         assert rec["method"] == "POST"
         assert json.loads(rec["body"]) == {"test_slug": "ftp20", "inputs": {"x": 1}}
-        assert rec["headers"]["Authorization"] == "Bearer tok"
+        fwd = {k.lower(): v for k, v in rec["headers"].items()}
+        assert fwd["authorization"] == "Bearer tok"
 
 
 def test_write_forwards_session_cookie(flipped_tests_write, monkeypatch):
@@ -161,8 +162,9 @@ def test_write_forwards_session_cookie(flipped_tests_write, monkeypatch):
         r = c.post("/api/tests/result", headers={"Cookie": "session=abc.def.ghi"},
                    json={"test_slug": "ftp20", "inputs": {}})
         assert r.status_code == 200
-        assert rec["headers"]["Cookie"] == "session=abc.def.ghi"
-        assert "Authorization" not in rec["headers"]
+        fwd = {k.lower(): v for k, v in rec["headers"].items()}
+        assert fwd["cookie"] == "session=abc.def.ghi"
+        assert "authorization" not in fwd
 
 
 def test_write_unauthenticated_stays_local(flipped_tests_write, monkeypatch):
@@ -227,3 +229,59 @@ def test_write_read_timeout_returns_502_no_fallback(flipped_tests_write, monkeyp
         r = c.post("/api/tests/result", headers={"Authorization": "Bearer tok"},
                    json={})
         assert r.status_code == 502
+
+
+def test_write_pool_timeout_falls_back_local(flipped_tests_write, monkeypatch):
+    """A PoolTimeout (connection never acquired → request never delivered) is a
+    safe local fallback, not a 502 — nothing was committed."""
+    _stub_write(monkeypatch, exc=httpx.PoolTimeout("pool exhausted"))
+    with TestClient(app) as c:
+        r = c.post("/api/tests/result", headers={"Authorization": "Bearer tok"},
+                   json={})
+        assert r.status_code == 422  # served locally with the replayed body
+
+
+def test_write_non_session_cookie_stays_local(flipped_tests_write, monkeypatch):
+    """A cookie whose name merely ENDS in 'session' (e.g. websession) must not
+    make an otherwise-unauthenticated write proxy-eligible."""
+    async def boom(*a, **k):
+        raise AssertionError("a non-'session' cookie must not flip a write")
+
+    monkeypatch.setattr(strangler, "fetch_write", boom)
+    with TestClient(app) as c:
+        r = c.post("/api/tests/result", headers={"Cookie": "websession=x"}, json={})
+        assert r.status_code == 422  # local (not proxy-eligible)
+
+
+def test_write_forwards_content_encoding_and_extra_headers(flipped_tests_write, monkeypatch):
+    """Headers beyond the auth trio (Content-Encoding, Idempotency-Key, ...) are
+    forwarded; host/content-length are not."""
+    rec = _stub_write(monkeypatch)
+    with TestClient(app) as c:
+        c.post("/api/tests/result",
+               headers={"Authorization": "Bearer tok",
+                        "Content-Encoding": "gzip",
+                        "Idempotency-Key": "abc123"},
+               content=b'{"test_slug":"ftp20","inputs":{}}')
+        fwd = {k.lower(): v for k, v in rec["headers"].items()}
+        assert fwd.get("content-encoding") == "gzip"
+        assert fwd.get("idempotency-key") == "abc123"
+        assert "host" not in fwd
+        assert "content-length" not in fwd
+
+
+def test_read_body_raises_on_premature_disconnect():
+    """A mid-upload disconnect must raise, never return a truncated body."""
+    import asyncio
+
+    from starlette.requests import ClientDisconnect
+
+    async def receive():
+        # first chunk with more_body=True, then the client drops
+        if not getattr(receive, "sent", False):
+            receive.sent = True
+            return {"type": "http.request", "body": b"partial", "more_body": True}
+        return {"type": "http.disconnect"}
+
+    with pytest.raises(ClientDisconnect):
+        asyncio.run(strangler._read_body(receive))

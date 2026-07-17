@@ -15,10 +15,11 @@ Two independent allowlists:
 Fallback differs by method, because writes are not idempotent:
   * READ: an unreachable backend OR a 5xx is served locally — a backend-v2
     failure can never break a client that worked yesterday.
-  * WRITE: only an UNREACHABLE backend (connect error — the request was never
-    delivered) falls back locally. A 5xx (or any post-send failure) is NOT
-    retried locally: backend-v2 may have already committed, and a local retry
-    would double-apply the mutation. The 5xx is forwarded to the client as-is.
+  * WRITE: only an UNREACHABLE backend (connect/connect-timeout/pool-timeout —
+    the request was never delivered) falls back locally. A 5xx (or any post-send
+    failure like a read timeout) is NOT retried locally: backend-v2 may have
+    already committed, and a local retry would double-apply the mutation. The
+    5xx is forwarded to the client as-is; a post-send transport error → 502.
 In both cases 4xx responses are forwarded — those are legitimate,
 parity-matched outcomes (404/400/401/422), not malfunctions.
 
@@ -35,7 +36,7 @@ from __future__ import annotations
 import json
 
 import httpx
-from starlette.requests import Request
+from starlette.requests import ClientDisconnect, Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -54,6 +55,20 @@ _DROP_HEADERS = {
     "te", "trailer", "transfer-encoding", "upgrade",
     "content-length", "content-encoding",
 }
+# Request headers NOT forwarded on a proxied write: hop-by-hop, plus host
+# (must target backend-v2, not the FastAPI host) and content-length (httpx
+# recomputes it from the forwarded body). Content-Encoding IS forwarded here —
+# unlike responses, the request body is passed through raw (uvicorn does not
+# decompress it), so backend-v2 needs the encoding to decode it.
+_DROP_REQUEST_HEADERS = {
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailer", "transfer-encoding", "upgrade",
+    "content-length", "host",
+}
+# Transport errors that guarantee the write was NEVER delivered → a local
+# fallback is safe (no double-apply). Read/Write timeouts and protocol errors
+# happen after (partial) delivery and are deliberately excluded.
+_UNDELIVERED_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 
 # One shared client (keep-alive pool) for all proxied requests, created lazily so
 # tests that stub `fetch` never open a socket. Closed on app shutdown via
@@ -104,17 +119,19 @@ async def fetch_write(
 
 
 async def _read_body(receive: Receive) -> bytes:
-    """Drain the ASGI request body into a single bytes buffer."""
+    """Drain the ASGI request body into a single bytes buffer. Raises
+    ClientDisconnect if the client drops BEFORE the body is complete, so a
+    truncated body is never forwarded to backend-v2 as if it were whole (which
+    could commit a partial mutation)."""
     chunks: list[bytes] = []
     while True:
         msg = await receive()
         if msg["type"] == "http.request":
             chunks.append(msg.get("body", b""))
             if not msg.get("more_body", False):
-                break
+                return b"".join(chunks)
         elif msg["type"] == "http.disconnect":
-            break
-    return b"".join(chunks)
+            raise ClientDisconnect()
 
 
 def _replay_receive(body: bytes) -> Receive:
@@ -227,32 +244,32 @@ class StranglerProxyMiddleware:
         s = get_settings()
         if not path_matches(request.url.path, s.proxy_write_path_list):
             return None, None  # not flipped → local, body untouched
-        authz = request.headers.get("authorization", "")
-        cookie = request.headers.get("cookie", "")
-        has_bearer = authz.lower().startswith("bearer ")
-        has_session = "session=" in cookie
+        has_bearer = request.headers.get("authorization", "").lower().startswith("bearer ")
+        has_session = "session" in request.cookies  # exact cookie name, not substring
         if not (has_bearer or has_session):
             return None, None  # unauthenticated here → local, body untouched
         # Committed to proxying: from here the body must be read to forward it.
         body = await _read_body(receive)
-        headers: dict[str, str] = {}
-        if has_bearer:
-            headers["Authorization"] = authz
-        if cookie:
-            headers["Cookie"] = cookie
-        ct = request.headers.get("content-type")
-        if ct:
-            headers["Content-Type"] = ct
+        # Forward all request headers except hop-by-hop/host/content-length, so
+        # Authorization, Cookie, Content-Type, Content-Encoding, Idempotency-Key,
+        # etc. all reach backend-v2 unchanged.
+        headers = {
+            k: v for k, v in request.headers.items()
+            if k.lower() not in _DROP_REQUEST_HEADERS
+        }
         url = _target(base, request)
         try:
             up = await fetch_write(url, method, body, headers)
-        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+        except _UNDELIVERED_ERRORS as e:
             # Never delivered → safe to serve locally, replaying the body.
             log.warning("Proxy write unreachable (%s) — serving locally: %s", url, e)
             return None, _replay_receive(body)
         except httpx.HTTPError as e:
-            # Delivered; outcome unknown. Retrying a non-idempotent write locally
-            # could double-apply it, so surface an error instead of falling back.
+            # Delivered (or partially): a read timeout / protocol error after the
+            # request was sent leaves the outcome unknown. Retrying locally could
+            # double-apply, so we surface a 502 and DON'T retry. Caveat: a client
+            # that auto-retries on 5xx can still double-apply — closing that needs
+            # idempotency keys end-to-end (bean idmp), out of scope here.
             log.error(
                 "Proxy write %s %s failed after send (%s) — NOT retrying locally",
                 method, url, e)
