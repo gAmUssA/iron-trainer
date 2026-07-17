@@ -2,6 +2,7 @@ package io.gamov.irontrainer.dashboards;
 
 import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.util.Params;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
@@ -20,7 +21,8 @@ public class WeeklyResource {
     CurrentAthlete current;
 
     @GET
-    public Map<String, Object> weekly(@QueryParam("weeks") @DefaultValue("16") int weeks) {
+    public Map<String, Object> weekly(@QueryParam("weeks") @DefaultValue("16") String weeksRaw) {
+        int weeks = Params.intParam(weeksRaw);
         int aid = current.require();
         List<Activity> acts = Activity.list(
                 "athleteId = ?1 and (isDuplicate = 0 or isDuplicate is null) order by startDate", aid);

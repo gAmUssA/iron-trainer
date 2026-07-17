@@ -80,12 +80,15 @@ public class Activity extends PanacheEntityBase {
     @Column(name = "created_at")
     public String createdAt;
 
-    // Raw Strava activity JSON blob (written by the sync; read-only here).
-    @Column(name = "raw_json")
-    public String rawJson;
+    // NOTE: raw_json is deliberately NOT mapped here. It's a large Strava JSON
+    // blob and this entity is loaded in bulk by the metrics rebuild + Strava
+    // sync, which never need it — mapping it would eagerly SELECT the blob on
+    // every read. The /api/activities feed (the only reader that needs it)
+    // fetches it with a separate projection query. raw_json is added to the
+    // dict by that resource, not here.
 
-    /** Activity.model_dump(): all columns (FastAPI model field order). Key order
-     * is irrelevant to the parity `==` (Python dict equality), but kept faithful. */
+    /** Activity.model_dump() minus raw_json (see note above). Key order is
+     * irrelevant to the parity `==` (Python dict equality), but kept faithful. */
     public Map<String, Object> toDict() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", id);
@@ -109,7 +112,6 @@ public class Activity extends PanacheEntityBase {
         m.put("device_name", deviceName);
         m.put("is_duplicate", isDuplicate);
         m.put("primary_id", primaryId);
-        m.put("raw_json", rawJson);
         m.put("created_at", createdAt);
         return m;
     }

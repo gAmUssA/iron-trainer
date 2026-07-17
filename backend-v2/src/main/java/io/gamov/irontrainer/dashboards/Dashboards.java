@@ -2,10 +2,10 @@ package io.gamov.irontrainer.dashboards;
 
 import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.util.Iso;
+import io.gamov.irontrainer.util.Params;
 import io.gamov.irontrainer.util.Py;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -65,24 +65,14 @@ public final class Dashboards {
             wk.put("total_tss", Py.round(totalTss, 1));
             out.add(wk);
         }
-        // out[-weeks:]
-        if (weeks > 0 && out.size() > weeks) {
-            return new ArrayList<>(out.subList(out.size() - weeks, out.size()));
-        }
-        return out;
+        // out[-weeks:] — Python slice start, negative-weeks aware.
+        int start = Params.sliceStart(-weeks, out.size());
+        return new ArrayList<>(out.subList(start, out.size()));
     }
 
-    /** _day: parse a stored ISO start_date to a calendar date (fromisoformat,
-     * with 'Z' normalized like the Python side). */
+    /** _day: the calendar date of a stored ISO start_date. Iso.parseDate already
+     * mirrors datetime.fromisoformat(s.replace("Z","+00:00")).date(). */
     private static LocalDate day(String s) {
-        if (s == null) {
-            return null;
-        }
-        String t = s.replace("Z", "+00:00");
-        LocalDateTime dt = Iso.parseDateTime(t);
-        if (dt != null) {
-            return dt.toLocalDate();
-        }
-        return Iso.parseDate(t);
+        return Iso.parseDate(s);
     }
 }

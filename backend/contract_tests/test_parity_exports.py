@@ -582,3 +582,39 @@ def test_activities_filters_parity(v1, v2, seeded_history):
         b = v2.get("/api/activities", params=params)
         assert a.status_code == b.status_code == 200, params
         assert a.json() == b.json(), params
+
+
+def test_activities_bool_coercion_parity(v1, v2, seeded_history):
+    """include_duplicates coercion matches pydantic lax bool: 1/0/yes/no all
+    agree between backends (not just true/false)."""
+    for val in ("1", "0", "yes", "no", "on", "off"):
+        a = v1.get("/api/activities", params={"include_duplicates": val})
+        b = v2.get("/api/activities", params={"include_duplicates": val})
+        assert a.status_code == b.status_code == 200, val
+        assert a.json() == b.json(), val
+
+
+def test_activities_negative_limit_parity(v1, v2, seeded_history):
+    """limit=-1 → Python reversed[:-1] (all but the last), not an empty page."""
+    a = v1.get("/api/activities", params={"limit": -1})
+    b = v2.get("/api/activities", params={"limit": -1})
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+
+
+def test_weekly_negative_weeks_parity(v1, v2, seeded_history):
+    """weeks=-1 → Python out[1:] (drops the earliest week)."""
+    a = v1.get("/api/metrics/weekly", params={"weeks": -1})
+    b = v2.get("/api/metrics/weekly", params={"weeks": -1})
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+
+
+def test_activities_bad_param_422_parity(v1, v2):
+    """Malformed query params → 422 on both (pydantic validation parity)."""
+    assert v1.get("/api/activities", params={"include_duplicates": "maybe"}).status_code == 422
+    assert v2.get("/api/activities", params={"include_duplicates": "maybe"}).status_code == 422
+    assert v1.get("/api/activities", params={"limit": "abc"}).status_code == 422
+    assert v2.get("/api/activities", params={"limit": "abc"}).status_code == 422
+    assert v1.get("/api/metrics/weekly", params={"weeks": "x"}).status_code == 422
+    assert v2.get("/api/metrics/weekly", params={"weeks": "x"}).status_code == 422

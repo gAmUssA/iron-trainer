@@ -39,6 +39,21 @@ engine, split to its own bean) and `race_readiness` (na5p).
 4 parity tests (weekly, weekly window 1/4/52, activities, activities filters
 include_duplicates/limit). Full parity 47/47, backend-v2 unit suite 85/85.
 
+## Review hardening (high-effort multi-agent review, pre-merge)
+
+1. **raw_json not mapped on the entity** — the first draft added `raw_json` to
+   the shared `Activity` entity, which would eager-load the blob on every bulk
+   read (metrics rebuild, Strava sync). Reverted: the entity omits it, and
+   `/activities` fetches it with a projection query for the page's ids only.
+2. **Query-param parity** — a new `Params` util coerces query params like
+   FastAPI/pydantic: `include_duplicates` accepts the lax bool set (1/0/yes/no/
+   on/off/…), `limit`/`weeks` follow Python slice semantics for negatives
+   (`reversed[:-1]`, `out[-weeks:]`), and a malformed value → 422 (was: silent
+   `false` / a 404). +4 parity tests.
+3. **`day()` simplified** to `Iso.parseDate` (Iso already normalizes `Z`).
+4. Kept: `order by start_date` with no tiebreak (FastAPI identical) and the
+   null-sport → "Other" fallback (unreachable — `sport` is non-null in schema).
+
 ## Not done here
 
 - `GET /metrics/trends` — `sport_trends` + `insights.build` (~500 lines:
