@@ -7,6 +7,7 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jboss.logging.Logger;
@@ -21,11 +22,14 @@ public class StravaTokens {
     @RestClient
     StravaApi strava;
 
+    // Optional: SmallRye treats an empty string (STRAVA_CLIENT_ID unset, e.g. CI
+    // and the parity runner) as null, which would crash startup for a required
+    // String. They're only needed to actually refresh a token (connected athlete).
     @ConfigProperty(name = "strava.client-id")
-    String clientId;
+    Optional<String> clientId;
 
     @ConfigProperty(name = "strava.client-secret")
-    String clientSecret;
+    Optional<String> clientSecret;
 
     /** A valid access token, refreshing (and persisting) if expired. Raises a 409
      * (NotConnected) when the athlete has never connected Strava. */
@@ -40,7 +44,8 @@ public class StravaTokens {
         long expiresAt = a.stravaTokenExpiresAt == null ? 0 : a.stravaTokenExpiresAt;
         if (expiresAt <= Instant.now().getEpochSecond() + 60) {
             LOG.infof("Strava token expired for athlete %d — refreshing.", aid);
-            Map<String, Object> token = strava.token(clientId, clientSecret, "refresh_token", refresh);
+            Map<String, Object> token = strava.token(
+                    clientId.orElse(""), clientSecret.orElse(""), "refresh_token", refresh);
             saveTokens(a, token);
             return (String) token.get("access_token");
         }
