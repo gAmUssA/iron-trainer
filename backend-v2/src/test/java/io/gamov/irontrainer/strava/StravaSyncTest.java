@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** End-to-end sync against a WireMock Strava: token refresh → fetch → map +
@@ -56,7 +57,9 @@ class StravaSyncTest {
             Athlete a = Athlete.findById(aid);
             assertEquals("NEW_TOKEN", a.stravaAccessToken);
             assertEquals("REFRESH2", a.stravaRefreshToken);
-            assertEquals(123L, a.stravaAthleteId);
+            // A refresh_token grant carries no athlete object, so identity is
+            // untouched (it's set only on the initial OAuth connect — bean xtre).
+            assertNull(a.stravaAthleteId);
         });
     }
 }
