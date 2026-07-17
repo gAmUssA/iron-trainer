@@ -51,4 +51,14 @@ public class Activity extends PanacheEntityBase {
 
     @Column(name = "tss_method")
     public String tssMethod;
+
+    // Dedup: device source + which activity in a duplicate cluster is kept.
+    @Column(name = "device_name")
+    public String deviceName;
+
+    @Column(name = "has_power_meter")
+    public Integer hasPowerMeter;
+
+    @Column(name = "primary_id")
+    public Long primaryId;
 }

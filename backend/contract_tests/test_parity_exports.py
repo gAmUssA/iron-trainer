@@ -129,6 +129,30 @@ def seeded_tests(bearer) -> bool:
 
 
 @pytest.fixture(scope="session")
+def seeded_dupes(bearer) -> bool:
+    """Seed a DUPLICATE Bike pair (same event, two devices) so the strava dedup
+    parity test finds a cluster: an Apple Watch and a Garmin Edge recording of the
+    same ride, five minutes apart. The Edge (power meter) is the primary; the
+    watch is the duplicate. Fixed ids so both backends read identical rows."""
+    if not os.environ.get("PARITY_PG_ID"):
+        return False
+    aid = _psql("SELECT athlete_id FROM device_token ORDER BY id DESC LIMIT 1")
+    assert aid.isdigit(), f"could not resolve bearer athlete id (got {aid!r})"
+    _psql(f"""
+        INSERT INTO activities
+            (id, athlete_id, sport, start_date, name, moving_time, distance,
+             avg_power, weighted_power, avg_hr, device_name, has_power_meter, is_duplicate)
+        VALUES
+            (900101, {aid}, 'Bike', '2026-07-12T08:00:00', 'Ride (watch)',
+             3600, 30000, NULL, NULL, 150, 'Apple Watch Series 9', 0, 0),
+            (900102, {aid}, 'Bike', '2026-07-12T08:05:00', 'Ride (edge)',
+             3500, 29500, 210, 225, 148, 'Garmin Edge 1040', 1, 0)
+        ON CONFLICT (id) DO NOTHING;
+    """)
+    return True
+
+
+@pytest.fixture(scope="session")
 def v2(bearer) -> httpx.Client:
     c = httpx.Client(base_url=V2_BASE_URL, timeout=60,
                      headers={"Authorization": f"Bearer {bearer}"})
@@ -391,3 +415,25 @@ def test_tests_apply_parity(v1, v2, seeded_tests):
 def test_tests_apply_not_found_404_parity(v1, v2):
     assert v1.post("/api/tests/result/999999/apply").status_code == 404
     assert v2.post("/api/tests/result/999999/apply").status_code == 404
+
+
+# ── Strava dedup (deterministic core) ─────────────────────────────────────────
+# Also a metrics_daily-rebuilding write → defined after the read-parity tests.
+
+def test_strava_dedup_parity(v1, v2, seeded_dupes):
+    """POST /api/strava/dedup?fetch=false clusters same-event activities, marks
+    duplicates, and rebuilds the PMC. The stats response and the rebuilt /pmc
+    must be byte-identical (seeded_dupes gives a watch+Edge pair to collapse)."""
+    a = v1.post("/api/strava/dedup?fetch=false")
+    b = v2.post("/api/strava/dedup?fetch=false")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    assert a.json()["duplicates"] >= 1
+    assert v1.get("/api/metrics/pmc").json() == v2.get("/api/metrics/pmc").json()
+
+
+def test_strava_dedup_not_connected_409_parity(v1, v2):
+    """fetch=true needs a live Strava connection; an unconnected athlete gets 409
+    on both backends (v2 checks the same refresh-token presence, no live call)."""
+    assert v1.post("/api/strava/dedup?fetch=true").status_code == 409
+    assert v2.post("/api/strava/dedup?fetch=true").status_code == 409

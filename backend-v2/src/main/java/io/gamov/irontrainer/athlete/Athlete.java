@@ -54,4 +54,10 @@ public class Athlete extends PanacheEntityBase {
     // save_profile bumps this on any threshold change (iOS delta-sync watches it).
     @Column(name = "updated_at")
     public String updatedAt;
+
+    // Presence signals a live Strava connection (the dedup device-fetch + sync
+    // need it). Only the null-check is used here; the token value + refresh live
+    // in the Strava API-client vertical.
+    @Column(name = "strava_refresh_token")
+    public String stravaRefreshToken;
 }
