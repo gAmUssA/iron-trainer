@@ -42,6 +42,21 @@ port for completeness (per the feature workflow).
 set-custom with cutoff derivation, not-found-400, custom-missing-400). Full
 parity gate 42/42, backend-v2 unit suite 85/85.
 
+## Review hardening (high-effort multi-agent review, pre-merge)
+
+1. **Truthy filter guards** — the filter `if`s now guard on non-null-and-non-empty
+   (Python truthiness), so `?month=`/`?country=`/etc. with an empty value return
+   the full catalog like FastAPI, instead of applying a zero-match filter (the
+   `month=` case built a nonsense `date >= '-01'` range). +1 parity test.
+2. **`Locale.ROOT` case-fold** — the `q` LIKE lowercases with `Locale.ROOT` to
+   match the DB `lower()` / Python `str.lower()` (avoids the Turkish dotless-i
+   class of locale bugs).
+3. **Env-var parity for defaults** — `effective_race()`'s no-race-selected
+   fallback reads the SAME env vars as FastAPI (`RACE_NAME`/`RACE_DATE`/
+   `CUTOFF_*_S`), not `IRONTRAINER_*`, so a deployment override desyncs neither.
+4. Kept `order by date` with no tie-break — FastAPI is identical; adding a
+   secondary key would *diverge* v2 from v1.
+
 ## Not done here
 
 - Analytics-reads remainder (`/metrics/weekly`, `/metrics/trends`,

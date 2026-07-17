@@ -11,19 +11,22 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 @ApplicationScoped
 public class Races {
 
-    @ConfigProperty(name = "irontrainer.race-name", defaultValue = "IRONMAN 70.3 New York")
+    // Defaults are mapped to the SAME env vars FastAPI's Settings reads
+    // (RACE_NAME / RACE_DATE / CUTOFF_*_S), so a deployment override desyncs
+    // neither backend. See application.properties.
+    @ConfigProperty(name = "irontrainer.race-name")
     String defaultRaceName;
 
-    @ConfigProperty(name = "irontrainer.race-date", defaultValue = "2026-09-26")
+    @ConfigProperty(name = "irontrainer.race-date")
     String defaultRaceDate;
 
-    @ConfigProperty(name = "irontrainer.cutoff-swim-s", defaultValue = "4200")
+    @ConfigProperty(name = "irontrainer.cutoff-swim-s")
     int defaultCutoffSwimS;
 
-    @ConfigProperty(name = "irontrainer.cutoff-bike-s", defaultValue = "19800")
+    @ConfigProperty(name = "irontrainer.cutoff-bike-s")
     int defaultCutoffBikeS;
 
-    @ConfigProperty(name = "irontrainer.cutoff-finish-s", defaultValue = "30600")
+    @ConfigProperty(name = "irontrainer.cutoff-finish-s")
     int defaultCutoffFinishS;
 
     /** _CUTOFFS[distance] → {swim, bike, finish} seconds; default "70.3". */

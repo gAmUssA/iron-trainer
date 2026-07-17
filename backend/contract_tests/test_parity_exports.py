@@ -507,3 +507,14 @@ def test_set_race_custom_missing_400_parity(v1, v2):
     """Custom race without name+date → 400 on both (not a 500 from a null write)."""
     assert v1.put("/api/athlete/race", json={"distance": "70.3"}).status_code == 400
     assert v2.put("/api/athlete/race", json={"distance": "70.3"}).status_code == 400
+
+
+def test_races_empty_filter_returns_all_parity(v1, v2):
+    """Empty-string query params are falsy → NO filter (full catalog) on both,
+    not a zero-match. Guards against the != null vs Python-truthiness divergence."""
+    full = v1.get("/api/races").json()
+    for params in ({"country": ""}, {"distance": ""}, {"month": ""}, {"q": ""}):
+        a = v1.get("/api/races", params=params)
+        b = v2.get("/api/races", params=params)
+        assert a.status_code == b.status_code == 200, params
+        assert a.json() == b.json() == full, params

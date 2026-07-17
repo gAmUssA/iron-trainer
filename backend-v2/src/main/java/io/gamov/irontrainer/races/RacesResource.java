@@ -34,24 +34,28 @@ public class RacesResource {
                                          @QueryParam("country") String country,
                                          @QueryParam("month") String month,
                                          @QueryParam("q") String q) {
+        // Guards mirror FastAPI's Python truthiness (`if distance:` etc.): an
+        // empty-string param is NO filter, not a zero-match filter.
         List<String> clauses = new ArrayList<>();
         Map<String, Object> params = new LinkedHashMap<>();
-        if (distance != null) {
+        if (distance != null && !distance.isEmpty()) {
             clauses.add("distance = :distance");
             params.put("distance", distance);
         }
-        if (country != null) {
+        if (country != null && !country.isEmpty()) {
             clauses.add("country = :country");
             params.put("country", country);
         }
-        if (month != null) {
+        if (month != null && !month.isEmpty()) {
             clauses.add("date >= :monthStart and date <= :monthEnd");
             params.put("monthStart", month + "-01");
             params.put("monthEnd", month + "-31");
         }
-        if (q != null) {
+        if (q != null && !q.isEmpty()) {
             clauses.add("(lower(name) like :like or lower(city) like :like)");
-            params.put("like", "%" + q.toLowerCase() + "%");
+            // Locale.ROOT: match the DB lower() / Python str.lower(), not the
+            // JVM default locale (e.g. Turkish dotless-i would mis-fold).
+            params.put("like", "%" + q.toLowerCase(java.util.Locale.ROOT) + "%");
         }
         String where = String.join(" and ", clauses);
         String query = (where.isEmpty() ? "" : where + " ") + "order by date";
