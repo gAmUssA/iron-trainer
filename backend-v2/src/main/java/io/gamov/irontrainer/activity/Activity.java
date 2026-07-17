@@ -61,4 +61,20 @@ public class Activity extends PanacheEntityBase {
 
     @Column(name = "primary_id")
     public Long primaryId;
+
+    // Written by the Strava sync upsert (_map_activity), not read by ported reads.
+    @Column(name = "elapsed_time")
+    public Integer elapsedTime;
+
+    @Column(name = "max_hr")
+    public Double maxHr;
+
+    @Column(name = "avg_speed")
+    public Double avgSpeed;
+
+    @Column(name = "elevation_gain")
+    public Double elevationGain;
+
+    @Column(name = "created_at")
+    public String createdAt;
 }

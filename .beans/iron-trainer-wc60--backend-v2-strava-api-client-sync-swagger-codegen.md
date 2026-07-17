@@ -5,7 +5,7 @@ status: todo
 type: feature
 priority: normal
 created_at: 2026-07-16T23:53:05Z
-updated_at: 2026-07-17T00:17:36Z
+updated_at: 2026-07-17T01:21:38Z
 ---
 
 Port strava.py (exchange_code, refresh_access_token, fetch_activities, fetch_activity_detail, deauthorize) using Strava's OpenAPI Java swagger-codegen client (https://developers.strava.com/docs/#client-code). Wire POST /api/strava/sync: valid_access_token (refresh if expired via strava_token_expires_at) → fetch_activities(after) → _map_activity → upsert_activities → deduplicate(fetch_details) → recompute_tss+rebuild_metrics (adix). Also the dedup device-name FETCH path (fetch=true+connected). Test vs a MOCKED Strava (WireMock/@InjectMock), no live calls. Reuses [[iron-trainer-adix]] + PR1 dedup/_map_activity. Split from [[iron-trainer-3ptl]].
@@ -15,3 +15,12 @@ Port strava.py (exchange_code, refresh_access_token, fetch_activities, fetch_act
 ## From PR1 review (deferred here)
 - dedup fetch=true device-name lookup: PR1's /dedup enforces the 409-not-connected guard but does NOT fetch device names (device_fetched=0); a connected athlete with MISSING stored device names gets different primary selection than FastAPI. Add the fetch_activity_detail device-name resolution + re-cluster here.
 - Token-expiry live refresh in the connection check (Python valid_access_token refreshes on expiry) belongs here too.
+
+
+
+## Client + sync SHIPPED
+- StravaApi: Quarkus REST Client (declarative interface, configKey 'strava') — chose this over swagger-codegen: idiomatic + zero build tooling for 3 endpoints (token/activities/activityDetail). URL overridable for tests.
+- StravaTokens: validAccessToken (refresh on expiry via /oauth/token) + saveTokens. Athlete gains strava_access_token/expires_at.
+- StravaSync: run_sync — token → paginated fetch (external, no tx) → map+upsert → prune old → dedup → rebuild PMC (tx). POST /api/strava/sync.
+- Test: WireMock (org.wiremock) full-sync integration — real HTTP mock of Strava + Dev Services Postgres, asserts token refresh + upsert + map + rebuild.
+- Deferred: seed_profile_if_empty/infer_profile [[iron-trainer-9gme]]; dedup device-name fetch enrichment (client method exists, not wired); async envelope [[iron-trainer-s6v3]].
