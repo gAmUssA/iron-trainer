@@ -4,6 +4,8 @@ config change). Export-specific fallback/rollback cases live in
 test_export_proxy.py; the recording-stub / block-proxy helpers are shared
 fixtures in conftest.py."""
 
+import json
+
 import httpx
 import pytest
 from starlette.testclient import TestClient
@@ -64,9 +66,10 @@ def test_unlisted_path_not_proxied(flipped_readiness, block_proxy):
         assert r.json()["generator"] == "iron-trainer"
 
 
-def test_non_get_never_proxies(flipped_readiness, block_proxy):
-    """Even an allowlisted path must not proxy a write — the middleware guards
-    on method before anything else (a POST reaches routing → 405, not the proxy)."""
+def test_write_to_read_only_flip_stays_local(flipped_readiness, block_proxy):
+    """A path flipped for READS (in PROXY_PATHS) does not proxy its writes: the
+    write allowlist (PROXY_WRITE_PATHS) is separate and empty here, so a POST
+    reaches local routing → 405 (no POST route), never the proxy."""
     block_proxy()
     with TestClient(app) as c:
         r = c.post("/api/metrics/readiness/today",
@@ -106,3 +109,121 @@ def test_multivalue_response_headers_preserved(flipped_readiness, monkeypatch):
         assert len(cookies) == 2
         assert any("a=1" in c for c in cookies)
         assert any("b=2" in c for c in cookies)
+
+
+# ── Write forwarding (PROXY_WRITE_PATHS) ──────────────────────────────────────
+
+
+@pytest.fixture()
+def flipped_tests_write(monkeypatch):
+    """Flip the fitness-test write endpoint to backend-v2."""
+    monkeypatch.setenv("EXPORT_PROXY_URL", "http://backend-v2.internal:8080")
+    monkeypatch.setenv("PROXY_WRITE_PATHS", "/api/tests/result")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _stub_write(monkeypatch, *, status=200, content=b'{"ok":true}', exc=None):
+    """Record what the proxy forwarded on the write path (url/method/body/headers)."""
+    rec: dict = {}
+
+    async def fake(url, method, body, headers):
+        rec.update(url=url, method=method, body=body, headers=headers)
+        if exc is not None:
+            raise exc
+        return httpx.Response(status, content=content,
+                              headers={"content-type": "application/json"})
+
+    monkeypatch.setattr(strangler, "fetch_write", fake)
+    return rec
+
+
+def test_write_in_allowlist_proxies_with_bearer(flipped_tests_write, monkeypatch):
+    """A POST on the write allowlist forwards method + body + Authorization."""
+    rec = _stub_write(monkeypatch)
+    with TestClient(app) as c:
+        r = c.post("/api/tests/result", headers={"Authorization": "Bearer tok"},
+                   json={"test_slug": "ftp20", "inputs": {"x": 1}})
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        assert rec["url"] == "http://backend-v2.internal:8080/api/tests/result"
+        assert rec["method"] == "POST"
+        assert json.loads(rec["body"]) == {"test_slug": "ftp20", "inputs": {"x": 1}}
+        assert rec["headers"]["Authorization"] == "Bearer tok"
+
+
+def test_write_forwards_session_cookie(flipped_tests_write, monkeypatch):
+    """A cookie-only (web) write is now proxy-eligible; the Cookie header is
+    forwarded so backend-v2 can verify the session (ADR 0022)."""
+    rec = _stub_write(monkeypatch)
+    with TestClient(app) as c:
+        r = c.post("/api/tests/result", headers={"Cookie": "session=abc.def.ghi"},
+                   json={"test_slug": "ftp20", "inputs": {}})
+        assert r.status_code == 200
+        assert rec["headers"]["Cookie"] == "session=abc.def.ghi"
+        assert "Authorization" not in rec["headers"]
+
+
+def test_write_unauthenticated_stays_local(flipped_tests_write, monkeypatch):
+    """No bearer and no session cookie → not proxy-eligible; served locally with
+    its body intact (local validation → 422), and fetch_write is never called."""
+    async def boom(*a, **k):
+        raise AssertionError("must not proxy an unauthenticated write")
+
+    monkeypatch.setattr(strangler, "fetch_write", boom)
+    with TestClient(app) as c:
+        r = c.post("/api/tests/result", json={})
+        assert r.status_code == 422  # local Pydantic validation
+
+
+def test_write_not_in_write_allowlist_stays_local(monkeypatch):
+    """A path flipped only for reads (PROXY_PATHS) does not proxy its writes."""
+    monkeypatch.setenv("EXPORT_PROXY_URL", "http://backend-v2.internal:8080")
+    monkeypatch.setenv("PROXY_PATHS", "/api/tests/result")  # read allowlist only
+    get_settings.cache_clear()
+
+    async def boom(*a, **k):
+        raise AssertionError("write must not proxy when not in PROXY_WRITE_PATHS")
+
+    monkeypatch.setattr(strangler, "fetch_write", boom)
+    try:
+        with TestClient(app) as c:
+            r = c.post("/api/tests/result", headers={"Authorization": "Bearer tok"},
+                       json={})
+            assert r.status_code == 422  # local
+    finally:
+        get_settings.cache_clear()
+
+
+def test_write_5xx_forwarded_not_retried_locally(flipped_tests_write, monkeypatch):
+    """A 5xx from backend-v2 on a write is forwarded to the client, NOT retried
+    locally — backend-v2 may have committed, and a local retry would double-apply.
+    The empty body would 422 locally, so a 500 response proves no fallback."""
+    _stub_write(monkeypatch, status=500, content=b'{"detail":"boom"}')
+    with TestClient(app) as c:
+        r = c.post("/api/tests/result", headers={"Authorization": "Bearer tok"},
+                   json={})
+        assert r.status_code == 500
+        assert r.json()["detail"] == "boom"
+
+
+def test_write_connect_error_falls_back_local(flipped_tests_write, monkeypatch):
+    """An UNREACHABLE backend (connect error, request never delivered) falls back
+    locally, replaying the buffered body — safe, since nothing was committed. The
+    replayed empty body hits local validation → 422 (not the 502 no-fallback path)."""
+    _stub_write(monkeypatch, exc=httpx.ConnectError("connection refused"))
+    with TestClient(app) as c:
+        r = c.post("/api/tests/result", headers={"Authorization": "Bearer tok"},
+                   json={})
+        assert r.status_code == 422  # served locally with the replayed body
+
+
+def test_write_read_timeout_returns_502_no_fallback(flipped_tests_write, monkeypatch):
+    """A post-send failure (e.g. read timeout — request WAS delivered) is not
+    retried locally; the client gets a 502 rather than risk a double-apply."""
+    _stub_write(monkeypatch, exc=httpx.ReadTimeout("timed out"))
+    with TestClient(app) as c:
+        r = c.post("/api/tests/result", headers={"Authorization": "Bearer tok"},
+                   json={})
+        assert r.status_code == 502

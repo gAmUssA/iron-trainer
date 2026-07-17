@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     # (web) requests never proxy regardless of the allowlist, so web surfaces
     # like zones/pmc stay local even if their path is listed — until Phase 7.
     proxy_paths: str = "/api/export/workout/*,/api/export/plan.itw"
+    # Separate allowlist for WRITE methods (POST/PUT/DELETE/PATCH). Empty by
+    # default so deploying write-forwarding changes nothing until a path is
+    # added here. Independent from proxy_paths so a vertical's reads can flip
+    # without its writes (and vice-versa). Writes forward bearer OR session
+    # cookie (backend-v2 verifies the cookie since ADR 0022). Unlike reads,
+    # a proxied write does NOT fall back locally on a 5xx (see strangler.py):
+    # backend-v2 may have already committed, and a local retry would
+    # double-apply a non-idempotent mutation.
+    proxy_write_paths: str = ""
     default_athlete_id: int = 1  # identity used in local no-login mode
     cookie_secure: bool = False  # set true behind HTTPS (Secure session cookie)
     log_level: str = "INFO"  # app log verbosity (DEBUG/INFO/WARNING/ERROR)
@@ -109,6 +118,12 @@ class Settings(BaseSettings):
         """Allowlist of paths backend-v2 owns (see proxy_paths / strangler.py).
         The parse is cached: this is read on every proxied request's hot path."""
         return list(_split_paths(self.proxy_paths))
+
+    @property
+    def proxy_write_path_list(self) -> list[str]:
+        """Allowlist of paths whose WRITE methods backend-v2 owns
+        (see proxy_write_paths / strangler.py)."""
+        return list(_split_paths(self.proxy_write_paths))
 
     @property
     def allowed_strava_id_set(self) -> set[int]:
