@@ -57,6 +57,17 @@ class StravaMappingTest {
     }
 
     @Test
+    void emptyDeviceWattsIsNotPowerMeter() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("id", 1L);
+        raw.put("type", "Ride");
+        raw.put("moving_time", 3600);
+        raw.put("device_watts", "");  // Python-falsy → has_power_meter 0
+        Map<String, Object> a = StravaMapping.mapActivity(raw, new Thresholds(250.0, null, null, null, null), 1);
+        assertEquals(0, a.get("has_power_meter"));
+    }
+
+    @Test
     void normalizedPowerConstantStream() {
         List<Double> flat = new ArrayList<>(Collections.nCopies(30, 200.0));
         assertEquals(200L, Metrics.normalizedPower(flat, 1.0));

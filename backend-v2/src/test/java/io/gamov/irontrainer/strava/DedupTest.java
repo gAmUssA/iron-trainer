@@ -41,6 +41,16 @@ class DedupTest {
     }
 
     @Test
+    void clustersDateOnlyAndSpaceSeparatedStarts() {
+        // Python fromisoformat accepts date-only and space-separated forms.
+        Activity a = act(1, "Bike", "2026-07-12", 3600);           // date-only → midnight
+        Activity b = act(2, "Bike", "2026-07-12 00:05:00", 3500);  // space-separated, +5min
+        List<List<Activity>> clusters = Dedup.clusterDuplicates(List.of(a, b));
+        assertEquals(1, clusters.size());
+        assertEquals(Set.of(1L, 2L), ids(clusters.get(0)));
+    }
+
+    @Test
     void noClusterForDifferentSportsSameTime() {
         Activity a = act(1, "Bike", "2026-06-20T08:00:00", 3600);
         Activity b = act(2, "Run", "2026-06-20T08:00:00", 3600);

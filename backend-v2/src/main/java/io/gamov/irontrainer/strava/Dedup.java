@@ -1,10 +1,9 @@
 package io.gamov.irontrainer.strava;
 
 import io.gamov.irontrainer.activity.Activity;
+import io.gamov.irontrainer.util.Iso;
+import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -24,17 +23,7 @@ public final class Dedup {
 
     /** start_date → naive wall-clock (tz stripped, like _start + replace(tzinfo=None)). */
     private static LocalDateTime start(Activity a) {
-        if (a.startDate == null) return null;
-        String s = a.startDate.replace("Z", "+00:00");
-        try {
-            return OffsetDateTime.parse(s).toLocalDateTime();  // strip offset, keep wall-clock
-        } catch (DateTimeParseException e) {
-            try {
-                return LocalDateTime.parse(s);
-            } catch (DateTimeParseException e2) {
-                return null;
-            }
-        }
+        return Iso.parseDateTime(a.startDate);
     }
 
     static boolean isAppleWatch(String deviceName) {
@@ -55,7 +44,8 @@ public final class Dedup {
         if (!java.util.Objects.equals(a.sport, b.sport) || "Other".equals(a.sport)) return false;
         LocalDateTime sa = start(a), sb = start(b);
         if (sa == null || sb == null) return false;
-        long gap = Math.abs(ChronoUnit.SECONDS.between(sa, sb));
+        // Fractional seconds, matching Python's timedelta.total_seconds().
+        double gap = Math.abs(Duration.between(sa, sb).toNanos()) / 1e9;
         if (gap > START_TOLERANCE_S) return false;
         long da = a.movingTime == null ? 0 : a.movingTime;
         long db = b.movingTime == null ? 0 : b.movingTime;

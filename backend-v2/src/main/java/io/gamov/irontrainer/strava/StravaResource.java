@@ -41,12 +41,19 @@ public class StravaResource {
                                      @QueryParam("limit") @DefaultValue("100") int limit) {
         int aid = current.require();
         if (fetch) {
+            // Same connection precondition as FastAPI's valid_access_token
+            // (`not refresh` = null OR empty). NOTE: the live device-name lookup
+            // (and token-expiry refresh) needs the Strava API client — deferred to
+            // bean wc60; a connected athlete here dedups on already-stored device
+            // names only, so device_fetched is always 0 until then.
             Athlete a = Athlete.findById(aid);
-            if (a == null || a.stravaRefreshToken == null) {
+            if (a == null || a.stravaRefreshToken == null || a.stravaRefreshToken.isEmpty()) {
                 throw new WebApplicationException("Not connected to Strava", 409);
             }
         }
-        List<Activity> acts = Activity.list("athleteId", aid);  // include duplicates
+        // list_activities(include_duplicates=True) — ORDER BY start_date so the
+        // input order (and thus same-start_date tie-breaks) matches FastAPI.
+        List<Activity> acts = Activity.list("athleteId = ?1 order by startDate", aid);
         for (Activity a : acts) {  // clear_duplicate_flags (managed → flushes)
             a.isDuplicate = 0;
             a.primaryId = null;
@@ -62,9 +69,10 @@ public class StravaResource {
                 if (isDup) duplicates++;
             }
         }
-        int metricsDays = MetricsWrite.rebuildMetrics(aid);
+        int metricsDays = MetricsWrite.rebuildMetrics(aid, acts);  // reuse the loaded list
+        // Python counts any falsy device_name (null OR empty string).
         long deviceRemaining = clusters.stream().flatMap(List::stream)
-                .filter(a -> a.deviceName == null).count();
+                .filter(a -> a.deviceName == null || a.deviceName.isEmpty()).count();
         LOG.infof("Dedup: athlete=%d clusters=%d duplicates=%d", aid, clusters.size(), duplicates);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("clusters", clusters.size());

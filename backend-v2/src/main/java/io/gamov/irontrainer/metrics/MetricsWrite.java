@@ -5,11 +5,9 @@ import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.metrics.Metrics.DayMetric;
 import io.gamov.irontrainer.metrics.Metrics.Thresholds;
 import io.gamov.irontrainer.metrics.Metrics.TssResult;
+import io.gamov.irontrainer.util.Iso;
 import io.gamov.irontrainer.util.PyJson;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
@@ -77,7 +75,7 @@ public final class MetricsWrite {
             a.tssMethod = r.method();
             // rebuild_metrics uses list_activities() (non-duplicate only).
             if (a.isDuplicate != null && a.isDuplicate != 0) continue;
-            LocalDate day = parseDay(a.startDate);
+            LocalDate day = Iso.parseDate(a.startDate);
             if (day == null) continue;  // Python skips unparseable start_date
             pairs.add(new AbstractMap.SimpleEntry<>(day, a.tss));
         }
@@ -90,11 +88,17 @@ public final class MetricsWrite {
      * which changes the non-duplicate set but not per-activity load. Returns the
      * number of days written. */
     public static int rebuildMetrics(int aid) {
-        List<Activity> acts = Activity.list(
-                "athleteId = ?1 and (isDuplicate = 0 or isDuplicate is null)", aid);
+        return rebuildMetrics(aid, Activity.list("athleteId", aid));
+    }
+
+    /** As above, but from an already-loaded activity list (e.g. dedup just loaded
+     * + mutated the athlete's activities) — filters non-duplicates in memory
+     * instead of re-querying. */
+    public static int rebuildMetrics(int aid, List<Activity> acts) {
         List<Map.Entry<LocalDate, Double>> pairs = new ArrayList<>();
         for (Activity a : acts) {
-            LocalDate day = parseDay(a.startDate);
+            if (a.isDuplicate != null && a.isDuplicate != 0) continue;  // non-duplicate only
+            LocalDate day = Iso.parseDate(a.startDate);
             if (day == null) continue;
             pairs.add(new AbstractMap.SimpleEntry<>(day, a.tss == null ? 0.0 : a.tss));
         }
@@ -117,24 +121,6 @@ public final class MetricsWrite {
             m.persist();
         }
         LOG.debugf("store_metrics: athlete=%d days=%d", aid, days.size());
-    }
-
-    /** datetime.fromisoformat(start_date.replace("Z","+00:00")).date() — parse
-     * the full ISO value and take the calendar date; return null (Python skips)
-     * on anything fromisoformat would reject (e.g. garbage past the date part). */
-    private static LocalDate parseDay(String startDate) {
-        if (startDate == null) return null;
-        String s = startDate.replace("Z", "+00:00");
-        try {
-            if (s.length() == 10) return LocalDate.parse(s);
-            try {
-                return OffsetDateTime.parse(s).toLocalDate();
-            } catch (DateTimeParseException e) {
-                return LocalDateTime.parse(s).toLocalDate();
-            }
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private static Double asDouble(Object v) {

@@ -58,6 +58,7 @@ public final class StravaMapping {
         if (v == null) return false;
         if (v instanceof Boolean) return (Boolean) v;
         if (v instanceof Number) return ((Number) v).doubleValue() != 0.0;
+        if (v instanceof String) return !((String) v).isEmpty();  // Python: "" is falsy
         return true;
     }
 }
