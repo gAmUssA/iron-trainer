@@ -55,9 +55,14 @@ public class Athlete extends PanacheEntityBase {
     @Column(name = "updated_at")
     public String updatedAt;
 
-    // Presence signals a live Strava connection (the dedup device-fetch + sync
-    // need it). Only the null-check is used here; the token value + refresh live
-    // in the Strava API-client vertical.
+    // Strava OAuth tokens. refresh_token presence signals a connection; the sync
+    // refreshes the access token when strava_token_expires_at is near.
     @Column(name = "strava_refresh_token")
     public String stravaRefreshToken;
+
+    @Column(name = "strava_access_token")
+    public String stravaAccessToken;
+
+    @Column(name = "strava_token_expires_at")
+    public Long stravaTokenExpiresAt;
 }

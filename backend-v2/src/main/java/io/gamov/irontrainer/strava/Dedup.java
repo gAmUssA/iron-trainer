@@ -107,6 +107,31 @@ public final class Dedup {
                 .thenComparing(length);
     }
 
+    /** Result of a dedup pass: the same-event clusters and the duplicate count. */
+    public record Result(List<List<Activity>> clusters, int duplicates) {}
+
+    /** clear_duplicate_flags → cluster → mark: reset every activity, cluster the
+     * same-event ones, and flag all-but-the-primary in each cluster. Mutates the
+     * passed (managed) entities. Shared by POST /dedup and the sync. */
+    public static Result markDuplicates(List<Activity> acts) {
+        for (Activity a : acts) {
+            a.isDuplicate = 0;
+            a.primaryId = null;
+        }
+        List<List<Activity>> clusters = clusterDuplicates(acts);
+        int duplicates = 0;
+        for (List<Activity> cluster : clusters) {
+            Activity primary = primaryOf(cluster);
+            for (Activity a : cluster) {
+                boolean isDup = !a.id.equals(primary.id);
+                a.isDuplicate = isDup ? 1 : 0;
+                a.primaryId = primary.id;
+                if (isDup) duplicates++;
+            }
+        }
+        return new Result(clusters, duplicates);
+    }
+
     /** The activity to keep from a duplicate cluster (sport-aware). */
     public static Activity primaryOf(List<Activity> cluster) {
         if (cluster.isEmpty()) return null;

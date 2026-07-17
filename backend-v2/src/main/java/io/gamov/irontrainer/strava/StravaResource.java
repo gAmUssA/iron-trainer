@@ -16,8 +16,8 @@ import java.util.List;
 import java.util.Map;
 import org.jboss.logging.Logger;
 
-/** Strava vertical (deterministic core): activity de-duplication. The Strava API
- * client, OAuth, and full sync are separate verticals (beans wc60/xtre/f6ui). */
+/** Strava vertical: de-duplication + activity sync. OAuth (connect/callback) and
+ * the GDPR archive import are separate verticals (beans xtre/f6ui). */
 @Path("/api/strava")
 public class StravaResource {
 
@@ -25,6 +25,20 @@ public class StravaResource {
 
     @Inject
     CurrentAthlete current;
+
+    @Inject
+    StravaSync sync;
+
+    /** POST /api/strava/sync — pull activity summaries from Strava, upsert, prune
+     * old, de-dup, and rebuild the PMC. Port of services.run_sync. 409 when Strava
+     * isn't connected. NOT @Transactional: runSync keeps the external fetch out of
+     * the DB transaction (persist has its own). */
+    @POST
+    @Path("/sync")
+    public Map<String, Object> syncActivities(@QueryParam("full") @DefaultValue("false") boolean full) {
+        int aid = current.require();
+        return sync.runSync(aid, full);
+    }
 
     /** POST /api/strava/dedup — re-run de-duplication on existing activities
      * (cluster same-event → keep one → rebuild the PMC). Port of the FastAPI
@@ -54,29 +68,15 @@ public class StravaResource {
         // list_activities(include_duplicates=True) — ORDER BY start_date so the
         // input order (and thus same-start_date tie-breaks) matches FastAPI.
         List<Activity> acts = Activity.list("athleteId = ?1 order by startDate", aid);
-        for (Activity a : acts) {  // clear_duplicate_flags (managed → flushes)
-            a.isDuplicate = 0;
-            a.primaryId = null;
-        }
-        List<List<Activity>> clusters = Dedup.clusterDuplicates(acts);
-        int duplicates = 0;
-        for (List<Activity> cluster : clusters) {
-            Activity primary = Dedup.primaryOf(cluster);
-            for (Activity a : cluster) {
-                boolean isDup = !a.id.equals(primary.id);
-                a.isDuplicate = isDup ? 1 : 0;
-                a.primaryId = primary.id;
-                if (isDup) duplicates++;
-            }
-        }
+        Dedup.Result d = Dedup.markDuplicates(acts);
         int metricsDays = MetricsWrite.rebuildMetrics(aid, acts);  // reuse the loaded list
         // Python counts any falsy device_name (null OR empty string).
-        long deviceRemaining = clusters.stream().flatMap(List::stream)
+        long deviceRemaining = d.clusters().stream().flatMap(List::stream)
                 .filter(a -> a.deviceName == null || a.deviceName.isEmpty()).count();
-        LOG.infof("Dedup: athlete=%d clusters=%d duplicates=%d", aid, clusters.size(), duplicates);
+        LOG.infof("Dedup: athlete=%d clusters=%d duplicates=%d", aid, d.clusters().size(), d.duplicates());
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("clusters", clusters.size());
-        out.put("duplicates", duplicates);
+        out.put("clusters", d.clusters().size());
+        out.put("duplicates", d.duplicates());
         out.put("device_fetched", 0);
         out.put("device_remaining", (int) deviceRemaining);
         out.put("metrics_days", metricsDays);
