@@ -518,3 +518,103 @@ def test_races_empty_filter_returns_all_parity(v1, v2):
         b = v2.get("/api/races", params=params)
         assert a.status_code == b.status_code == 200, params
         assert a.json() == b.json() == full, params
+
+
+# ── Analytics reads: weekly volume + activities feed ──────────────────────────
+# Defined last (like apply/dedup): seeds extra activities, so run after the
+# metrics-rebuild tests that depend on the exact seeded_metrics series.
+
+@pytest.fixture(scope="session")
+def seeded_history(bearer) -> bool:
+    """A handful of non-duplicate activities across two ISO weeks (with tss), so
+    weekly-volume bucketing + the activities feed exercise real data. Distinct
+    ids/dates from the dedup pair to avoid clustering interference."""
+    if not os.environ.get("PARITY_PG_ID"):
+        return False
+    aid = _psql("SELECT athlete_id FROM device_token ORDER BY id DESC LIMIT 1")
+    assert aid.isdigit(), f"could not resolve bearer athlete id (got {aid!r})"
+    _psql(f"""
+        INSERT INTO activities
+            (id, athlete_id, sport, start_date, name, moving_time, distance, tss, is_duplicate)
+        VALUES
+            (900201, {aid}, 'Bike', '2026-06-01T08:00:00', 'W1 Ride', 3600, 30000, 55.4, 0),
+            (900202, {aid}, 'Run',  '2026-06-03T07:00:00', 'W1 Run',  2400,  8000, 40.2, 0),
+            (900203, {aid}, 'Swim', '2026-06-05T06:30:00', 'W1 Swim', 1800,  2000, 25.1, 0),
+            (900204, {aid}, 'Bike', '2026-06-09T08:00:00', 'W2 Ride', 5400, 45000, 88.7, 0),
+            (900205, {aid}, 'Run',  '2026-06-11T07:00:00', 'W2 Run',  3000, 10000, 52.9, 0)
+        ON CONFLICT (id) DO NOTHING;
+    """)
+    return True
+
+
+def test_weekly_parity(v1, v2, seeded_history):
+    """GET /api/metrics/weekly: ISO-week volume by sport (hours/km/tss), totals
+    summing the rounded per-sport values, must be byte-identical."""
+    a = v1.get("/api/metrics/weekly")
+    b = v2.get("/api/metrics/weekly")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    assert len(a.json()["weeks"]) > 0
+
+
+def test_weekly_window_parity(v1, v2, seeded_history):
+    for weeks in (1, 4, 52):
+        a = v1.get("/api/metrics/weekly", params={"weeks": weeks})
+        b = v2.get("/api/metrics/weekly", params={"weeks": weeks})
+        assert a.status_code == b.status_code == 200, weeks
+        assert a.json() == b.json(), weeks
+
+
+def test_activities_parity(v1, v2, seeded_history):
+    """GET /api/activities: full Activity.model_dump feed, most-recent first,
+    with total count + in-page duplicate count."""
+    a = v1.get("/api/activities")
+    b = v2.get("/api/activities")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    assert a.json()["count"] > 0
+
+
+def test_activities_filters_parity(v1, v2, seeded_history):
+    for params in ({"include_duplicates": "false"}, {"limit": 2},
+                   {"include_duplicates": "false", "limit": 3}):
+        a = v1.get("/api/activities", params=params)
+        b = v2.get("/api/activities", params=params)
+        assert a.status_code == b.status_code == 200, params
+        assert a.json() == b.json(), params
+
+
+def test_activities_bool_coercion_parity(v1, v2, seeded_history):
+    """include_duplicates coercion matches pydantic lax bool: 1/0/yes/no all
+    agree between backends (not just true/false)."""
+    for val in ("1", "0", "yes", "no", "on", "off"):
+        a = v1.get("/api/activities", params={"include_duplicates": val})
+        b = v2.get("/api/activities", params={"include_duplicates": val})
+        assert a.status_code == b.status_code == 200, val
+        assert a.json() == b.json(), val
+
+
+def test_activities_negative_limit_parity(v1, v2, seeded_history):
+    """limit=-1 → Python reversed[:-1] (all but the last), not an empty page."""
+    a = v1.get("/api/activities", params={"limit": -1})
+    b = v2.get("/api/activities", params={"limit": -1})
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+
+
+def test_weekly_negative_weeks_parity(v1, v2, seeded_history):
+    """weeks=-1 → Python out[1:] (drops the earliest week)."""
+    a = v1.get("/api/metrics/weekly", params={"weeks": -1})
+    b = v2.get("/api/metrics/weekly", params={"weeks": -1})
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+
+
+def test_activities_bad_param_422_parity(v1, v2):
+    """Malformed query params → 422 on both (pydantic validation parity)."""
+    assert v1.get("/api/activities", params={"include_duplicates": "maybe"}).status_code == 422
+    assert v2.get("/api/activities", params={"include_duplicates": "maybe"}).status_code == 422
+    assert v1.get("/api/activities", params={"limit": "abc"}).status_code == 422
+    assert v2.get("/api/activities", params={"limit": "abc"}).status_code == 422
+    assert v1.get("/api/metrics/weekly", params={"weeks": "x"}).status_code == 422
+    assert v2.get("/api/metrics/weekly", params={"weeks": "x"}).status_code == 422
