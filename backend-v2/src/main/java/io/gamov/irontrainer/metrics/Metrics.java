@@ -2,7 +2,9 @@ package io.gamov.irontrainer.metrics;
 
 import io.gamov.irontrainer.util.Py;
 import java.time.LocalDate;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -38,6 +40,31 @@ public final class Metrics {
 
     public static String normalizeSport(String stravaType) {
         return SPORT_MAP.getOrDefault(stravaType == null ? "" : stravaType, "Other");
+    }
+
+    /** Normalized Power from a ~1 Hz power stream: 30s rolling average → 4th
+     * power → mean → 4th root, rounded to an int. Null without enough data.
+     * Port of metrics.normalized_power (used by the Strava stream import). */
+    public static Long normalizedPower(List<Double> samples, double dtS) {
+        List<Double> vals = new ArrayList<>();
+        for (Double p : samples) if (p != null) vals.add(p);
+        int window = Math.max(1, (int) Py.round(30.0 / dtS, 0));
+        if (vals.size() < Math.max(30, window)) return null;
+        Deque<Double> win = new ArrayDeque<>();
+        List<Double> rolled = new ArrayList<>();
+        for (Double p : vals) {
+            win.addLast(p);
+            if (win.size() > window) win.removeFirst();
+            if (win.size() == window) {
+                double sum = 0;
+                for (double w : win) sum += w;
+                rolled.add(Math.pow(sum / window, 4));
+            }
+        }
+        if (rolled.isEmpty()) return null;
+        double sum = 0;
+        for (double r : rolled) sum += r;
+        return Py.roundInt(Math.pow(sum / rolled.size(), 0.25));
     }
 
     /** Guard against absurd values from noisy summary data. */

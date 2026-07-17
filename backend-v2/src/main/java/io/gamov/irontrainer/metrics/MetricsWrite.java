@@ -85,6 +85,24 @@ public final class MetricsWrite {
         storeMetrics(aid, days);
     }
 
+    /** rebuild_metrics(): rebuild metrics_daily from the STORED activity TSS
+     * (non-duplicate only), without recomputing TSS. Used after de-duplication,
+     * which changes the non-duplicate set but not per-activity load. Returns the
+     * number of days written. */
+    public static int rebuildMetrics(int aid) {
+        List<Activity> acts = Activity.list(
+                "athleteId = ?1 and (isDuplicate = 0 or isDuplicate is null)", aid);
+        List<Map.Entry<LocalDate, Double>> pairs = new ArrayList<>();
+        for (Activity a : acts) {
+            LocalDate day = parseDay(a.startDate);
+            if (day == null) continue;
+            pairs.add(new AbstractMap.SimpleEntry<>(day, a.tss == null ? 0.0 : a.tss));
+        }
+        List<DayMetric> days = Metrics.performanceManagement(pairs, LocalDate.now(), null, 0.0, 0.0);
+        storeMetrics(aid, days);
+        return days.size();
+    }
+
     /** store_metrics(days): replace the athlete's metrics_daily with `days`. */
     public static void storeMetrics(int aid, List<DayMetric> days) {
         MetricDaily.delete("athleteId", aid);
