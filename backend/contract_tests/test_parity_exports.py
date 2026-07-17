@@ -437,3 +437,73 @@ def test_strava_dedup_not_connected_409_parity(v1, v2):
     on both backends (v2 checks the same refresh-token presence, no live call)."""
     assert v1.post("/api/strava/dedup?fetch=true").status_code == 409
     assert v2.post("/api/strava/dedup?fetch=true").status_code == 409
+
+
+# ── Races (catalog + selection) ───────────────────────────────────────────────
+# The race catalog is seeded on FastAPI startup (db._seed_races) into the shared
+# Postgres, so both backends read the same rows. set_athlete_race is a write —
+# its effective_race() response has no volatile fields, so it must be byte-equal.
+
+def test_races_catalog_parity(v1, v2):
+    """GET /api/races: the seeded catalog (Race.model_dump order) is identical."""
+    a = v1.get("/api/races")
+    b = v2.get("/api/races")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    assert len(a.json()["races"]) > 0  # startup seeds the catalog
+
+
+def test_races_filters_parity(v1, v2):
+    """distance / country / q filters agree, using values drawn from the catalog."""
+    races = v1.get("/api/races").json()["races"]
+    assert races, "catalog seeded"
+    sample = races[0]
+    cases = [{"distance": sample["distance"]},
+             {"q": sample["name"].split()[0].lower()}]
+    if sample.get("country"):
+        cases.append({"country": sample["country"]})
+    for params in cases:
+        a = v1.get("/api/races", params=params)
+        b = v2.get("/api/races", params=params)
+        assert a.status_code == b.status_code == 200, params
+        assert a.json() == b.json(), params
+
+
+def test_races_month_filter_parity(v1, v2):
+    races = v1.get("/api/races").json()["races"]
+    if races:
+        month = races[0]["date"][:7]  # YYYY-MM
+        a = v1.get("/api/races", params={"month": month})
+        b = v2.get("/api/races", params={"month": month})
+        assert a.status_code == b.status_code == 200
+        assert a.json() == b.json()
+
+
+def test_set_race_by_id_parity(v1, v2):
+    """PUT /api/athlete/race {race_id}: effective_race() is byte-identical."""
+    rid = v1.get("/api/races").json()["races"][0]["id"]
+    a = v1.put("/api/athlete/race", json={"race_id": rid})
+    b = v2.put("/api/athlete/race", json={"race_id": rid})
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+
+
+def test_set_race_custom_parity(v1, v2):
+    """A custom race derives cutoffs from distance (cutoffs_for) on both."""
+    body = {"name": "Backyard Half", "race_date": "2026-10-11", "distance": "70.3"}
+    a = v1.put("/api/athlete/race", json=body)
+    b = v2.put("/api/athlete/race", json=body)
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    assert a.json()["race"]["cutoff_swim_s"] == 4200  # cutoffs_for("70.3")[0]
+
+
+def test_set_race_not_found_400_parity(v1, v2):
+    assert v1.put("/api/athlete/race", json={"race_id": 999999}).status_code == 400
+    assert v2.put("/api/athlete/race", json={"race_id": 999999}).status_code == 400
+
+
+def test_set_race_custom_missing_400_parity(v1, v2):
+    """Custom race without name+date → 400 on both (not a 500 from a null write)."""
+    assert v1.put("/api/athlete/race", json={"distance": "70.3"}).status_code == 400
+    assert v2.put("/api/athlete/race", json={"distance": "70.3"}).status_code == 400

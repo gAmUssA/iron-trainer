@@ -51,6 +51,28 @@ public class Athlete extends PanacheEntityBase {
     @Column(name = "sweat_rate_l_h")
     public Double sweatRateLH;
 
+    // Race selection (set by the races vertical: catalog pick or custom race).
+    @Column(name = "race_id")
+    public Integer raceId;
+
+    @Column(name = "race_name")
+    public String raceName;
+
+    @Column(name = "race_date")
+    public String raceDate;
+
+    @Column(name = "race_distance")
+    public String raceDistance;
+
+    @Column(name = "cutoff_swim_s")
+    public Integer cutoffSwimS;
+
+    @Column(name = "cutoff_bike_s")
+    public Integer cutoffBikeS;
+
+    @Column(name = "cutoff_finish_s")
+    public Integer cutoffFinishS;
+
     // save_profile bumps this on any threshold change (iOS delta-sync watches it).
     @Column(name = "updated_at")
     public String updatedAt;
