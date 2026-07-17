@@ -20,7 +20,12 @@ import org.junit.jupiter.api.Test;
  * the itsdangerous session cookie, and that a Bearer token still wins over a
  * cookie. The cookie is signed live (valid at {@code now}) using the same
  * algorithm FastAPI/Starlette use, against the test-profile secret
- * ({@code %test.irontrainer.session-secret=test-secret-key}). */
+ * ({@code %test.irontrainer.session-secret=test-secret-key}).
+ *
+ * <p>Scope: this calls backend-v2 <em>directly</em> (RestAssured), verifying the
+ * filter resolves a cookie once it arrives. Delivering the Cookie header over
+ * the strangler proxy (currently bearer-only, GET-only) is bean hy6c — until
+ * then this capability is staged, not on the live proxied path. */
 @QuarkusTest
 class SessionAuthTest {
 

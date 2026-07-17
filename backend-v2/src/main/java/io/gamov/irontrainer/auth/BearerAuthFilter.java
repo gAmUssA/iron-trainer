@@ -39,6 +39,14 @@ public class BearerAuthFilter implements ContainerRequestFilter {
                 .orElse("");
     }
 
+    // Local/dev fallback athlete when auth is not required — configurable to
+    // match FastAPI's settings.default_athlete_id (both default to 1).
+    private static int defaultAthleteId() {
+        return ConfigProvider.getConfig()
+                .getOptionalValue("irontrainer.default-athlete-id", Integer.class)
+                .orElse(1);
+    }
+
     @Override
     public void filter(ContainerRequestContext ctx) {
         String authz = ctx.getHeaderString("Authorization");
@@ -65,7 +73,7 @@ public class BearerAuthFilter implements ContainerRequestFilter {
             }
         }
         if (!authRequired()) {
-            current.set(1); // single-athlete local mode, same as FastAPI default
+            current.set(defaultAthleteId()); // single-athlete local mode, FastAPI parity
         }
         // else: leave unset — CurrentAthlete.require() raises 401 on use.
     }
@@ -77,13 +85,17 @@ public class BearerAuthFilter implements ContainerRequestFilter {
         if (cookieHeader == null) {
             return null;
         }
+        // LAST occurrence wins, matching Python http.cookies (which FastAPI
+        // uses): a duplicate 'session=' must resolve to the same athlete on
+        // both strangler halves.
+        String value = null;
         for (String part : cookieHeader.split(";")) {
             String p = part.strip();
             if (p.startsWith("session=")) {
-                return p.substring("session=".length());
+                value = p.substring("session=".length());
             }
         }
-        return null;
+        return value;
     }
 
     public static String sha256(String token) {

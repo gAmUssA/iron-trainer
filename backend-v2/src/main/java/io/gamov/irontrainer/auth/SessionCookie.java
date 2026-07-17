@@ -74,7 +74,12 @@ public final class SessionCookie {
             return null;
         }
 
-        // 2. Age gate: 0 <= now - ts <= MAX_AGE_SECONDS.
+        // 2. Age gate: 0 <= now - ts <= MAX_AGE_SECONDS. (age<0 rejects a
+        // future-stamped cookie, exactly as itsdangerous 2.x SignatureExpired.)
+        // The >8-byte guard only bounds the long pack below; it is unreachable
+        // for a real cookie, since the signature (checked above) already proves
+        // the timestamp was minted with the secret — real Unix seconds fit in
+        // 4-5 bytes.
         byte[] tsBytes = urlsafeDecode(tsPart);
         if (tsBytes == null || tsBytes.length == 0 || tsBytes.length > 8) {
             return null;
@@ -119,11 +124,11 @@ public final class SessionCookie {
         }
     }
 
-    /** itsdangerous base64_decode: urlsafe alphabet, padding stripped. */
+    /** itsdangerous base64_decode: urlsafe alphabet, no padding. Java's URL
+     * decoder accepts unpadded input directly. */
     private static byte[] urlsafeDecode(String s) {
         try {
-            int pad = (4 - (s.length() % 4)) % 4;
-            return Base64.getUrlDecoder().decode(s + "=".repeat(pad));
+            return Base64.getUrlDecoder().decode(s);
         } catch (IllegalArgumentException e) {
             return null;
         }

@@ -76,4 +76,11 @@ class SessionCookieTest {
         assertNull(BearerAuthFilter.sessionCookieValue("foo=bar; other=baz"));
         assertNull(BearerAuthFilter.sessionCookieValue(null));
     }
+
+    @Test
+    void headerParseKeepsLastSessionCookie() {
+        // Duplicate 'session=' → LAST wins, matching Python http.cookies (FastAPI).
+        assertEquals("FRESH",
+                BearerAuthFilter.sessionCookieValue("session=STALE; session=FRESH"));
+    }
 }

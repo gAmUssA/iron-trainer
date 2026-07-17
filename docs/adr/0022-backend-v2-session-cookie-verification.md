@@ -79,8 +79,28 @@ authenticate a web request.
 
 ## Verification
 
-10 new backend-v2 tests: byte-exact parity vs Python-signed cookie, age-gate
+11 new backend-v2 tests: byte-exact parity vs Python-signed cookie, age-gate
 (valid across the full window, expired, future-dated), tamper + wrong-secret
-rejection, header-parse robustness, and an end-to-end `@QuarkusTest` proving a
-cookie-only request resolves the athlete and that a Bearer token still wins over
-a cookie. Full suite 84/84 green in a clean (no-creds) env.
+rejection, header-parse robustness (incl. duplicate-cookie last-wins), and an
+end-to-end `@QuarkusTest` proving a cookie-only request resolves the athlete and
+that a Bearer token still wins over a cookie. Full suite 85/85 green in a clean
+(no-creds) env.
+
+## Review hardening (high-effort multi-agent review, pre-merge)
+
+The review confirmed the core crypto (HMAC, constant-time compare, key
+derivation) and drove five fixes before merge:
+
+1. **Boot guard** — refuse to start when `auth-required` and no `SESSION_SECRET`
+   (parity with FastAPI's `enforce_secure_config`); without it, cookie verify is
+   a silent request-time no-op.
+2. **Cookie parse: last wins** — a duplicate `session=` now resolves to the same
+   athlete as Python `http.cookies` (was first-match → wrong-athlete risk).
+3. **Configurable default athlete** — `irontrainer.default-athlete-id`
+   (`DEFAULT_ATHLETE_ID`, default 1) instead of a hardcoded 1, matching
+   `settings.default_athlete_id`.
+4. **Dropped redundant base64 padding** (Java's URL decoder accepts unpadded).
+5. Two candidates were verified as *faithful* parity and kept: `age < 0`
+   rejection matches itsdangerous 2.x `SignatureExpired` (empirically checked),
+   and the `>8`-byte timestamp guard is unreachable post-signature. Test-crypto
+   duplication + per-request config reads deferred (cleanup bean).
