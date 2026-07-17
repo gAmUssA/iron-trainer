@@ -27,6 +27,7 @@ V1_PID=$!
 DATABASE_JDBC_URL="jdbc:postgresql://127.0.0.1:$PG_PORT/iron" \
   DATABASE_USERNAME=postgres DATABASE_PASSWORD=iron \
   QUARKUS_HTTP_PORT="$V2_PORT" IRONTRAINER_AUTH_REQUIRED=true \
+  SESSION_SECRET=parity-session-secret \
   java -jar ../backend-v2/target/quarkus-app/quarkus-run.jar >"$WORK/v2.log" 2>&1 &
 V2_PID=$!
 
