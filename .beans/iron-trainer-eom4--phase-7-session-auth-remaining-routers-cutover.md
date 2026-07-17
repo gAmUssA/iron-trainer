@@ -1,10 +1,11 @@
 ---
 # iron-trainer-eom4
 title: 'Phase 7: session auth, remaining routers, cutover'
-status: draft
+status: in-progress
 type: epic
+priority: normal
 created_at: 2026-07-15T18:21:04Z
-updated_at: 2026-07-15T18:21:04Z
+updated_at: 2026-07-17T04:45:21Z
 parent: iron-trainer-37md
 ---
 

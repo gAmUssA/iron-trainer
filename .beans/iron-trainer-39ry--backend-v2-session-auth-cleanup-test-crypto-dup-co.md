@@ -3,8 +3,9 @@
 title: 'backend-v2: session-auth cleanup (test crypto dup, config reads)'
 status: todo
 type: task
+priority: normal
 created_at: 2026-07-17T04:29:41Z
-updated_at: 2026-07-17T04:29:41Z
+updated_at: 2026-07-17T04:45:21Z
 parent: iron-trainer-eom4
 ---
 
