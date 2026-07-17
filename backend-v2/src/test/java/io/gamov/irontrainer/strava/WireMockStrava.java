@@ -22,11 +22,14 @@ public class WireMockStrava implements QuarkusTestResourceLifecycleManager {
         wm = new WireMockServer(options().dynamicPort());
         wm.start();
 
+        // refresh_token grant: real Strava returns ONLY the token fields — the
+        // athlete object is included on the initial authorization_code exchange,
+        // never on a refresh. Keep the stub faithful so refresh can't be tested
+        // as if it populated athlete identity.
         wm.stubFor(post(urlPathEqualTo("/oauth/token")).willReturn(aResponse()
                 .withHeader("Content-Type", "application/json")
                 .withBody("{\"access_token\":\"NEW_TOKEN\",\"refresh_token\":\"REFRESH2\","
-                        + "\"expires_at\":9999999999,\"athlete\":{\"id\":123,"
-                        + "\"firstname\":\"Vik\",\"lastname\":\"G\"}}")));
+                        + "\"expires_at\":9999999999}")));
 
         wm.stubFor(get(urlPathEqualTo("/api/v3/athlete/activities")).willReturn(aResponse()
                 .withHeader("Content-Type", "application/json")

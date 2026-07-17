@@ -57,8 +57,18 @@ public class StravaSync {
             out.addAll(batch);
             if (batch.size() < PER_PAGE) break;
             page++;
+            throttle();   // be gentle with rate limits between pages (Python time.sleep(0.2))
         }
         return out;
+    }
+
+    /** Inter-page throttle mirroring strava.fetch_activities' time.sleep(0.2). */
+    private static void throttle() {
+        try {
+            Thread.sleep(200);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Transactional
@@ -96,7 +106,8 @@ public class StravaSync {
         Thresholds th = MetricsWrite.thresholds(aid);
         Map<Long, Map<String, Object>> byId = new LinkedHashMap<>();  // last-wins per id
         for (Map<String, Object> r : raw) {
-            if (!(r.get("id") instanceof Number id)) continue;
+            // Python filters on a truthy id (`if r.get("id")`), which also drops 0.
+            if (!(r.get("id") instanceof Number id) || id.longValue() == 0) continue;
             byId.put(id.longValue(), StravaMapping.mapActivity(r, th, aid));
         }
         for (Map<String, Object> m : byId.values()) {
@@ -108,13 +119,13 @@ public class StravaSync {
                 a.id = id;
                 a.athleteId = aid;
             }
-            applyMapped(a, m);
+            applyMapped(a, m, isNew);
             if (isNew) a.persist();
         }
         return byId.size();
     }
 
-    private static void applyMapped(Activity a, Map<String, Object> m) {
+    private static void applyMapped(Activity a, Map<String, Object> m, boolean isNew) {
         a.sport = (String) m.get("sport");
         a.startDate = (String) m.get("start_date");
         a.name = (String) m.get("name");
@@ -131,7 +142,9 @@ public class StravaSync {
         a.tss = asDouble(m.get("tss"));
         a.intensityFactor = asDouble(m.get("intensity_factor"));
         a.tssMethod = (String) m.get("tss_method");
-        a.createdAt = (String) m.get("created_at");
+        // created_at is the first-seen timestamp: set once at insert, never on
+        // update (Python excludes it from _ACT_UPDATE_COLS).
+        if (isNew) a.createdAt = (String) m.get("created_at");
         // device_name / is_duplicate / primary_id intentionally preserved on update.
     }
 
@@ -139,15 +152,21 @@ public class StravaSync {
      * window (no-op when history_years is 0 = keep all). */
     private int pruneOld(int aid) {
         if (historyYears <= 0) return 0;
-        String cutoff = LocalDate.now(ZoneOffset.UTC).minusYears(historyYears).toString();
+        String cutoff = historyCutoffDate().toString();
         return (int) Activity.delete("athleteId = ?1 and startDate < ?2", aid, cutoff);
     }
 
-    /** now − history_years, in unix seconds (full-backfill lower bound). */
+    /** history_cutoff_date: today − round(365.25 × history_years) days, host-local
+     * to match Python's date.today() (not UTC — mirrors the metrics-rebuild "today"). */
+    private LocalDate historyCutoffDate() {
+        return LocalDate.now().minusDays(Math.round(365.25 * historyYears));
+    }
+
+    /** history_cutoff_epoch: the cutoff date at UTC midnight, in unix seconds
+     * (full-backfill lower bound; Python combines the local date with tz=utc). */
     private Long historyCutoffEpoch() {
         if (historyYears <= 0) return null;
-        return LocalDate.now(ZoneOffset.UTC).minusYears(historyYears)
-                .atStartOfDay().toEpochSecond(ZoneOffset.UTC);
+        return historyCutoffDate().atStartOfDay().toEpochSecond(ZoneOffset.UTC);
     }
 
     /** Epoch of the athlete's most recent stored activity, or null (incremental
