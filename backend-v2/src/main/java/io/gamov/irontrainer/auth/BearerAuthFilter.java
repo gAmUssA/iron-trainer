@@ -12,10 +12,9 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 
 /** Resolves the athlete for the request, mirroring the FastAPI middleware:
- * Bearer token (SHA-256 hash → device_token row) wins when present; with
- * auth not required (local/dev), fall back to the default athlete (id 1).
- * Session-cookie auth arrives in Phase 7 — until then cookie-only clients
- * stay on the FastAPI side of the strangler. */
+ * Bearer token (SHA-256 hash → device_token row) wins when present; otherwise
+ * the itsdangerous-signed {@code session} cookie (web clients); with auth not
+ * required (local/dev), fall back to the default athlete (id 1). */
 @Provider
 public class BearerAuthFilter implements ContainerRequestFilter {
 
@@ -34,6 +33,20 @@ public class BearerAuthFilter implements ContainerRequestFilter {
                 .orElse(false);
     }
 
+    private static String sessionSecret() {
+        return ConfigProvider.getConfig()
+                .getOptionalValue("irontrainer.session-secret", String.class)
+                .orElse("");
+    }
+
+    // Local/dev fallback athlete when auth is not required — configurable to
+    // match FastAPI's settings.default_athlete_id (both default to 1).
+    private static int defaultAthleteId() {
+        return ConfigProvider.getConfig()
+                .getOptionalValue("irontrainer.default-athlete-id", Integer.class)
+                .orElse(1);
+    }
+
     @Override
     public void filter(ContainerRequestContext ctx) {
         String authz = ctx.getHeaderString("Authorization");
@@ -49,10 +62,40 @@ public class BearerAuthFilter implements ContainerRequestFilter {
             LOG.infof("Bearer rejected: unknown token (path=%s)",
                     ctx.getUriInfo().getPath());
         }
+        // No/unknown bearer: fall back to the signed session cookie (web clients).
+        String cookie = sessionCookieValue(ctx.getHeaderString("Cookie"));
+        if (cookie != null) {
+            Integer aid = SessionCookie.athleteId(cookie, sessionSecret());
+            if (aid != null) {
+                current.set(aid);
+                LOG.debugf("Session cookie resolved: athlete=%d", aid);
+                return;
+            }
+        }
         if (!authRequired()) {
-            current.set(1); // single-athlete local mode, same as FastAPI default
+            current.set(defaultAthleteId()); // single-athlete local mode, FastAPI parity
         }
         // else: leave unset — CurrentAthlete.require() raises 401 on use.
+    }
+
+    /** Extract the raw {@code session} cookie value from a Cookie header,
+     * parsing by hand so the itsdangerous value's own {@code =}/{@code .}
+     * characters survive (JAX-RS cookie parsing splits on {@code =}). */
+    static String sessionCookieValue(String cookieHeader) {
+        if (cookieHeader == null) {
+            return null;
+        }
+        // LAST occurrence wins, matching Python http.cookies (which FastAPI
+        // uses): a duplicate 'session=' must resolve to the same athlete on
+        // both strangler halves.
+        String value = null;
+        for (String part : cookieHeader.split(";")) {
+            String p = part.strip();
+            if (p.startsWith("session=")) {
+                value = p.substring("session=".length());
+            }
+        }
+        return value;
     }
 
     public static String sha256(String token) {

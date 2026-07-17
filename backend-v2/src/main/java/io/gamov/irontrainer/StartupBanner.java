@@ -27,6 +27,18 @@ public class StartupBanner {
         boolean authRequired = ConfigProvider.getConfig()
                 .getOptionalValue("irontrainer.auth-required", Boolean.class)
                 .orElse(false);
+        String sessionSecret = ConfigProvider.getConfig()
+                .getOptionalValue("irontrainer.session-secret", String.class)
+                .orElse("");
+        // Fail-fast when auth is required but no session secret is set: without
+        // it, every valid FastAPI-signed cookie silently fails to verify (401).
+        // Mirrors FastAPI's enforce_secure_config, which refuses to boot in the
+        // same misconfiguration.
+        if (authRequired && sessionSecret.isBlank()) {
+            throw new IllegalStateException(
+                    "SESSION_SECRET must be set when auth is required — cookie "
+                    + "verification cannot work without the shared signing secret.");
+        }
         LOG.infof("Iron Trainer backend-v2 %s ready — db=%s auth_required=%s",
                 version, dbKind, authRequired);
     }
