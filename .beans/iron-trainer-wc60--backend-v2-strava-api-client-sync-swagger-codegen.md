@@ -5,7 +5,7 @@ status: todo
 type: feature
 priority: normal
 created_at: 2026-07-16T23:53:05Z
-updated_at: 2026-07-17T01:21:38Z
+updated_at: 2026-07-18T13:44:32Z
 ---
 
 Port strava.py (exchange_code, refresh_access_token, fetch_activities, fetch_activity_detail, deauthorize) using Strava's OpenAPI Java swagger-codegen client (https://developers.strava.com/docs/#client-code). Wire POST /api/strava/sync: valid_access_token (refresh if expired via strava_token_expires_at) → fetch_activities(after) → _map_activity → upsert_activities → deduplicate(fetch_details) → recompute_tss+rebuild_metrics (adix). Also the dedup device-name FETCH path (fetch=true+connected). Test vs a MOCKED Strava (WireMock/@InjectMock), no live calls. Reuses [[iron-trainer-adix]] + PR1 dedup/_map_activity. Split from [[iron-trainer-3ptl]].
@@ -24,3 +24,13 @@ Port strava.py (exchange_code, refresh_access_token, fetch_activities, fetch_act
 - StravaSync: run_sync — token → paginated fetch (external, no tx) → map+upsert → prune old → dedup → rebuild PMC (tx). POST /api/strava/sync.
 - Test: WireMock (org.wiremock) full-sync integration — real HTTP mock of Strava + Dev Services Postgres, asserts token refresh + upsert + map + rebuild.
 - Deferred: seed_profile_if_empty/infer_profile [[iron-trainer-9gme]]; dedup device-name fetch enrichment (client method exists, not wired); async envelope [[iron-trainer-s6v3]].
+
+## Inherited from 9gme: wire seed_profile_if_empty
+
+Port services.seed_profile_if_empty and call it at the end of Strava sync +
+archive import (mirrors FastAPI services.py:34 / :164), inside @Transactional.
+Contract: infer → Analysis.saveInferred (fill-blanks-only, already in backend-v2)
+→ recompute_tss ONLY (add a recompute-tss-only method to MetricsWrite — Python
+seed does NOT rebuild; the caller rebuilds afterward). Guard: no-op when the
+athlete already has ftp/threshold_hr/threshold_pace_run/css_swim. Analysis.inferProfile
+is already ported (9gme/PR #63).
