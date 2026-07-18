@@ -141,6 +141,10 @@ public class NutritionResource {
         try {
             return mapper.writeValueAsString(o);
         } catch (Exception e) {
+            // Should never happen (plain Maps of primitives), but if it does don't
+            // feed the LLM an empty prompt silently — log so a wrong plan is
+            // traceable. The deterministic prior still guards the output.
+            LOG.warnf(e, "Nutrition LLM prompt serialization failed; sending {} for this input.");
             return "{}";
         }
     }

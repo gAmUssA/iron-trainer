@@ -58,6 +58,20 @@ class NutritionRegenerateTest {
                 .body("items[0].label", equalTo("Custom gel plan"));
     }
 
+    /** A null structured-output Timeline must fall back, not 500 — the real
+     * NutritionLlm.generate guards this; here we drive the endpoint's catch by
+     * having the seam surface it as Unavailable (mirrors the guarded path). */
+    @Test
+    void regenerateNeverReturns500OnBadLlmOutput() {
+        Mockito.when(llm.generate(Mockito.anyString(), Mockito.anyString(),
+                        Mockito.anyString(), Mockito.anyString()))
+                .thenThrow(new NutritionLlm.Unavailable("Model returned no timeline."));
+        given().when().post("/api/v2/athletes").then().statusCode(200);
+        given().when().post("/api/nutrition/race-day/regenerate").then()
+                .statusCode(200)
+                .body("llm_used", equalTo(false));
+    }
+
     @Test
     void raceDayStillServesDeterministicPlan() {
         given().when().post("/api/v2/athletes").then().statusCode(200);

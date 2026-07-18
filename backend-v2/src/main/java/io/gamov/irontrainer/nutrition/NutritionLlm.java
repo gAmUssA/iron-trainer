@@ -58,6 +58,13 @@ public class NutritionLlm {
         } catch (RuntimeException e) {
             throw new Unavailable(e.toString());
         }
+        // A null timeline (structured-output parse produced nothing rather than
+        // throwing) must ALSO fall back — otherwise t.items() below NPEs OUTSIDE
+        // the caller's Unavailable catch and the endpoint 500s instead of
+        // serving the deterministic plan.
+        if (t == null) {
+            throw new Unavailable("Model returned no timeline.");
+        }
         List<Map<String, Object>> items = new ArrayList<>();
         if (t.items() != null) {
             for (NutritionAi.Item i : t.items()) {
