@@ -45,7 +45,8 @@ public final class RaceReadiness {
         long s = (long) seconds;   // int() truncates toward zero
         long h = s / 3600;
         long rem = s % 3600;
-        return String.format("%d:%02d:%02d", h, rem / 60, rem % 60);
+        // Locale.ROOT: ASCII digits, no grouping — match Python's f-string.
+        return String.format(java.util.Locale.ROOT, "%d:%02d:%02d", h, rem / 60, rem % 60);
     }
 
     private static Map<String, Object> leg(double seconds) {
