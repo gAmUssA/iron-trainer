@@ -1,6 +1,7 @@
 package io.gamov.irontrainer.athlete;
 
 import io.gamov.irontrainer.activity.Activity;
+import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.util.Iso;
 import io.gamov.irontrainer.util.Py;
 import io.gamov.irontrainer.util.PyJson;
@@ -125,6 +126,27 @@ public final class Analysis {
         out.put("weekly_hours_target", weeklyHoursTarget);
         out.put("basis", basis);
         return out;
+    }
+
+    /** seed_profile_if_empty: infer + persist thresholds ONLY when the athlete
+     * has none yet (a first-connect convenience; no-op once any of ftp/threshold_hr/
+     * threshold_pace_run/css_swim is set — NOT max_hr/weekly, matching Python).
+     * Re-costs activities with the inferred thresholds (recompute_tss) but does
+     * NOT rebuild the PMC — the caller (Strava sync / archive import) rebuilds
+     * afterward. Returns the inferred map, or null when already seeded. Must run
+     * inside the caller's transaction. */
+    public static Map<String, Object> seedProfileIfEmpty(int aid, LocalDate today) {
+        Athlete a = Athlete.findById(aid);
+        if (a == null) return null;
+        boolean already = Py.truthy(a.ftp) || Py.truthy(a.thresholdHr)
+                || Py.truthy(a.thresholdPaceRun) || Py.truthy(a.cssSwim);
+        if (already) return null;
+        List<Activity> acts = Activity.list(
+                "athleteId = ?1 and (isDuplicate = 0 or isDuplicate is null) order by startDate", aid);
+        Map<String, Object> inferred = inferProfile(acts, today);
+        saveInferred(a, inferred);          // fill blanks only
+        MetricsWrite.recomputeTss(aid);     // re-cost only; caller rebuilds the PMC
+        return inferred;
     }
 
     /** save_profile for inferred thresholds: sets only the non-null values
