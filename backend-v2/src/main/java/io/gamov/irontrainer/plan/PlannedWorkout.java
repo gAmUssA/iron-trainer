@@ -38,11 +38,25 @@ public class PlannedWorkout extends PanacheEntityBase {
     @Column(name = "distance_m")
     public Double distanceM;
 
+    // fit_path / zwo_path: cached export artifact paths (nullable). Not written
+    // by v2 yet, but part of the model_dump shape GET /api/plan returns, so they
+    // must round-trip for workout-dict parity.
+    @Column(name = "fit_path")
+    public String fitPath;
+
+    @Column(name = "zwo_path")
+    public String zwoPath;
+
     // Write side (fitness-test schedule): save_workouts / the SQLModel defaults
     // also set these. status defaults to "planned" (reconcile.py skips anything
     // that isn't "planned"); the Python model default is app-level, so the Java
     // writer must set it explicitly or the row stores NULL.
     public String status;
+
+    // Set by reconcile when a planned session is matched to a Strava activity;
+    // BigInteger column (Strava ids exceed int). Nullable.
+    @Column(name = "matched_activity_id")
+    public Long matchedActivityId;
 
     @Column(name = "planned_tss")
     public Double plannedTss;

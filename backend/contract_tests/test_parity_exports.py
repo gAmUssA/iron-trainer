@@ -787,3 +787,20 @@ def test_athlete_infer_parity(v1, v2, seeded_infer):
     inf = aj["inferred"]
     assert inf["ftp"] and inf["threshold_pace_run"] and inf["css_swim"]
     assert "ftp" in inf["basis"]
+
+
+def test_plan_parity(v1, v2):
+    """GET /api/plan: the FastAPI-generated (template-mode) active plan must read
+    byte-identically from both backends — _plan_dict (weeks_json→weeks) and
+    _workout_dict (structure_json→steps), full field set incl. fit_path/zwo_path/
+    matched_activity_id. The `seeded` fixture generates the plan; both backends
+    read the same shared rows."""
+    a = v1.get("/api/plan")
+    b = v2.get("/api/plan")
+    assert a.status_code == b.status_code == 200
+    aj, bj = a.json(), b.json()
+    assert aj == bj
+    # Sanity: there IS an active plan with workouts (else this proves nothing).
+    assert aj["plan"] is not None and aj["plan"]["status"] == "active"
+    assert aj["workouts"], "expected the seeded template plan to have workouts"
+    assert "steps" in aj["workouts"][0] and "weeks" in aj["plan"]
