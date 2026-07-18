@@ -681,3 +681,41 @@ def test_trends_bad_days_422_parity(v1, v2):
     for bad in ("-1", "abc", "9999"):
         assert v1.get("/api/metrics/trends", params={"days": bad}).status_code == 422, bad
         assert v2.get("/api/metrics/trends", params={"days": bad}).status_code == 422, bad
+
+
+# ── Race readiness (projected splits vs cut-offs) ─────────────────────────────
+
+@pytest.fixture(scope="session")
+def seeded_race_readiness(bearer) -> bool:
+    """Thresholds (CSS + run pace) + recent long bike rides (avg_speed), so all
+    three legs project and the cut-off checks fire. Runs last."""
+    if not os.environ.get("PARITY_PG_ID"):
+        return False
+    aid = _psql("SELECT athlete_id FROM device_token ORDER BY id DESC LIMIT 1")
+    assert aid.isdigit(), f"could not resolve bearer athlete id (got {aid!r})"
+    today = datetime.now(timezone.utc).date()
+    sd = lambda g: (today - timedelta(days=g)).isoformat() + "T08:00:00"
+    _psql(f"""
+        UPDATE athlete SET css_swim = 95, threshold_pace_run = 300 WHERE id = {aid};
+        INSERT INTO activities
+            (id, athlete_id, sport, start_date, name, moving_time, distance, avg_speed, is_duplicate)
+        VALUES
+            (900401, {aid}, 'Bike', '{sd(10)}', 'Long Ride 1', 7200, 60000, 8.33, 0),
+            (900402, {aid}, 'Bike', '{sd(25)}', 'Long Ride 2', 5400, 45000, 8.10, 0),
+            (900403, {aid}, 'Bike', '{sd(40)}', 'Long Ride 3', 3600, 30000, 7.90, 0)
+        ON CONFLICT (id) DO NOTHING;
+    """)
+    return True
+
+
+def test_race_readiness_parity(v1, v2, seeded_race_readiness):
+    """Projected swim/bike/run splits, transitions, total, CTL, and cumulative
+    cut-off checks (margins, ok flags) must be byte-identical."""
+    a = v1.get("/api/metrics/readiness")
+    b = v2.get("/api/metrics/readiness")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    aj = a.json()
+    assert set(aj["legs"]) == {"swim", "bike", "run"}, "all legs projected"
+    assert aj["missing"] == [], "no missing inputs"
+    assert len(aj["cutoffs"]) == 3 and all("ok" in c for c in aj["cutoffs"])
