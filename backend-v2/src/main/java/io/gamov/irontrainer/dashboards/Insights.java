@@ -30,7 +30,15 @@ public final class Insights {
     private static final double[] IF_LO = {0.0, 0.70, 0.85, 0.95};
     private static final double[] IF_HI = {0.70, 0.85, 0.95, 10.0};
 
-    /** insights._day: date.fromisoformat(str(v)[:10]) — first 10 chars only. */
+    // The chart value key drawn per sport (fixed mapping).
+    private static final Map<String, String> VALUE_KEY =
+            Map.of("Bike", "power", "Run", "pace", "Swim", "pace");
+
+    /** insights._day: date.fromisoformat(str(v)[:10]) — first 10 chars only.
+     * LocalDate.parse is stricter than CPython's date.fromisoformat for
+     * basic-format dates (YYYYMMDD), but every stored start_date is
+     * extended-ISO ("YYYY-MM-DDThh:mm:ss" from Strava/FastAPI), so the first 10
+     * chars are always "YYYY-MM-DD" and both parse identically. */
     static LocalDate day(String v) {
         if (v == null || v.isEmpty()) {
             return null;
@@ -153,7 +161,6 @@ public final class Insights {
             {"Run", "ef", "true", "pace", "false"},
             {"Swim", "pace", "false", null, null},
         };
-        Map<String, String> valueKey = Map.of("Bike", "power", "Run", "pace", "Swim", "pace");
         Map<String, Object> out = new LinkedHashMap<>();
         for (String[] s : spec) {
             String sport = s[0];
@@ -175,7 +182,7 @@ public final class Insights {
             o.put("metric", key);
             o.put("change_pct", change);
             o.put("verdict", verdict(change, hib));
-            o.put("rolling", rollingMean(pts, valueKey.get(sport), ROLLING_DAYS));
+            o.put("rolling", rollingMean(pts, VALUE_KEY.get(sport), ROLLING_DAYS));
             o.put("rolling_ef", "Swim".equals(sport) ? new ArrayList<>()
                     : rollingMean(pts, "ef", ROLLING_DAYS));
             out.put(sport, o);
@@ -212,7 +219,10 @@ public final class Insights {
         List<Map<String, Object>> out = new ArrayList<>();
         LocalDate end = monday(today);
         for (LocalDate wk = start; !wk.isAfter(end); wk = wk.plusWeeks(1)) {
-            Map<String, Double> r = rows.getOrDefault(wk, freshBuckets());
+            Map<String, Double> r = rows.get(wk);
+            if (r == null) {
+                r = freshBuckets();   // allocate the zero row only when the week is empty
+            }
             Map<String, Object> o = new LinkedHashMap<>();
             o.put("week_start", wk.toString());
             for (Map.Entry<String, Double> e : r.entrySet()) {
