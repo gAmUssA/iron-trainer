@@ -1,10 +1,12 @@
 package io.gamov.irontrainer.plan;
 
+import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.auth.CurrentAthlete;
 import io.gamov.irontrainer.util.PyJson;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +40,30 @@ public class PlanResource {
         }
         out.put("plan", planDict(plan));
         out.put("workouts", workouts(plan.id, aid));
+        return out;
+    }
+
+    /** GET /api/plan/compliance — planned-vs-actual per week + a recent-window
+     * summary, or {weeks:[], recent:null} with no active plan. Mirrors
+     * plan_router.compliance (reconcile.compliance_by_week + recent_compliance). */
+    @GET
+    @Path("/compliance")
+    public Map<String, Object> compliance() {
+        int aid = current.require();
+        LOG.debugf("Plan compliance: athlete=%d", aid);
+        Plan plan = Plan.activeFor(aid);
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (plan == null) {
+            out.put("weeks", List.of());
+            out.put("recent", null);
+            return out;
+        }
+        List<PlannedWorkout> workouts = PlannedWorkout.forPlan(aid, plan.id);
+        // repo.list_activities() default: non-duplicate only.
+        List<Activity> acts = Activity.list(
+                "athleteId = ?1 and (isDuplicate = 0 or isDuplicate is null) order by startDate", aid);
+        out.put("weeks", Compliance.byWeek(workouts, acts));
+        out.put("recent", Compliance.recent(workouts, acts, LocalDate.now(), 21));
         return out;
     }
 

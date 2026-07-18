@@ -804,3 +804,21 @@ def test_plan_parity(v1, v2):
     assert aj["plan"] is not None and aj["plan"]["status"] == "active"
     assert aj["workouts"], "expected the seeded template plan to have workouts"
     assert "steps" in aj["workouts"][0] and "weeks" in aj["plan"]
+
+
+def test_plan_compliance_parity(v1, v2):
+    """GET /api/plan/compliance: planned-vs-actual per week + recent window must
+    read byte-identically from both backends over the `seeded` template plan
+    (reconcile.compliance_by_week + recent_compliance ports). Both read the same
+    shared rows and compute "today" on the same host, so the recent window aligns."""
+    a = v1.get("/api/plan/compliance")
+    b = v2.get("/api/plan/compliance")
+    assert a.status_code == b.status_code == 200
+    aj, bj = a.json(), b.json()
+    assert aj == bj
+    # Sanity: the seeded plan yields week buckets with the compliance keys.
+    assert isinstance(aj["weeks"], list) and aj["weeks"], "expected weekly compliance rows"
+    row = aj["weeks"][0]
+    for k in ("week_start", "planned_tss", "actual_tss", "completed", "skipped", "planned"):
+        assert k in row, k
+    assert aj["recent"] is not None and aj["recent"]["window_days"] == 21
