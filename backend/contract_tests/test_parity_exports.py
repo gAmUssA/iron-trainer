@@ -748,3 +748,42 @@ def test_nutrition_race_day_parity(v1, v2, seeded_race_day):
     assert "pre_race" in phases and "post_race" in phases
     assert any(i["phase"] == "bike" and i["fluid_ml"] for i in aj["items"])
     assert aj["llm_used"] is False
+
+
+@pytest.fixture(scope="session")
+def seeded_infer(bearer) -> bool:
+    """Recent sustained bike (power+HR), run (distance+HR), and swim so
+    infer_profile populates ftp / threshold_hr / pace / css. Runs last so the
+    extra activities don't perturb the other activity-reading parity tests."""
+    if not os.environ.get("PARITY_PG_ID"):
+        return False
+    aid = _psql("SELECT athlete_id FROM device_token ORDER BY id DESC LIMIT 1")
+    assert aid.isdigit(), f"could not resolve bearer athlete id (got {aid!r})"
+    today = datetime.now(timezone.utc).date()
+    sd = lambda g: (today - timedelta(days=g)).isoformat() + "T08:00:00"
+    _psql(f"""
+        INSERT INTO activities
+            (id, athlete_id, sport, start_date, name, moving_time, distance,
+             weighted_power, avg_power, avg_hr, max_hr, is_duplicate)
+        VALUES
+            (900501, {aid}, 'Bike', '{sd(5)}',  'Infer Bike', 3600, 40000, 270, 250, 155, 175, 0),
+            (900502, {aid}, 'Run',  '{sd(10)}', 'Infer Run',  3000, 10000, NULL, NULL, 162, 182, 0),
+            (900503, {aid}, 'Swim', '{sd(15)}', 'Infer Swim', 1800,  2000, NULL, NULL, NULL, NULL, 0)
+        ON CONFLICT (id) DO NOTHING;
+    """)
+    return True
+
+
+def test_athlete_infer_parity(v1, v2, seeded_infer):
+    """POST /api/athlete/infer (preview, apply defaults False): inferred
+    ftp/threshold_hr/pace/css + basis strings must be byte-identical, and no
+    write happens. Exercises analysis.infer_profile."""
+    a = v1.post("/api/athlete/infer")
+    b = v2.post("/api/athlete/infer")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    aj = a.json()
+    assert aj["applied"] is False
+    inf = aj["inferred"]
+    assert inf["ftp"] and inf["threshold_pace_run"] and inf["css_swim"]
+    assert "ftp" in inf["basis"]
