@@ -65,12 +65,15 @@ public class StravaResource {
                 ? QuarkusTransaction.requiringNew().call(() ->
                         Dedup.clusteredNeedingDevice(loadActs(aid)))
                 : List.of();
-        // Phase 2 (external, no tx): fetch the missing device names.
+        // Phase 2 (external, no tx): fetch the missing device names. limit=0 → all
+        // (FastAPI `max_fetches = limit or None`).
         DedupService.DeviceFetch df = fetch
-                ? dedupService.resolveMissingDeviceNames(need, auth, limit)
+                ? dedupService.resolveMissingDeviceNames(need, auth, limit == 0 ? null : limit)
                 : new DedupService.DeviceFetch(Map.of(), 0);
-        // Phase 3 (tx): apply names → mark duplicates → rebuild the PMC.
-        return QuarkusTransaction.requiringNew().call(() -> finalizeDedup(aid, df));
+        // Phase 2.5 (tx): cache fetched names before the finalize can fail.
+        dedupService.persistDeviceNames(df.devices());
+        // Phase 3 (tx): mark duplicates (device-aware) → rebuild the PMC.
+        return QuarkusTransaction.requiringNew().call(() -> finalizeDedup(aid, df.fetched()));
     }
 
     /** list_activities(include_duplicates=True) — ORDER BY start_date so the input
@@ -79,21 +82,18 @@ public class StravaResource {
         return Activity.list("athleteId = ?1 order by startDate", aid);
     }
 
-    private Map<String, Object> finalizeDedup(int aid, DedupService.DeviceFetch df) {
-        List<Activity> acts = loadActs(aid);
-        Dedup.applyDeviceNames(acts, df.devices());
+    private Map<String, Object> finalizeDedup(int aid, int deviceFetched) {
+        List<Activity> acts = loadActs(aid);   // device names already committed (phase 2.5)
         Dedup.Result d = Dedup.markDuplicates(acts);
         int metricsDays = MetricsWrite.rebuildMetrics(aid, acts);  // reuse the loaded list
-        // Python counts any falsy device_name (null OR empty string).
-        long deviceRemaining = d.clusters().stream().flatMap(List::stream)
-                .filter(a -> a.deviceName == null || a.deviceName.isEmpty()).count();
+        int deviceRemaining = Dedup.countDeviceless(d.clusters());
         LOG.infof("Dedup: athlete=%d clusters=%d duplicates=%d device_fetched=%d",
-                aid, d.clusters().size(), d.duplicates(), df.fetched());
+                aid, d.clusters().size(), d.duplicates(), deviceFetched);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("clusters", d.clusters().size());
         out.put("duplicates", d.duplicates());
-        out.put("device_fetched", df.fetched());
-        out.put("device_remaining", (int) deviceRemaining);
+        out.put("device_fetched", deviceFetched);
+        out.put("device_remaining", deviceRemaining);
         out.put("metrics_days", metricsDays);
         return out;
     }

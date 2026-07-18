@@ -134,6 +134,18 @@ public final class Dedup {
         }
     }
 
+    /** device_remaining: clustered activities still without a device name (Python
+     * counts any falsy device_name — null OR empty). Single source for the rule. */
+    public static int countDeviceless(List<List<Activity>> clusters) {
+        int n = 0;
+        for (List<Activity> c : clusters) {
+            for (Activity a : c) {
+                if (a.deviceName == null || a.deviceName.isEmpty()) n++;
+            }
+        }
+        return n;
+    }
+
     /** clear_duplicate_flags → cluster → mark: reset every activity, cluster the
      * same-event ones, and flag all-but-the-primary in each cluster. Mutates the
      * passed (managed) entities. Shared by POST /dedup and the sync. */

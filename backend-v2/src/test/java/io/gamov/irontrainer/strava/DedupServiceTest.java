@@ -58,6 +58,24 @@ class DedupServiceTest {
     }
 
     @Test
+    void nullCapFetchesAll() {
+        // limit=0 → the endpoint passes null → fetch all (FastAPI `max_fetches or None`).
+        DedupService.DeviceFetch df =
+                dedupService.resolveMissingDeviceNames(List.of(501L, 502L), "Bearer T", null);
+        assertEquals(2, df.fetched());
+    }
+
+    @Test
+    void negativeCapMirrorsPythonSlice() {
+        // FastAPI need[:-1] = all but the last → here, first of two ids only.
+        DedupService.DeviceFetch df =
+                dedupService.resolveMissingDeviceNames(List.of(501L, 502L), "Bearer T", -1);
+        assertEquals(1, df.fetched());
+        assertTrue(df.devices().containsKey(501L));
+        assertTrue(!df.devices().containsKey(502L));
+    }
+
+    @Test
     void noAuthOrEmptyNeedFetchesNothing() {
         assertEquals(0, dedupService.resolveMissingDeviceNames(List.of(501L), null, 200).fetched());
         assertEquals(0, dedupService.resolveMissingDeviceNames(List.of(), "Bearer T", 200).fetched());
