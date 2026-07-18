@@ -1,6 +1,7 @@
 package io.gamov.irontrainer.observability;
 
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
@@ -17,8 +18,13 @@ import org.jboss.logging.Logger;
  * Severity is tiered so prod stays quiet but failures and mutations stand out:
  *   5xx                     → ERROR (unexpected failure — always surface)
  *   writes (POST/PUT/…)     → INFO  (every mutation, incl. its outcome status)
- *   reads / 4xx             → DEBUG (expected + already in the access log) */
+ *   reads / 4xx             → DEBUG (expected + already in the access log)
+ *
+ * Low @Priority so the request side runs first (START is set before any other
+ * filter can abort → accurate duration); as a class-level priority that also
+ * makes the response side run last, seeing the final status. */
 @Provider
+@Priority(100)
 public class RequestLogFilter implements ContainerRequestFilter, ContainerResponseFilter {
 
     private static final Logger LOG = Logger.getLogger("io.gamov.irontrainer.request");
@@ -34,18 +40,19 @@ public class RequestLogFilter implements ContainerRequestFilter, ContainerRespon
 
     @Override
     public void filter(ContainerRequestContext req, ContainerResponseContext res) {
-        String method = req.getMethod();
-        String path = req.getUriInfo().getPath();
-        int status = res.getStatus();
-        Object start = req.getProperty(START);
-        long ms = start instanceof Long s ? (System.nanoTime() - s) / 1_000_000L : -1L;
-        Integer athlete = athleteOrNull();
-
-        // %s for the athlete prints "null" when unauthenticated — intended.
-        switch (level(status, method)) {
-            case ERROR -> LOG.errorf("%s %s athlete=%s -> %d (%dms)", method, path, athlete, status, ms);
-            case INFO -> LOG.infof("%s %s athlete=%s -> %d (%dms)", method, path, athlete, status, ms);
-            case DEBUG -> LOG.debugf("%s %s athlete=%s -> %d (%dms)", method, path, athlete, status, ms);
+        // Observability must NEVER affect the response: swallow anything.
+        try {
+            String method = req.getMethod();
+            String path = req.getUriInfo().getPath();
+            int status = res.getStatus();
+            Object start = req.getProperty(START);
+            long ms = start instanceof Long s ? (System.nanoTime() - s) / 1_000_000L : -1L;
+            Integer athlete = athleteOrNull();
+            // %s for the athlete prints "null" when unauthenticated — intended.
+            LOG.logf(level(status, method), "%s %s athlete=%s -> %d (%dms)",
+                    method, path, athlete, status, ms);
+        } catch (Throwable t) {
+            LOG.debug("request-log filter failed (ignored)", t);
         }
     }
 
@@ -58,13 +65,11 @@ public class RequestLogFilter implements ContainerRequestFilter, ContainerRespon
         }
     }
 
-    enum Level { ERROR, INFO, DEBUG }
-
     /** Pure severity decision (unit-tested): 5xx→ERROR, writes→INFO, else→DEBUG. */
-    static Level level(int status, String method) {
-        if (status >= 500) return Level.ERROR;
-        if (isWrite(method)) return Level.INFO;
-        return Level.DEBUG;
+    static Logger.Level level(int status, String method) {
+        if (status >= 500) return Logger.Level.ERROR;
+        if (isWrite(method)) return Logger.Level.INFO;
+        return Logger.Level.DEBUG;
     }
 
     private static boolean isWrite(String method) {

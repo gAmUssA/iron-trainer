@@ -1,8 +1,8 @@
 package io.gamov.irontrainer.observability;
 
+import org.jboss.logging.Logger.Level;
 import org.junit.jupiter.api.Test;
 
-import static io.gamov.irontrainer.observability.RequestLogFilter.Level;
 import static io.gamov.irontrainer.observability.RequestLogFilter.level;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
