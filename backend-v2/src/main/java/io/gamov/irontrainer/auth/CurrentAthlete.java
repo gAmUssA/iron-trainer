@@ -21,4 +21,10 @@ public class CurrentAthlete {
         }
         return athleteId;
     }
+
+    /** The resolved athlete id, or null when the request is unauthenticated.
+     * For logging/observability only — never for tenancy decisions (use require). */
+    public Integer idOrNull() {
+        return athleteId;
+    }
 }
