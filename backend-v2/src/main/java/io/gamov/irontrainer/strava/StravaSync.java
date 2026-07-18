@@ -5,9 +5,9 @@ import io.gamov.irontrainer.athlete.Analysis;
 import io.gamov.irontrainer.metrics.Metrics.Thresholds;
 import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.util.Iso;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -19,18 +19,24 @@ import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jboss.logging.Logger;
 
 /** Strava sync — port of services.run_sync: refresh token → fetch activity
- * summaries → map + upsert → prune old → de-dup → rebuild the PMC. The external
- * fetch runs OUTSIDE a DB transaction; only the persist phase is transactional.
- * (Threshold inference — seed_profile_if_empty — is deferred to bean svinfer;
- * the device-name detail fetch is deferred to the dedup enrichment.) */
+ * summaries → map + upsert → prune old → de-dup (with device-name detail fetch)
+ * → seed thresholds if empty → rebuild the PMC. BOTH external phases (activity
+ * fetch, device-detail fetch) run OUTSIDE a DB transaction; the DB work is done
+ * in QuarkusTransaction phases around them. */
 @ApplicationScoped
 public class StravaSync {
 
     private static final Logger LOG = Logger.getLogger(StravaSync.class);
     private static final int PER_PAGE = 200;
+    // Cap device-detail lookups per run so a big backfill stays responsive and
+    // survives rate limits (services.run_sync passes max_fetches=200).
+    private static final int DEVICE_FETCH_CAP = 200;
 
     @Inject
     StravaTokens tokens;
+
+    @Inject
+    DedupService dedupService;
 
     @RestClient
     StravaApi strava;
@@ -43,8 +49,27 @@ public class StravaSync {
         Long after = full ? historyCutoffEpoch() : latestActivityEpoch(aid);
         LOG.infof("Strava sync starting (athlete=%d, full=%s, after=%s).", aid, full, after);
         List<Map<String, Object>> raw = fetchAll(token, after);  // external, no tx
-        return persist(aid, raw);                            // tx: upsert + dedup + rebuild
+
+        // Phase 1 (tx): upsert + prune, then find clustered activities missing a
+        // device name. Counts stashed for the final response.
+        Upserted up = QuarkusTransaction.requiringNew().call(() -> {
+            int upserted = upsert(aid, raw);
+            int pruned = pruneOld(aid);
+            List<Long> need = Dedup.clusteredNeedingDevice(
+                    Activity.list("athleteId = ?1 order by startDate", aid));
+            return new Upserted(upserted, pruned, need);
+        });
+        // Phase 2 (external, no tx): resolve missing device names from Strava.
+        DedupService.DeviceFetch df = dedupService.resolveMissingDeviceNames(
+                up.need(), "Bearer " + token, DEVICE_FETCH_CAP);
+        // Phase 2.5 (tx): cache fetched names before the finalize can fail, so a
+        // rebuild/seed error doesn't waste the Strava quota on the next run.
+        dedupService.persistDeviceNames(df.devices());
+        // Phase 3 (tx): dedup (device-aware) → seed → rebuild → build the response.
+        return QuarkusTransaction.requiringNew().call(() -> finalizeSync(aid, raw.size(), up, df.fetched()));
     }
+
+    private record Upserted(int upserted, int pruned, List<Long> need) {}
 
     /** Paginated fetch, mirroring strava.fetch_activities (per_page 200 until a
      * short page). Null `after` is omitted by the client (full history). */
@@ -72,33 +97,32 @@ public class StravaSync {
         }
     }
 
-    @Transactional
-    Map<String, Object> persist(int aid, List<Map<String, Object>> raw) {
-        int upserted = upsert(aid, raw);
-        int pruned = pruneOld(aid);
-        // De-dup (device-name detail fetch deferred), seed thresholds if the
-        // profile is empty (re-costs activities), then rebuild the PMC from the
-        // resulting TSS. Order matches FastAPI run_sync: dedup → seed → rebuild.
+    /** Phase 3 (tx): apply the fetched device names, mark duplicates (now
+     * device-aware), seed thresholds if the profile is empty (re-costs
+     * activities), then rebuild the PMC. Order matches FastAPI run_sync:
+     * dedup → seed → rebuild. */
+    Map<String, Object> finalizeSync(int aid, int fetchedCount, Upserted up, int deviceFetched) {
+        // Device names already committed (phase 2.5) — this reload sees them.
         List<Activity> acts = Activity.list("athleteId = ?1 order by startDate", aid);
         Dedup.Result d = Dedup.markDuplicates(acts);
         Map<String, Object> seeded = Analysis.seedProfileIfEmpty(aid, LocalDate.now());
         int metricsDays = MetricsWrite.rebuildMetrics(aid, acts);
-        long deviceRemaining = d.clusters().stream().flatMap(List::stream)
-                .filter(a -> a.deviceName == null || a.deviceName.isEmpty()).count();
+        int deviceRemaining = Dedup.countDeviceless(d.clusters());
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("fetched", raw.size());
-        out.put("upserted", upserted);
-        out.put("pruned_old", pruned);
-        out.put("total_activities", (int) Activity.count("athleteId", aid));
+        out.put("fetched", fetchedCount);
+        out.put("upserted", up.upserted());
+        out.put("pruned_old", up.pruned());
+        out.put("total_activities", acts.size());   // acts is the full list — no extra COUNT
         out.put("duplicates_removed", d.duplicates());
         out.put("duplicate_clusters", d.clusters().size());
-        out.put("device_remaining", (int) deviceRemaining);
+        // NOTE: run_sync's response omits device_fetched (only /dedup returns it).
+        out.put("device_remaining", deviceRemaining);
         out.put("metrics_days", metricsDays);
         out.put("profile_seeded", seeded != null);
         out.put("inferred_profile", seeded);
-        LOG.infof("Strava sync done: fetched=%d upserted=%d pruned=%d dups=%d days=%d%s",
-                raw.size(), upserted, pruned, d.duplicates(), metricsDays,
+        LOG.infof("Strava sync done: fetched=%d upserted=%d pruned=%d dups=%d device_fetched=%d days=%d%s",
+                fetchedCount, up.upserted(), up.pruned(), d.duplicates(), deviceFetched, metricsDays,
                 seeded != null ? " (thresholds inferred)" : "");
         return out;
     }

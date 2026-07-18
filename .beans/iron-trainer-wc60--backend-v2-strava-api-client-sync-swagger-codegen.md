@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-07-16T23:53:05Z
-updated_at: 2026-07-18T17:31:07Z
+updated_at: 2026-07-18T17:52:13Z
 ---
 
 Port strava.py (exchange_code, refresh_access_token, fetch_activities, fetch_activity_detail, deauthorize) using Strava's OpenAPI Java swagger-codegen client (https://developers.strava.com/docs/#client-code). Wire POST /api/strava/sync: valid_access_token (refresh if expired via strava_token_expires_at) → fetch_activities(after) → _map_activity → upsert_activities → deduplicate(fetch_details) → recompute_tss+rebuild_metrics (adix). Also the dedup device-name FETCH path (fetch=true+connected). Test vs a MOCKED Strava (WireMock/@InjectMock), no live calls. Reuses [[iron-trainer-adix]] + PR1 dedup/_map_activity. Split from [[iron-trainer-3ptl]].
@@ -44,3 +44,17 @@ StravaSync.persist between dedup and rebuild (FastAPI run_sync order), and the
 result surfaces as profile_seeded / inferred_profile. 2 @QuarkusTests (seeds+re-costs;
 no-op). 100 backend-v2 + 57 parity green. Slice A merged (PR #66). REMAINING (slice B): dedup device-name fetch enrichment
 (fetchActivityDetail exists, not wired) — next.
+
+## Slice B shipped: dedup device-name fetch enrichment (PR pending)
+
+DedupService.resolveMissingDeviceNames — the EXTERNAL detail-fetch phase, run
+OUTSIDE any DB tx (per-activity HTTP must not hold a DB connection): capped,
+429→break, other-error→skip, deviceless-success still counts (matches
+services.deduplicate). Dedup.clusteredNeedingDevice / applyDeviceNames helpers.
+StravaResource.dedup + StravaSync.runSync refactored to 3 phases: tx read+cluster
+→ external fetch → tx apply+mark+(seed)+rebuild, via QuarkusTransaction (no
+tx-held-across-HTTP). validAccessToken now supplies the /dedup 409+refresh (closes
+the deferred token-refresh gap). run_sync response omits device_fetched (parity);
+/dedup returns it. Tests: DedupServiceTest (WireMock: fetch/cap/429/500/no-auth),
+DedupTest (+2 pure), StravaSyncTest still green under the phased runSync. 107
+backend-v2 + 57 parity green. wc60 COMPLETE (slices A+B).

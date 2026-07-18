@@ -110,6 +110,42 @@ public final class Dedup {
     /** Result of a dedup pass: the same-event clusters and the duplicate count. */
     public record Result(List<List<Activity>> clusters, int duplicates) {}
 
+    /** Ids of clustered (in a duplicate cluster) activities that lack a device
+     * name — the set worth a Strava detail fetch, since device name drives
+     * primary selection (Apple Watch / bike computer first). Order preserved.
+     * Mirrors services.deduplicate's `need` list. */
+    public static List<Long> clusteredNeedingDevice(List<Activity> acts) {
+        List<Long> need = new ArrayList<>();
+        for (List<Activity> cluster : clusterDuplicates(acts)) {
+            for (Activity a : cluster) {
+                if (a.deviceName == null || a.deviceName.isEmpty()) need.add(a.id);
+            }
+        }
+        return need;
+    }
+
+    /** Apply fetched device names onto the (managed) activities — id → name, where
+     * name may be null when Strava reported none (a fetched-but-deviceless
+     * activity stays "remaining", matching services.deduplicate). */
+    public static void applyDeviceNames(List<Activity> acts, java.util.Map<Long, String> devices) {
+        if (devices.isEmpty()) return;
+        for (Activity a : acts) {
+            if (devices.containsKey(a.id)) a.deviceName = devices.get(a.id);
+        }
+    }
+
+    /** device_remaining: clustered activities still without a device name (Python
+     * counts any falsy device_name — null OR empty). Single source for the rule. */
+    public static int countDeviceless(List<List<Activity>> clusters) {
+        int n = 0;
+        for (List<Activity> c : clusters) {
+            for (Activity a : c) {
+                if (a.deviceName == null || a.deviceName.isEmpty()) n++;
+            }
+        }
+        return n;
+    }
+
     /** clear_duplicate_flags → cluster → mark: reset every activity, cluster the
      * same-event ones, and flag all-but-the-primary in each cluster. Mutates the
      * passed (managed) entities. Shared by POST /dedup and the sync. */

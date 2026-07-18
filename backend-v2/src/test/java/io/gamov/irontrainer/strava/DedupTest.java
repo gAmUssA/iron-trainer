@@ -77,4 +77,27 @@ class DedupTest {
         Activity rich = dev(2, "Run", "2026-06-20T08:00:00", 3600, null, 150.0, null, null);
         assertEquals(2L, Dedup.primaryOf(List.of(plain, rich)).id);
     }
+
+    @Test
+    void clusteredNeedingDeviceListsOnlyDevicelessClusterMembers() {
+        // Same-event cluster: one has a device, one doesn't → only the deviceless.
+        Activity withDev = dev(1, "Bike", "2026-06-20T08:00:00", 3600, "Garmin Edge", null, null, null);
+        Activity noDev = act(2, "Bike", "2026-06-20T08:01:00", 3620);
+        // A lone (non-clustered) activity without a device is NOT included.
+        Activity lone = act(3, "Run", "2026-06-21T07:00:00", 1800);
+        assertEquals(List.of(2L), Dedup.clusteredNeedingDevice(List.of(withDev, noDev, lone)));
+    }
+
+    @Test
+    void applyDeviceNamesSetsNamesIncludingNull() {
+        Activity a = act(1, "Bike", "2026-06-20T08:00:00", 3600);
+        Activity b = act(2, "Bike", "2026-06-20T08:01:00", 3620);
+        b.deviceName = "stale";
+        java.util.Map<Long, String> devices = new java.util.LinkedHashMap<>();
+        devices.put(1L, "Apple Watch");
+        devices.put(2L, null);                 // fetched but Strava had no device → clears
+        Dedup.applyDeviceNames(List.of(a, b), devices);
+        assertEquals("Apple Watch", a.deviceName);
+        assertEquals(null, b.deviceName);
+    }
 }

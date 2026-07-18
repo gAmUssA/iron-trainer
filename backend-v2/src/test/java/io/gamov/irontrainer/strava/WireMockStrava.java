@@ -41,6 +41,19 @@ public class WireMockStrava implements QuarkusTestResourceLifecycleManager {
                         + "\"start_date_local\":\"2026-07-02T07:00:00\",\"name\":\"Run B\","
                         + "\"moving_time\":1800,\"distance\":6000,\"average_heartrate\":160}]")));
 
+        // Activity detail (device_name enrichment for de-dup). 501/502 carry device
+        // names; 555 → 429 (rate limited → breaks the loop); 556 → 500 (skipped).
+        wm.stubFor(get(urlPathEqualTo("/api/v3/activities/501")).willReturn(aResponse()
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"id\":501,\"device_name\":\"Garmin Edge 530\"}")));
+        wm.stubFor(get(urlPathEqualTo("/api/v3/activities/502")).willReturn(aResponse()
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"id\":502,\"device_name\":\"Apple Watch\"}")));
+        wm.stubFor(get(urlPathEqualTo("/api/v3/activities/555"))
+                .willReturn(aResponse().withStatus(429)));
+        wm.stubFor(get(urlPathEqualTo("/api/v3/activities/556"))
+                .willReturn(aResponse().withStatus(500)));
+
         return Map.of("quarkus.rest-client.strava.url", wm.baseUrl());
     }
 
