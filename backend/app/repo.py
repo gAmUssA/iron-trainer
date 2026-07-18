@@ -576,7 +576,11 @@ def get_workouts(plan_id: int | None = None) -> list[dict]:
         rows = s.exec(
             select(PlannedWorkout)
             .where(PlannedWorkout.athlete_id == aid, PlannedWorkout.plan_id == plan_id)
-            .order_by(PlannedWorkout.date)
+            # (date, id): the template schedules multiple sports on the same date
+            # (Swim+Bike on day 1), so date alone leaves ties unspecified. The id
+            # tiebreak (= schedule/insertion order) keeps the list deterministic
+            # so it matches backend-v2 (PlannedWorkout.forPlan) byte-for-byte.
+            .order_by(PlannedWorkout.date, PlannedWorkout.id)
         ).all()
         return [_workout_dict(w) for w in rows]
 

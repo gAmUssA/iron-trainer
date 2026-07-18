@@ -29,6 +29,15 @@ public class Plan extends PanacheEntityBase {
     public String status;
     public String summary;
 
+    @Column(name = "weeks_json")
+    public String weeksJson;
+
+    @Column(name = "base_weekly_hours")
+    public Double baseWeeklyHours;
+
+    @Column(name = "created_at")
+    public String createdAt;
+
     public static Plan activeFor(int athleteId) {
         return find("athleteId = ?1 and status = 'active' order by id desc", athleteId).firstResult();
     }
