@@ -719,3 +719,32 @@ def test_race_readiness_parity(v1, v2, seeded_race_readiness):
     assert set(aj["legs"]) == {"swim", "bike", "run"}, "all legs projected"
     assert aj["missing"] == [], "no missing inputs"
     assert len(aj["cutoffs"]) == 3 and all("ok" in c for c in aj["cutoffs"])
+
+
+@pytest.fixture(scope="session")
+def seeded_race_day(bearer, seeded_race_readiness) -> bool:
+    """Race-day fueling needs the readiness projection (seeded_race_readiness,
+    which sets CSS/run pace + recent bike rides) PLUS body weight, so the
+    pre-race meals, recovery, and estimated hydration items all appear."""
+    if not os.environ.get("PARITY_PG_ID"):
+        return False
+    aid = _psql("SELECT athlete_id FROM device_token ORDER BY id DESC LIMIT 1")
+    assert aid.isdigit(), f"could not resolve bearer athlete id (got {aid!r})"
+    _psql(f"UPDATE athlete SET body_weight_kg = 72, gel_carb_g = 25 WHERE id = {aid};")
+    return True
+
+
+def test_nutrition_race_day_parity(v1, v2, seeded_race_day):
+    """Deterministic race-day fueling timeline: leg durations from the readiness
+    projection, per-phase carb/fluid/sodium totals, meals, and safety adjustments
+    must be byte-identical. Exercises compute_race_day_plan + validate_fueling."""
+    a = v1.get("/api/nutrition/race-day")
+    b = v2.get("/api/nutrition/race-day")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    aj = a.json()
+    phases = [i["phase"] for i in aj["items"]]
+    # body weight → pre-race meals + recovery present; sweat estimate → bike hydration
+    assert "pre_race" in phases and "post_race" in phases
+    assert any(i["phase"] == "bike" and i["fluid_ml"] for i in aj["items"])
+    assert aj["llm_used"] is False

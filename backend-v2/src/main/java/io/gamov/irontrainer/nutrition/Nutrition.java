@@ -1,8 +1,11 @@
 package io.gamov.irontrainer.nutrition;
 
 import io.gamov.irontrainer.util.Py;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Deterministic fueling math — faithful port of app/nutrition.py (the subset
  * behind GET /api/nutrition/workout/{id} and /daily). Pure functions; JSON must
@@ -28,6 +31,20 @@ public final class Nutrition {
     static final double PRE_RACE_MEAL_G_KG = 2.5;
     static final double PRE_RACE_SNACK_G_KG = 1.0;
     static final double RECOVERY_G_KG = 1.2;
+    static final double PLAIN_WATER_SAFE_ML_H = 750.0;
+
+    // Absolute per-item ceilings for phases with no duration (transitions ~a
+    // minute; meals a single sitting) where hourly rates don't apply.
+    static final double TRANSITION_MAX_CARB_G = 80.0;
+    static final double TRANSITION_MAX_FLUID_ML = 500.0;
+    static final double MEAL_MAX_CARB_G = 300.0;
+    static final double MEAL_MAX_FLUID_ML = 1000.0;
+    static final Set<String> TRANSITION_PHASES = Set.of("t1", "t2");
+
+    // Fallback projected leg durations (seconds) when readiness has no projection.
+    static final Map<String, Map<String, Integer>> DEFAULT_LEGS_S = Map.of(
+        "70.3", Map.of("swim", 45 * 60, "bike", 3 * 3600, "run", 2 * 3600),
+        "140.6", Map.of("swim", 80 * 60, "bike", 6 * 3600 + 30 * 60, "run", 4 * 3600 + 30 * 60));
 
     // Upper bound of each bracket in hours -> g/h.
     static final double[][] CARB_BRACKETS = {
@@ -176,5 +193,259 @@ public final class Nutrition {
         out.put("pre_race", preRace);
         out.put("recovery_carb_g", recoveryTarget(bodyWeightKg));
         return out;
+    }
+
+    // ── Race-day plan (deterministic fallback / LLM prior) ───────────────────
+
+    /** GET /api/nutrition/race-day (deterministic): the full race-day fueling
+     * timeline. `readiness` is the race_readiness projection (RaceReadiness) —
+     * its per-leg "seconds" override the default leg durations. Faithful port of
+     * compute_race_day_plan; runs through validateFueling like FastAPI. */
+    public static Map<String, Object> computeRaceDayPlan(
+            Double bodyWeightKg, Double gelCarbG, Double sweatRateLH,
+            Map<String, Object> race, Map<String, Object> readiness) {
+        boolean hasWeight = bodyWeightKg != null && bodyWeightKg != 0.0;
+        double gelG = (gelCarbG == null || gelCarbG == 0.0) ? DEFAULT_GEL_CARB_G : gelCarbG;
+        Object distO = race == null ? null : race.get("distance");
+        String distance = (distO == null || String.valueOf(distO).isEmpty())
+                ? "70.3" : String.valueOf(distO);
+        Map<String, Integer> legs = new LinkedHashMap<>(
+                DEFAULT_LEGS_S.getOrDefault(distance, DEFAULT_LEGS_S.get("70.3")));
+        for (String name : List.of("swim", "bike", "run")) {
+            Integer proj = projSeconds(readiness, name);
+            if (proj != null && proj != 0) legs.put(name, proj);   // `if proj:` truthy
+        }
+
+        // sweat: measured override, else estimate (only when weight is truthy).
+        Double sweat = sweatRateLH;
+        if (sweat == null && hasWeight) sweat = estimateSweatRate(bodyWeightKg, "tempo");
+        boolean sweatTruthy = sweat != null && sweat != 0.0;
+
+        List<Map<String, Object>> items = new ArrayList<>();
+        List<String> adjustments = new ArrayList<>();
+
+        if (hasWeight) {
+            long meal3h = Py.roundInt(bodyWeightKg * PRE_RACE_MEAL_G_KG);
+            long snack1h = Py.roundInt(bodyWeightKg * PRE_RACE_SNACK_G_KG);
+            items.add(item("pre_race", -210L, "Pre-race meal", meal3h, 500L, null,
+                    "Familiar, low-fibre carbs: oatmeal, toast, banana. 3-4 h before the start."));
+            items.add(item("pre_race", -60L, "Pre-race snack", snack1h, 300L, 300L,
+                    "Energy bar or sports drink; sip electrolytes until the start."));
+        } else {
+            adjustments.add("Body weight not set — pre-race and recovery amounts omitted.");
+        }
+
+        items.add(item("swim", 0L, "Swim", 0L, 0L, 0L,
+                "No fueling. Optionally one gel with a sip of water 15 min before the gun."));
+
+        long swimMin = Py.roundInt(legs.get("swim") / 60.0);
+        double bikeH = legs.get("bike") / 3600.0;
+        long bikeCarbH = carbTargetPerHour(legs.get("bike"), "tempo");
+        Long bikeFluidH = sweatTruthy ? hydrationTargetPerHour(sweat) : null;
+        Long bikeSodiumH = sweatTruthy ? sodiumTargetPerHour(sweat) : null;
+        items.add(item("t1", swimMin, "T1", Py.roundInt(gelG), 200L, null,
+                "One gel + water while transitioning."));
+        long gelInterval = bikeCarbH != 0 ? Math.max(Py.roundInt(60.0 * gelG / bikeCarbH), 15L) : 60L;
+        String bikeNotes = Py.f0(bikeCarbH) + " g/h — one " + Py.f0(gelG) + " g gel every "
+                + gelInterval + " min"
+                + (needsMtc(bikeCarbH) ? " (glucose:fructose blend above 60 g/h)" : "")
+                + ". The bike is where most of the eating happens.";
+        Map<String, Object> bike = item("bike", swimMin + 5, "Bike",
+                Py.roundInt(bikeCarbH * bikeH),
+                bikeFluidH != null ? Py.roundInt(bikeFluidH * bikeH) : null,
+                bikeSodiumH != null ? Py.roundInt(bikeSodiumH * bikeH) : null,
+                bikeNotes);
+        bike.put("phase_duration_s", (long) legs.get("bike"));
+        items.add(bike);
+
+        double runH = legs.get("run") / 3600.0;
+        double runCarbH = Math.min((double) carbTargetPerHour(legs.get("run"), "tempo"), 60.0);
+        Long runFluidH = sweatTruthy ? hydrationTargetPerHour(sweat) : null;
+        Long runSodiumH = sweatTruthy ? sodiumTargetPerHour(sweat) : null;
+        long bikeDoneMin = Py.roundInt((legs.get("swim") + 5 * 60 + legs.get("bike")) / 60.0);
+        items.add(item("t2", bikeDoneMin, "T2", Py.roundInt(gelG), 200L, null,
+                "One gel + water heading out on the run."));
+        Map<String, Object> run = item("run", bikeDoneMin + 3, "Run",
+                Py.roundInt(runCarbH * runH),
+                runFluidH != null ? Py.roundInt(runFluidH * runH) : null,
+                runSodiumH != null ? Py.roundInt(runSodiumH * runH) : null,
+                Py.f0(runCarbH) + " g/h — gel or chews every 20-25 min, fluid at every aid station.");
+        run.put("phase_duration_s", (long) legs.get("run"));
+        items.add(run);
+
+        if (hasWeight) {
+            items.add(item("post_race", bikeDoneMin + 3 + Py.roundInt(runH * 60.0) + 15,
+                    "Recovery", recoveryTarget(bodyWeightKg), 500L, 500L,
+                    "1.2 g/kg carbs + ~25 g protein within 30 min of finishing."));
+        }
+
+        long totalCarbs = 0;
+        for (Map<String, Object> i : items) {
+            Object ph = i.get("phase");
+            if ("t1".equals(ph) || "bike".equals(ph) || "t2".equals(ph) || "run".equals(ph)) {
+                totalCarbs += (long) num(i.get("carbs_g"));
+            }
+        }
+        String summary = "~" + totalCarbs + " g carbs across the race "
+                + "(bike " + Py.f0(bikeCarbH) + " g/h, run " + Py.f0(runCarbH) + " g/h)"
+                + (bikeFluidH != null ? ", fluid ~" + Py.f0(bikeFluidH) + " mL/h" : "")
+                + ". Practice this in training — nothing new on race day.";
+
+        Map<String, Object> raceOut = new LinkedHashMap<>();
+        raceOut.put("name", race == null ? null : race.get("name"));
+        raceOut.put("date", race == null ? null : race.get("date"));
+        raceOut.put("distance", distance);
+        Map<String, Object> plan = new LinkedHashMap<>();
+        plan.put("race", raceOut);
+        plan.put("summary", summary);
+        plan.put("gel_carb_g", gelG);
+        plan.put("items", items);
+        plan.put("llm_used", false);
+
+        List<String> notes = validateFueling(plan);   // clamps items in place, returns adjustments
+        List<String> adj = new ArrayList<>(adjustments);
+        adj.addAll(notes);
+        plan.put("adjustments", adj);
+        return plan;
+    }
+
+    /** Clamp unsafe fueling values in-place; return the adjustment notes. Rates
+     * are checked per PHASE (summed across its items); duration-less items get
+     * absolute per-item ceilings. Faithful port of validate_fueling. */
+    static List<String> validateFueling(Map<String, Object> plan) {
+        List<String> notes = new ArrayList<>();
+        List<Map<String, Object>> items = new ArrayList<>();
+        Object itemsO = plan.get("items");
+        if (itemsO instanceof List<?> l) {
+            for (Object o : l) {
+                if (o instanceof Map<?, ?> m) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> mm = (Map<String, Object>) m;
+                    items.add(new LinkedHashMap<>(mm));
+                }
+            }
+        }
+
+        // A phase's duration is set by any member carrying (phase_)duration_s.
+        Map<String, Double> phaseDurH = new LinkedHashMap<>();
+        for (Map<String, Object> i : items) {
+            Double d = phaseHours(i);
+            Object ph = i.get("phase");
+            if (d != null && ph != null && !phaseDurH.containsKey(ph)) {
+                phaseDurH.put(String.valueOf(ph), d);
+            }
+        }
+
+        // 1) Phases with a duration: rate-check totals, scale members to fit.
+        for (Map.Entry<String, Double> e : phaseDurH.entrySet()) {
+            String phase = e.getKey();
+            double durH = e.getValue();
+            List<Map<String, Object>> members = new ArrayList<>();
+            for (Map<String, Object> i : items) {
+                if (phase.equals(i.get("phase"))) members.add(i);
+            }
+
+            double carbs = 0;
+            for (Map<String, Object> i : members) carbs += num(i.get("carbs_g"));
+            if (carbs > MAX_CARB_G_H * durH) {
+                double scale = (MAX_CARB_G_H * durH) / carbs;
+                for (Map<String, Object> i : members) {
+                    double c = num(i.get("carbs_g"));
+                    if (c != 0) i.put("carbs_g", Py.roundInt(c * scale));
+                }
+                notes.add(phase + ": carbs capped at " + Py.f0(MAX_CARB_G_H) + " g/h.");
+                carbs = MAX_CARB_G_H * durH;
+            }
+            if (carbs / durH > MTC_THRESHOLD_G_H) {
+                for (Map<String, Object> i : members) {
+                    double c = num(i.get("carbs_g"));
+                    String nt = i.get("notes") == null ? "" : String.valueOf(i.get("notes"));
+                    if (c != 0 && !nt.toLowerCase().contains("fructose")) {
+                        i.put("notes", (nt + " Use a glucose:fructose blend above 60 g/h.").strip());
+                    }
+                }
+            }
+
+            double fluid = 0;
+            for (Map<String, Object> i : members) fluid += num(i.get("fluid_ml"));
+            if (fluid > MAX_FLUID_ML_H * durH) {
+                double scale = (MAX_FLUID_ML_H * durH) / fluid;
+                for (Map<String, Object> i : members) {
+                    double f = num(i.get("fluid_ml"));
+                    if (f != 0) i.put("fluid_ml", Py.roundInt(f * scale));
+                }
+                notes.add(phase + ": fluid capped at " + Py.f0(MAX_FLUID_ML_H)
+                        + " mL/h (hyponatremia risk).");
+                fluid = MAX_FLUID_ML_H * durH;
+            }
+            boolean anySodium = false;
+            for (Map<String, Object> i : members) {
+                if (num(i.get("sodium_mg")) != 0) anySodium = true;
+            }
+            if (fluid / durH > PLAIN_WATER_SAFE_ML_H && !anySodium) {
+                notes.add(phase + ": >750 mL/h fluid without sodium — add electrolytes.");
+            }
+        }
+
+        // 2) Duration-less items: absolute ceilings.
+        for (Map<String, Object> i : items) {
+            Object ph = i.get("phase");
+            if ((ph != null && phaseDurH.containsKey(ph)) || "swim".equals(ph)) continue;
+            // Python `i.get("label") or phase`: an empty-string label is falsy too.
+            Object lab = i.get("label");
+            String label = (lab != null && !String.valueOf(lab).isEmpty())
+                    ? String.valueOf(lab) : String.valueOf(ph);
+            boolean isTransition = ph != null && TRANSITION_PHASES.contains(ph);
+            double carbCap = isTransition ? TRANSITION_MAX_CARB_G : MEAL_MAX_CARB_G;
+            double fluidCap = isTransition ? TRANSITION_MAX_FLUID_ML : MEAL_MAX_FLUID_ML;
+            if (num(i.get("carbs_g")) > carbCap) {
+                i.put("carbs_g", Py.roundInt(carbCap));
+                notes.add(label + ": carbs capped at " + Py.f0(carbCap) + " g.");
+            }
+            if (num(i.get("fluid_ml")) > fluidCap) {
+                i.put("fluid_ml", Py.roundInt(fluidCap));
+                notes.add(label + ": fluid capped at " + Py.f0(fluidCap) + " mL.");
+            }
+        }
+
+        plan.put("items", items);
+        return notes;
+    }
+
+    /** Build a timeline item with the FastAPI key order. carbs/fluid/sodium are
+     * Long (an integer field) or null (Python None). */
+    private static Map<String, Object> item(String phase, long offsetMin, String label,
+            Long carbsG, Long fluidMl, Long sodiumMg, String notes) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("phase", phase);
+        m.put("offset_min", offsetMin);
+        m.put("label", label);
+        m.put("carbs_g", carbsG);
+        m.put("fluid_ml", fluidMl);
+        m.put("sodium_mg", sodiumMg);
+        m.put("notes", notes);
+        return m;
+    }
+
+    /** readiness["legs"][name]["seconds"], or null if absent — mirrors Python's
+     * chained .get(...) with {} defaults. */
+    private static Integer projSeconds(Map<String, Object> readiness, String name) {
+        if (readiness == null) return null;
+        if (!(readiness.get("legs") instanceof Map<?, ?> legs)) return null;
+        if (!(legs.get(name) instanceof Map<?, ?> leg)) return null;
+        return (leg.get("seconds") instanceof Number n) ? n.intValue() : null;
+    }
+
+    /** Python `x or 0` for a numeric field: null/non-number → 0.0. */
+    private static double num(Object o) {
+        return (o instanceof Number n) ? n.doubleValue() : 0.0;
+    }
+
+    /** Item duration in hours for rate checks; `duration_s or phase_duration_s`,
+     * truthy (0/null → the next). */
+    private static Double phaseHours(Map<String, Object> item) {
+        double d = num(item.get("duration_s"));
+        if (d == 0) d = num(item.get("phase_duration_s"));
+        return d != 0 ? d / 3600.0 : null;
     }
 }
