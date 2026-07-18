@@ -26,6 +26,14 @@ public final class Params {
         }
     }
 
+    /** Optional lax bool: absent/blank → the default; otherwise {@link #bool}
+     * (so "1"/"true"/… → true, junk → 422). Mirrors FastAPI
+     * `Query(default, alias=...)` for a bool param — needed for `?async=1`,
+     * which a plain JAX-RS boolean coerces to false. */
+    public static boolean boolOr(String v, boolean def) {
+        return (v == null || v.isBlank()) ? def : bool(v);
+    }
+
     /** Integer query param; 422 on a non-integer value (FastAPI parity). */
     public static int intParam(String v) {
         try {

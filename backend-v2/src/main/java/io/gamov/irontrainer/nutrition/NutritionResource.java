@@ -4,11 +4,13 @@ import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.auth.CurrentAthlete;
 import io.gamov.irontrainer.dashboards.RaceReadiness;
+import io.gamov.irontrainer.jobs.JobRunner;
 import io.gamov.irontrainer.metrics.Metrics.Thresholds;
 import io.gamov.irontrainer.metrics.MetricDaily;
 import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.plan.PlannedWorkout;
 import io.gamov.irontrainer.races.Races;
+import io.gamov.irontrainer.util.Params;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
@@ -17,6 +19,7 @@ import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.QueryParam;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,6 +44,9 @@ public class NutritionResource {
 
     @Inject
     ObjectMapper mapper;
+
+    @Inject
+    JobRunner jobs;
 
     @GET
     @Path("/workout/{workout_id}")
@@ -85,12 +91,19 @@ public class NutritionResource {
     /** POST /api/nutrition/race-day/regenerate — LLM-generated timeline over the
      * deterministic prior, always safety-validated; falls back to the
      * deterministic plan when the LLM is unavailable. Port of
-     * nutrition_router.race_day_regenerate. (The ?async=1 job variant is the
-     * async-envelope vertical, bean s6v3.) */
+     * nutrition_router.race_day_regenerate. With ?async=1 the work runs as a
+     * background job (kind "nutrition_regen") and the response is {"job": <dict>}
+     * to be polled at GET /api/jobs/{id}; the LLM call can take up to 60s, so the
+     * async path keeps the request sub-second. */
     @POST
     @Path("/race-day/regenerate")
-    public Map<String, Object> raceDayRegenerate() {
+    public Map<String, Object> raceDayRegenerate(@QueryParam("async") String asyncParam) {
         int aid = current.require();
+        if (Params.boolOr(asyncParam, false)) {
+            Map<String, Object> env = new LinkedHashMap<>();
+            env.put("job", jobs.submit(aid, "nutrition_regen", () -> regenerateRaceDay(aid)));
+            return env;
+        }
         return regenerateRaceDay(aid);
     }
 
