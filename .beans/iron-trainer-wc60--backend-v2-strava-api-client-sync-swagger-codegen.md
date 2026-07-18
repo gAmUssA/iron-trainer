@@ -1,11 +1,11 @@
 ---
 # iron-trainer-wc60
 title: 'backend-v2: Strava API client + sync (swagger codegen)'
-status: todo
+status: in-progress
 type: feature
 priority: normal
 created_at: 2026-07-16T23:53:05Z
-updated_at: 2026-07-18T13:44:32Z
+updated_at: 2026-07-18T17:19:27Z
 ---
 
 Port strava.py (exchange_code, refresh_access_token, fetch_activities, fetch_activity_detail, deauthorize) using Strava's OpenAPI Java swagger-codegen client (https://developers.strava.com/docs/#client-code). Wire POST /api/strava/sync: valid_access_token (refresh if expired via strava_token_expires_at) → fetch_activities(after) → _map_activity → upsert_activities → deduplicate(fetch_details) → recompute_tss+rebuild_metrics (adix). Also the dedup device-name FETCH path (fetch=true+connected). Test vs a MOCKED Strava (WireMock/@InjectMock), no live calls. Reuses [[iron-trainer-adix]] + PR1 dedup/_map_activity. Split from [[iron-trainer-3ptl]].
@@ -34,3 +34,13 @@ Contract: infer → Analysis.saveInferred (fill-blanks-only, already in backend-
 seed does NOT rebuild; the caller rebuilds afterward). Guard: no-op when the
 athlete already has ftp/threshold_hr/threshold_pace_run/css_swim. Analysis.inferProfile
 is already ported (9gme/PR #63).
+
+## Slice A shipped: seed_profile_if_empty wired into sync (PR pending)
+
+MetricsWrite.recomputeTss(aid) added (recompute_tss only — no rebuild).
+Analysis.seedProfileIfEmpty(aid, today) re-added with the recompute-only contract
+(infer → saveInferred → recomputeTss; no-op when any threshold set). Wired into
+StravaSync.persist between dedup and rebuild (FastAPI run_sync order), and the
+result surfaces as profile_seeded / inferred_profile. 2 @QuarkusTests (seeds+re-costs;
+no-op). 100 backend-v2 + 57 parity green. REMAINING (slice B): dedup device-name
+fetch enrichment (fetchActivityDetail exists, not wired).

@@ -1,6 +1,7 @@
 package io.gamov.irontrainer.strava;
 
 import io.gamov.irontrainer.activity.Activity;
+import io.gamov.irontrainer.athlete.Analysis;
 import io.gamov.irontrainer.metrics.Metrics.Thresholds;
 import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.util.Iso;
@@ -75,10 +76,12 @@ public class StravaSync {
     Map<String, Object> persist(int aid, List<Map<String, Object>> raw) {
         int upserted = upsert(aid, raw);
         int pruned = pruneOld(aid);
-        // De-dup (device-name detail fetch deferred) then rebuild the PMC from
-        // the mapping-time TSS. Ordered by start_date to match FastAPI.
+        // De-dup (device-name detail fetch deferred), seed thresholds if the
+        // profile is empty (re-costs activities), then rebuild the PMC from the
+        // resulting TSS. Order matches FastAPI run_sync: dedup → seed → rebuild.
         List<Activity> acts = Activity.list("athleteId = ?1 order by startDate", aid);
         Dedup.Result d = Dedup.markDuplicates(acts);
+        Map<String, Object> seeded = Analysis.seedProfileIfEmpty(aid, LocalDate.now());
         int metricsDays = MetricsWrite.rebuildMetrics(aid, acts);
         long deviceRemaining = d.clusters().stream().flatMap(List::stream)
                 .filter(a -> a.deviceName == null || a.deviceName.isEmpty()).count();
@@ -92,10 +95,11 @@ public class StravaSync {
         out.put("duplicate_clusters", d.clusters().size());
         out.put("device_remaining", (int) deviceRemaining);
         out.put("metrics_days", metricsDays);
-        out.put("profile_seeded", false);   // seed_profile_if_empty deferred (bean svinfer)
-        out.put("inferred_profile", null);
-        LOG.infof("Strava sync done: fetched=%d upserted=%d pruned=%d dups=%d days=%d",
-                raw.size(), upserted, pruned, d.duplicates(), metricsDays);
+        out.put("profile_seeded", seeded != null);
+        out.put("inferred_profile", seeded);
+        LOG.infof("Strava sync done: fetched=%d upserted=%d pruned=%d dups=%d days=%d%s",
+                raw.size(), upserted, pruned, d.duplicates(), metricsDays,
+                seeded != null ? " (thresholds inferred)" : "");
         return out;
     }
 

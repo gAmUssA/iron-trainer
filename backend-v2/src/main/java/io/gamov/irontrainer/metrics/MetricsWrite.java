@@ -83,6 +83,23 @@ public final class MetricsWrite {
         storeMetrics(aid, days);
     }
 
+    /** recompute_tss() ONLY: re-cost every activity's TSS from current thresholds,
+     * WITHOUT rebuilding metrics_daily. Mirrors repo.recompute_tss — used by
+     * seed_profile_if_empty, whose caller (Strava sync) rebuilds the PMC afterward
+     * from the re-costed TSS. (recomputeAndRebuild stays a single-pass fast path
+     * for the apply cascade; this is the deliberate second variant.) */
+    public static void recomputeTss(int aid) {
+        Thresholds th = thresholds(aid);
+        for (Activity a : Activity.<Activity>list("athleteId", aid)) {
+            TssResult r = Metrics.computeTss(a.sport,
+                    a.movingTime == null ? null : (double) a.movingTime,
+                    a.distance, a.weightedPower, a.avgPower, a.avgHr, th);
+            a.tss = r.tss();
+            a.intensityFactor = r.intensityFactor();
+            a.tssMethod = r.method();
+        }
+    }
+
     /** rebuild_metrics(): rebuild metrics_daily from the STORED activity TSS
      * (non-duplicate only), without recomputing TSS. Used after de-duplication,
      * which changes the non-duplicate set but not per-activity load. Returns the
