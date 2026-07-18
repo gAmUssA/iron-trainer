@@ -1,11 +1,11 @@
 ---
 # iron-trainer-troh
 title: 'backend-v2: batch metrics_daily writes (apply is 28s over the pooler)'
-status: in-progress
+status: completed
 type: bug
 priority: high
 created_at: 2026-07-18T16:30:24Z
-updated_at: 2026-07-18T16:32:47Z
+updated_at: 2026-07-18T16:58:16Z
 ---
 
 recomputeAndRebuild/storeMetrics inserts one metrics_daily row per calendar day (1000+ over multi-year history) with NO Hibernate batching → ~1000 INSERT round-trips over the Supabase pooler → 28s apply, client 499s. Observed in prod after the gb30 write-flip via the request-log filter (POST /api/tests/result/{id}/apply -> 200 (28146ms)). Fix: enable quarkus.hibernate-orm.jdbc.statement-batch-size + order-inserts/updates + reWriteBatchedInserts on the PG driver (MetricDaily has a composite natural key, so inserts ARE batchable). Config-only, parity-safe (identical rows). Matches FastAPI's s.add_all bulk write.
