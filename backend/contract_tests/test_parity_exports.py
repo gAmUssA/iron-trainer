@@ -618,3 +618,66 @@ def test_activities_bad_param_422_parity(v1, v2):
     assert v2.get("/api/activities", params={"limit": "abc"}).status_code == 422
     assert v1.get("/api/metrics/weekly", params={"weeks": "x"}).status_code == 422
     assert v2.get("/api/metrics/weekly", params={"weeks": "x"}).status_code == 422
+
+
+# ── Trends (sport_trends + insights.build) ────────────────────────────────────
+
+@pytest.fixture(scope="session")
+def seeded_trends(bearer) -> bool:
+    """Recent activities across all three sports (4+ points each in the 84-day
+    slope window) with power/hr/IF, so the rolling trendline, slope verdict,
+    intensity mix, and PRs all exercise real data. v1==v2 regardless."""
+    if not os.environ.get("PARITY_PG_ID"):
+        return False
+    aid = _psql("SELECT athlete_id FROM device_token ORDER BY id DESC LIMIT 1")
+    assert aid.isdigit(), f"could not resolve bearer athlete id (got {aid!r})"
+    today = datetime.now(timezone.utc).date()
+    sd = lambda g: (today - timedelta(days=g)).isoformat() + "T08:00:00"
+    rows, idn = [], 900301
+    for i, g in enumerate([5, 15, 25, 40, 55, 70]):          # Bike (90-min, PR-eligible)
+        wp = 260 - i * 8
+        rows.append(f"({idn}, {aid}, 'Bike', '{sd(g)}', 'Ride {i}', 5400, 45000, "
+                    f"{wp - 10}, {wp}, {145 + i}, 0.9, 0)")
+        idn += 1
+    for i, g in enumerate([8, 20, 35, 50, 65]):              # Run (dist >= 5k)
+        rows.append(f"({idn}, {aid}, 'Run', '{sd(g)}', 'Run {i}', 3000, {10000 + i * 200}, "
+                    f"NULL, NULL, {150 + i}, 0.8, 0)")
+        idn += 1
+    for i, g in enumerate([10, 30, 50, 70]):                 # Swim (dist >= 1k)
+        rows.append(f"({idn}, {aid}, 'Swim', '{sd(g)}', 'Swim {i}', 1800, {2000 + i * 50}, "
+                    f"NULL, NULL, {140 + i}, 0.75, 0)")
+        idn += 1
+    _psql(f"""
+        INSERT INTO activities
+            (id, athlete_id, sport, start_date, name, moving_time, distance,
+             avg_power, weighted_power, avg_hr, intensity_factor, is_duplicate)
+        VALUES {",".join(rows)}
+        ON CONFLICT (id) DO NOTHING;
+    """)
+    return True
+
+
+def test_trends_parity(v1, v2, seeded_trends):
+    """The full trends bundle — windowed sport points + insights (rolling means,
+    slope verdicts, intensity mix, PRs, CTL trajectory, freshness) — byte-identical."""
+    a = v1.get("/api/metrics/trends")
+    b = v2.get("/api/metrics/trends")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    # sanity: the seed produced real insight content, not all-empty
+    assert a.json()["insights"]["sports"]["Bike"]["rolling"], "rolling trendline present"
+
+
+def test_trends_window_parity(v1, v2, seeded_trends):
+    for days in (0, 30, 365):
+        a = v1.get("/api/metrics/trends", params={"days": days})
+        b = v2.get("/api/metrics/trends", params={"days": days})
+        assert a.status_code == b.status_code == 200, days
+        assert a.json() == b.json(), days
+
+
+def test_trends_bad_days_422_parity(v1, v2):
+    """days is Query(ge=0, le=3660): out-of-range or non-int → 422 on both."""
+    for bad in ("-1", "abc", "9999"):
+        assert v1.get("/api/metrics/trends", params={"days": bad}).status_code == 422, bad
+        assert v2.get("/api/metrics/trends", params={"days": bad}).status_code == 422, bad

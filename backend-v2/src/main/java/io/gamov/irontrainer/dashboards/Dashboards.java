@@ -75,4 +75,53 @@ public final class Dashboards {
     private static LocalDate day(String s) {
         return Iso.parseDate(s);
     }
+
+    /** sport_trends: per-sport progression points for charting. Bike: weighted
+     * power + efficiency factor (power/HR). Run: pace (sec/km) + EF (speed/HR).
+     * Swim: pace (sec/100m). Points arrive date-ordered (activities are). */
+    public static Map<String, List<Map<String, Object>>> sportTrends(List<Activity> activities) {
+        Map<String, List<Map<String, Object>>> trends = new LinkedHashMap<>();
+        trends.put("Bike", new ArrayList<>());
+        trends.put("Run", new ArrayList<>());
+        trends.put("Swim", new ArrayList<>());
+        for (Activity a : activities) {
+            LocalDate d = day(a.startDate);
+            if (d == null) {
+                continue;
+            }
+            String sport = a.sport;
+            int moving = a.movingTime != null ? a.movingTime : 0;
+            double distance = a.distance != null ? a.distance : 0.0;
+            Double hr = a.avgHr;
+            String iso = d.toString();
+            if ("Bike".equals(sport)) {
+                Double power = Py.truthy(a.weightedPower) ? a.weightedPower : a.avgPower;
+                if (Py.truthy(power)) {
+                    Map<String, Object> p = new LinkedHashMap<>();
+                    p.put("date", iso);
+                    p.put("power", Py.round(power, 0));
+                    p.put("hr", hr);
+                    p.put("ef", Py.truthy(hr) ? Py.round(power / hr, 2) : null);
+                    trends.get("Bike").add(p);
+                }
+            } else if ("Run".equals(sport) && distance > 0 && moving > 0) {
+                double pace = moving / (distance / 1000.0);   // sec/km
+                double speed = distance / moving;
+                Map<String, Object> p = new LinkedHashMap<>();
+                p.put("date", iso);
+                p.put("pace", Py.round(pace, 0));
+                p.put("hr", hr);
+                p.put("ef", Py.truthy(hr) ? Py.round(speed * 100 / hr, 2) : null);
+                trends.get("Run").add(p);
+            } else if ("Swim".equals(sport) && distance > 0 && moving > 0) {
+                double pace = moving / (distance / 100.0);    // sec/100m
+                Map<String, Object> p = new LinkedHashMap<>();
+                p.put("date", iso);
+                p.put("pace", Py.round(pace, 0));
+                p.put("hr", hr);
+                trends.get("Swim").add(p);
+            }
+        }
+        return trends;
+    }
 }
