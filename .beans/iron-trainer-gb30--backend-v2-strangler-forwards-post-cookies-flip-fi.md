@@ -1,11 +1,11 @@
 ---
 # iron-trainer-gb30
 title: 'backend-v2: strangler forwards POST + cookies; flip first write'
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-07-17T04:45:21Z
-updated_at: 2026-07-18T15:05:22Z
+updated_at: 2026-07-18T17:07:44Z
 parent: iron-trainer-eom4
 ---
 
@@ -30,6 +30,8 @@ filter live (PR #64). backend-v2 healthy on the logging image, serving read traf
 
 Rollback: clear PROXY_WRITE_PATHS → writes revert to FastAPI-local instantly.
 
-REMAINING: observe the first forwarded write land on backend-v2 (RequestLogFilter
-INFO: 'POST /api/tests/result athlete=N -> 200 (Nms)') with no 5xx and no
-double-apply. Awaiting organic/test write traffic.
+VALIDATED (2026-07-18): forwarded writes confirmed on backend-v2 —
+POST /api/tests/result -> 200 (53ms); POST /api/tests/result/5/apply -> 200 (409ms),
+front door 200/413ms (no 499, no double-apply). apply latency fixed by bean troh
+(batched metrics_daily writes: 28146ms → 409ms, ~69x). No 5xx. schedule not yet
+exercised but on the same /api/tests/* forward. gb30 complete.
