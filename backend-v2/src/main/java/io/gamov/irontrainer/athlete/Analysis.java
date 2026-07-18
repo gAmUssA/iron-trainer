@@ -1,10 +1,10 @@
 package io.gamov.irontrainer.athlete;
 
 import io.gamov.irontrainer.activity.Activity;
-import io.gamov.irontrainer.metrics.MetricsWrite;
+import io.gamov.irontrainer.util.Iso;
 import io.gamov.irontrainer.util.Py;
+import io.gamov.irontrainer.util.PyJson;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,7 +41,7 @@ public final class Analysis {
         double availabilitySeconds = 0.0;
 
         for (Activity a : activities) {
-            LocalDate day = parseDay(a.startDate);
+            LocalDate day = Iso.parseDate(a.startDate);   // fromisoformat(...).date(), null on bad
             if (day == null) continue;       // Python: KeyError/ValueError → skip
             String sport = a.sport;
             double moving = a.movingTime == null ? 0 : a.movingTime;   // moving_time or 0
@@ -127,24 +127,6 @@ public final class Analysis {
         return out;
     }
 
-    /** seed_profile_if_empty: infer + persist ONLY when the athlete has no
-     * thresholds yet (a first-connect convenience; no-op once any are set).
-     * Returns the inferred map, or null when the profile already has thresholds.
-     * Must run inside a transaction (writes + recompute). */
-    public static Map<String, Object> seedProfileIfEmpty(int aid, LocalDate today) {
-        Athlete a = Athlete.findById(aid);
-        if (a == null) return null;
-        boolean already = Py.truthy(a.ftp) || Py.truthy(a.thresholdHr)
-                || Py.truthy(a.thresholdPaceRun) || Py.truthy(a.cssSwim);
-        if (already) return null;
-        List<Activity> acts = Activity.list(
-                "athleteId = ?1 and (isDuplicate = 0 or isDuplicate is null) order by startDate", aid);
-        Map<String, Object> inferred = inferProfile(acts, today);
-        saveInferred(a, inferred);          // fill blanks only
-        MetricsWrite.recomputeAndRebuild(aid);
-        return inferred;
-    }
-
     /** save_profile for inferred thresholds: sets only the non-null values
      * (never clears a field inference couldn't compute) and bumps updated_at.
      * The entity is managed inside the caller's transaction, so field mutation
@@ -160,18 +142,7 @@ public final class Analysis {
         if ((v = inferred.get("css_swim")) != null) { a.cssSwim = ((Number) v).doubleValue(); changed = true; }
         if ((v = inferred.get("weekly_hours_target")) != null) { a.weeklyHoursTarget = ((Number) v).doubleValue(); changed = true; }
         if (changed) {
-            a.updatedAt = Instant.now().toString();   // _now_iso(): UTC ISO
-        }
-    }
-
-    /** datetime.fromisoformat(s.replace("Z","+00:00")).date() — the date part of
-     * the wall-clock, no tz conversion. Null on missing/unparseable. */
-    private static LocalDate parseDay(String s) {
-        if (s == null || s.length() < 10) return null;
-        try {
-            return LocalDate.parse(s.substring(0, 10));
-        } catch (Exception e) {
-            return null;
+            a.updatedAt = PyJson.utcNowIso();   // _now_iso(): shared UTC ISO, matches every writer
         }
     }
 
