@@ -48,9 +48,12 @@ public class StravaResource {
      * gets a failed job, not a 409 (only the 401 auth gate is synchronous). */
     @POST
     @Path("/sync")
-    public Map<String, Object> syncActivities(@QueryParam("full") @DefaultValue("false") boolean full,
+    public Map<String, Object> syncActivities(@QueryParam("full") String fullParam,
                                               @QueryParam("async") String asyncParam) {
         int aid = current.require();
+        // pydantic-lax bool parity: ?full=1 / ?full=yes → true (a plain JAX-RS
+        // boolean coerces "1" to false).
+        boolean full = Params.boolOr(fullParam, false);
         if (Params.boolOr(asyncParam, false)) {
             return env(jobs.submit(aid, "sync", () -> sync.runSync(aid, full)));
         }
@@ -72,10 +75,13 @@ public class StravaResource {
      * (before the job) so a not-connected athlete still gets a 409, not a job. */
     @POST
     @Path("/dedup")
-    public Map<String, Object> dedup(@QueryParam("fetch") @DefaultValue("true") boolean fetch,
+    public Map<String, Object> dedup(@QueryParam("fetch") String fetchParam,
                                      @QueryParam("limit") @DefaultValue("100") int limit,
                                      @QueryParam("async") String asyncParam) {
         int aid = current.require();
+        // pydantic-lax bool parity (default true): ?fetch=0 / ?fetch=no → false,
+        // ?fetch=1 → true (a plain JAX-RS boolean coerces "1" to false).
+        boolean fetch = Params.boolOr(fetchParam, true);
         // Connection guard + token refresh happen here (409 when not connected) —
         // synchronously even in async mode, matching FastAPI.
         String auth = fetch ? "Bearer " + tokens.validAccessToken(aid) : null;

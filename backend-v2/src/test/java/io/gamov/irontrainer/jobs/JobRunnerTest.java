@@ -34,7 +34,8 @@ class JobRunnerTest {
             QuarkusTransaction.requiringNew().run(() -> {
                 Job j = Job.findById(jobId);
                 assertEquals("succeeded", j.status);
-                assertEquals("{\"ok\":true}", j.resultJson);   // Map serialized, not double-encoded
+                // PyJson.dumps spacing (", "/": ") for shared-DB byte parity.
+                assertEquals("{\"ok\": true}", j.resultJson);
             }));
     }
 

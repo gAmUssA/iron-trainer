@@ -48,31 +48,34 @@ public class JobRunner {
      * work runs OUTSIDE request scope — it must take the athlete explicitly and
      * manage its own transactions (it does: sync/dedup/regen all do). */
     public Map<String, Object> submit(int athleteId, String kind, Supplier<Object> work) {
-        Integer jobId;
+        Map<String, Object> dict;
         synchronized (submitLock) {
             Job existing = QuarkusTransaction.requiringNew()
                     .call(() -> activeJob(athleteId, kind));
             if (existing != null) {
                 LOG.debugf("Job dedup: %s already active for athlete=%d (id=%d)",
                         kind, athleteId, existing.id);
-                Map<String, Object> dict = jobDict(existing);
-                dict.put("already_running", true);
-                return dict;
+                Map<String, Object> dedup = jobDict(existing);
+                dedup.put("already_running", true);
+                return dedup;
             }
-            jobId = QuarkusTransaction.requiringNew().call(() -> {
+            // Capture the queued-state envelope INSIDE the create tx, before the
+            // worker starts — so the returned dict always reads status="queued"
+            // like FastAPI's create_job, not a status that races the worker.
+            dict = QuarkusTransaction.requiringNew().call(() -> {
                 Job j = new Job();
                 j.athleteId = athleteId;
                 j.kind = kind;
                 j.status = "queued";
                 j.createdAt = PyJson.utcNowIso();
-                j.persist();
-                return j.id;
+                j.persist();   // IDENTITY id assigned on flush
+                return jobDict(j);
             });
         }
+        Integer jobId = (Integer) dict.get("id");
         LOG.infof("Job submitted: id=%d kind=%s athlete=%d", jobId, kind, athleteId);
         Thread.ofVirtual().name("job-" + kind + "-" + jobId).start(() -> run(jobId, work));
-        Job created = QuarkusTransaction.requiringNew().call(() -> Job.findById(jobId));
-        return jobDict(created);
+        return dict;
     }
 
     /** The queued/running job of this (athlete, kind), newest first — the dedup
@@ -91,7 +94,10 @@ public class JobRunner {
         LOG.debugf("Job running: id=%d", jobId);
         try {
             Object result = work.get();
-            String resultJson = mapper.writeValueAsString(result);
+            // PyJson.dumps (not the plain mapper) for shared-DB byte parity: the
+            // job table is read/written by BOTH backends, and result_json must be
+            // byte-identical to FastAPI's json.dumps (", "/": " spacing).
+            String resultJson = PyJson.dumps(result);
             transition(jobId, j -> {
                 j.status = "succeeded";
                 j.resultJson = resultJson;
@@ -118,9 +124,18 @@ public class JobRunner {
      * never shows a forever-spinner. NOT athlete-scoped. Mirrors
      * repo.fail_stale_jobs / jobs.fail_stale_running. */
     void onStart(@Observes StartupEvent ev) {
-        int n = failStaleJobs();
-        if (n > 0) {
-            LOG.warnf("Marked %d stale job(s) as failed (interrupted by restart).", n);
+        // Best-effort: startup hygiene must NEVER block boot. In prod the shared
+        // schema already has the job table; but a fresh/empty DB (the native
+        // smoke-run boots against one, and prod runs with Flyway OFF) would make
+        // this query throw — swallow it and boot anyway rather than hard-crash
+        // the healthcheck (bean backend-v2-railway-deploy).
+        try {
+            int n = failStaleJobs();
+            if (n > 0) {
+                LOG.warnf("Marked %d stale job(s) as failed (interrupted by restart).", n);
+            }
+        } catch (Exception e) {
+            LOG.warnf(e, "Stale-job sweep skipped (job table unavailable at boot?).");
         }
     }
 
