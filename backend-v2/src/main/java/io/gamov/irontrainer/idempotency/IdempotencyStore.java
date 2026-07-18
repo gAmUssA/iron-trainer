@@ -5,6 +5,8 @@ import io.quarkus.cache.CacheName;
 import io.quarkus.cache.CaffeineCache;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -22,8 +24,10 @@ import java.util.concurrent.CompletableFuture;
 public class IdempotencyStore {
 
     /** A completed write's response, replayed verbatim on a retry. `body` is the
-     * resource's return object (re-serialized identically on replay). */
-    public record Entry(int status, Object body, String mediaType) {}
+     * resource's return object (re-serialized identically on replay); `headers`
+     * are the response headers to re-emit (Set-Cookie excluded by the filter). */
+    public record Entry(int status, Object body, String mediaType,
+                        Map<String, List<Object>> headers) {}
 
     @Inject
     @CacheName("idempotency")
@@ -34,8 +38,10 @@ public class IdempotencyStore {
         if (f == null) {
             return Optional.empty();
         }
-        // Only replay a value that's already resolved (a completed write); never
-        // block the request thread waiting on an in-flight compute.
+        // save() only ever stores an already-completed future, so getNow returns
+        // the Entry immediately — it doesn't block. (There is no compute-on-miss
+        // loader here; the documented exactly-simultaneous double-run ceiling
+        // still applies — see IdempotencyFilter.)
         Object v = f.getNow(null);
         return (v instanceof Entry e) ? Optional.of(e) : Optional.empty();
     }

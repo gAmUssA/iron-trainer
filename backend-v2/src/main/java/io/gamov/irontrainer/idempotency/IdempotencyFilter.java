@@ -1,6 +1,7 @@
 package io.gamov.irontrainer.idempotency;
 
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.util.Params;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -10,6 +11,11 @@ import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.Provider;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.jboss.logging.Logger;
 
@@ -36,6 +42,9 @@ public class IdempotencyFilter implements ContainerRequestFilter, ContainerRespo
     /** Request property carrying the resolved cache key to the response filter. */
     private static final String KEY_PROP = "io.gamov.idempotency.key";
     private static final Set<String> WRITE_METHODS = Set.of("POST", "PUT", "DELETE", "PATCH");
+    /** Response headers NOT replayed: Set-Cookie (never re-emit a stale auth
+     * cookie from cache) and the two the container recomputes. */
+    private static final Set<String> SKIP_HEADERS = Set.of("set-cookie", "content-length", "content-type");
 
     @Inject
     IdempotencyStore store;
@@ -53,11 +62,14 @@ public class IdempotencyFilter implements ContainerRequestFilter, ContainerRespo
         if (hit.isPresent()) {
             IdempotencyStore.Entry e = hit.get();
             LOG.infof("Idempotency replay: %s %s -> cached %d", req.getMethod(), req.getUriInfo().getPath(), e.status());
-            req.abortWith(Response.status(e.status())
+            Response.ResponseBuilder rb = Response.status(e.status())
                     .entity(e.body())
                     .type(e.mediaType() != null ? e.mediaType() : MediaType.APPLICATION_JSON)
-                    .header("Idempotency-Replayed", "true")
-                    .build());
+                    .header("Idempotency-Replayed", "true");
+            if (e.headers() != null) {
+                e.headers().forEach((name, values) -> values.forEach(v -> rb.header(name, v)));
+            }
+            req.abortWith(rb.build());
             return;
         }
         req.setProperty(KEY_PROP, key);   // first time — let the write run, cache on the way out
@@ -74,12 +86,29 @@ public class IdempotencyFilter implements ContainerRequestFilter, ContainerRespo
         // a 4xx is a deterministic client error that will recur anyway.
         if (status >= 200 && status < 300) {
             String mt = resp.getMediaType() != null ? resp.getMediaType().toString() : MediaType.APPLICATION_JSON;
-            store.save((String) key, new IdempotencyStore.Entry(status, resp.getEntity(), mt));
+            store.save((String) key,
+                    new IdempotencyStore.Entry(status, resp.getEntity(), mt, snapshotHeaders(resp)));
         }
     }
 
-    /** The tenant-scoped cache key, or null when idempotency does not apply
-     * (non-write method, no/blank key header, or no resolved athlete). */
+    /** Response headers to replay on a retry (Location, ETag, custom X-… survive);
+     * Set-Cookie and the container-recomputed content headers are excluded. */
+    private static Map<String, List<Object>> snapshotHeaders(ContainerResponseContext resp) {
+        Map<String, List<Object>> out = new LinkedHashMap<>();
+        resp.getHeaders().forEach((name, values) -> {
+            if (!SKIP_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
+                out.put(name, new ArrayList<>(values));
+            }
+        });
+        return out;
+    }
+
+    /** The cache key, or null when idempotency does not apply. Scoped by
+     * (athlete, method, path, key) so the SAME client key reused on a different
+     * endpoint is a miss (runs normally) rather than replaying the wrong
+     * response. Skips async writes: those return a job-submit envelope and are
+     * already deduped per (athlete, kind) by the job system (ADR 0029) — caching
+     * the 'queued' envelope would defeat that and pin a retry to a stale job. */
     private String cacheKey(ContainerRequestContext req) {
         if (!WRITE_METHODS.contains(req.getMethod())) {
             return null;
@@ -88,10 +117,13 @@ public class IdempotencyFilter implements ContainerRequestFilter, ContainerRespo
         if (idem == null || idem.isBlank()) {
             return null;
         }
+        if (Params.boolOr(req.getUriInfo().getQueryParameters().getFirst("async"), false)) {
+            return null;   // async → job dedup owns retry-safety, not the cache
+        }
         Integer aid = current.idOrNull();
         if (aid == null) {
             return null;   // unauthenticated write: no tenant to scope the key to
         }
-        return aid + ":" + idem.strip();
+        return aid + ":" + req.getMethod() + ":" + req.getUriInfo().getPath() + ":" + idem.strip();
     }
 }

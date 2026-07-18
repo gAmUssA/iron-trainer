@@ -5,7 +5,7 @@ status: todo
 type: task
 priority: normal
 created_at: 2026-07-17T05:27:36Z
-updated_at: 2026-07-18T20:28:07Z
+updated_at: 2026-07-18T20:43:09Z
 parent: iron-trainer-eom4
 ---
 
@@ -24,3 +24,12 @@ Closes the server-side half of the 502-lost-response double-apply window (the st
 
 ## Remaining (follow-up)
 Making it EFFECTIVE needs a retrying client to send a stable Idempotency-Key. The web frontend doesn't auto-retry POSTs and job endpoints are deduped, so this is latent until a retrying client (or strangler-generated keys) adopts it. Does NOT block the write flip (absent a key, behavior unchanged).
+
+## Code-review fixes (PR #70)
+
+High-effort review found 4 findings (3 PLAUSIBLE correctness, 1 CONFIRMED cleanup); all fixed:
+- #1: cache key now scoped by (athlete, method, path, key) — a reused key on a different endpoint is a miss (runs), not a wrong replay.
+- #2: async writes (?async=1) are SKIPPED — job dedup (ADR 0029) owns retry-safety for those; caching the 'queued' envelope would pin a retry to a stale job.
+- #3: response headers captured + replayed (Location/ETag/custom); Set-Cookie never replayed; content-length/-type recomputed.
+- #4: corrected the misleading in-flight comment in IdempotencyStore.
+Added tests: cross-endpoint-key no-cross-replay, async-not-cached. Full suite 125 green.

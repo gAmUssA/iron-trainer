@@ -55,17 +55,44 @@ class IdempotencyFilterTest {
     }
 
     @Test
-    void asyncRegenerateReplaysEnvelope() {
-        // A key on the LLM regenerate endpoint (deterministic fallback in test):
-        // the second call replays the first envelope rather than re-running.
+    void syncRegenerateReplays() {
+        // A key on the SYNC LLM regenerate endpoint (deterministic fallback in
+        // test): the second call replays the first response rather than re-running.
         given().when().post("/api/v2/athletes").then().statusCode(200);
-        String body1 = given().header("Idempotency-Key", "regen-key-1")
-                .when().post("/api/nutrition/race-day/regenerate").then().statusCode(200)
-                .extract().asString();
+        given().header("Idempotency-Key", "regen-key-1")
+                .when().post("/api/nutrition/race-day/regenerate").then().statusCode(200);
         given().header("Idempotency-Key", "regen-key-1")
                 .when().post("/api/nutrition/race-day/regenerate").then()
                 .statusCode(200)
                 .header("Idempotency-Replayed", "true")
                 .body("llm_used", equalTo(false));
+    }
+
+    @Test
+    void sameKeyDifferentEndpointDoesNotCrossReplay() {
+        // A key cached on one endpoint must NOT replay on a different endpoint
+        // (key is scoped by method+path) — the second endpoint runs normally.
+        given().when().post("/api/v2/athletes").then().statusCode(200);
+        given().header("Idempotency-Key", "shared-key-x")
+                .when().post("/api/v2/athletes").then().statusCode(200);
+        // Same key, different path → runs the regenerate (returns a plan), not a replay.
+        given().header("Idempotency-Key", "shared-key-x")
+                .when().post("/api/nutrition/race-day/regenerate").then()
+                .statusCode(200)
+                .header("Idempotency-Replayed", org.hamcrest.Matchers.nullValue())
+                .body("llm_used", equalTo(false));
+    }
+
+    @Test
+    void asyncWriteIsNotIdempotencyCached() {
+        // Async writes are deduped by the job system, not the idempotency cache —
+        // a keyed async submit must NOT be replayed by this filter.
+        given().when().post("/api/v2/athletes").then().statusCode(200);
+        given().header("Idempotency-Key", "async-key-1")
+                .when().post("/api/nutrition/race-day/regenerate?async=1").then().statusCode(200);
+        given().header("Idempotency-Key", "async-key-1")
+                .when().post("/api/nutrition/race-day/regenerate?async=1").then()
+                .statusCode(200)
+                .header("Idempotency-Replayed", org.hamcrest.Matchers.nullValue());
     }
 }

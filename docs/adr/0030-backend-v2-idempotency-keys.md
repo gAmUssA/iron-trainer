@@ -21,14 +21,24 @@ header (it is not in the drop set).
 ## What was built
 
 - **`IdempotencyStore`** — a find/save seam over Quarkus Cache. Stores a completed
-  write's response (`status`, body object, media type) keyed by
-  `athlete + ":" + Idempotency-Key`.
+  write's response (`status`, body object, media type, replayable headers).
 - **`IdempotencyFilter`** (`@Provider`, `@Priority(5100)`) — request + response
   filter. On a write with an `Idempotency-Key` and a resolved athlete: a cache
   hit `abortWith`s the stored response (`Idempotency-Replayed: true`) so the
   mutation never runs; a miss lets the write proceed and the response filter
   caches a **2xx** outcome. Runs after the auth filter (default USER=5000) so the
-  key is tenant-scoped.
+  athlete is resolved.
+- **Cache key = `(athlete, method, path, Idempotency-Key)`.** Including method +
+  path means the same client key reused on a different endpoint is a miss (runs
+  normally) rather than replaying the wrong endpoint's response.
+- **Async writes are skipped** (`?async=1`). Those return a job-submit envelope
+  and are already deduped per (athlete, kind) by the job system (ADR 0029);
+  caching the `queued` envelope would defeat that and pin a retry to a stale job
+  instead of resubmitting/healing it. Idempotency here is for **sync** writes.
+- **Headers replayed.** The stored entry carries the response headers, so a replay
+  re-emits Location / ETag / custom headers; **Set-Cookie is never replayed** (a
+  cached auth cookie must not be re-emitted) and content-length/-type are
+  recomputed.
 
 ## Decisions
 
