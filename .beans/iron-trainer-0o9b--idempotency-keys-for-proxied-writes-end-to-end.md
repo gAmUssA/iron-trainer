@@ -1,11 +1,11 @@
 ---
 # iron-trainer-0o9b
 title: idempotency keys for proxied writes (end-to-end)
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-07-17T05:27:36Z
-updated_at: 2026-07-18T20:43:09Z
+updated_at: 2026-07-18T20:49:46Z
 parent: iron-trainer-eom4
 ---
 
