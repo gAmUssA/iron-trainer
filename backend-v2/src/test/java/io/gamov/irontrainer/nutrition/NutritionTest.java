@@ -196,6 +196,73 @@ class NutritionTest {
 
     /** validateFueling clamps a phase whose summed rate exceeds the ceiling —
      * the path the deterministic plan never reaches but the LLM overlay will. */
+    // ── LLM overlay (apply_llm_timeline) ──────────────────────────────────────
+
+    /** Overlay keeps each phase's base duration so validateFueling still
+     * rate-checks, re-clamps the LLM amounts, and flips llm_used + summary.
+     * Mirrors backend apply_llm_timeline. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void applyLlmTimelineOverlaysAndReclamps() {
+        // Base: one bike hour carrying the phase duration the overlay must inherit.
+        Map<String, Object> baseBike = new LinkedHashMap<>();
+        baseBike.put("phase", "bike");
+        baseBike.put("phase_duration_s", 3600L);
+        baseBike.put("carbs_g", 75L);
+        Map<String, Object> base = new LinkedHashMap<>();
+        base.put("items", new java.util.ArrayList<>(List.of(baseBike)));
+        base.put("summary", "deterministic");
+        base.put("llm_used", false);
+        base.put("adjustments", List.of());
+
+        // LLM item: no duration of its own, and an over-cap carb load.
+        Map<String, Object> llmBike = new LinkedHashMap<>();
+        llmBike.put("phase", "bike");
+        llmBike.put("carbs_g", 500L);   // ≫ 120 g/h → must be clamped after duration is inherited
+        llmBike.put("fluid_ml", 0L);
+        llmBike.put("sodium_mg", 300L);
+        llmBike.put("notes", "eat");
+
+        Map<String, Object> plan = Nutrition.applyLlmTimeline(base, "llm summary", List.of(llmBike));
+
+        assertTrue((boolean) plan.get("llm_used"));
+        assertEquals("llm summary", plan.get("summary"));
+        List<Map<String, Object>> items = (List<Map<String, Object>>) plan.get("items");
+        assertEquals(1, items.size());
+        assertEquals(3600L, items.get(0).get("phase_duration_s"));  // inherited from base
+        assertEquals(120L, items.get(0).get("carbs_g"));            // clamped to 120 g/h
+        List<String> adj = (List<String>) plan.get("adjustments");
+        assertTrue(adj.stream().anyMatch(n -> n.equals("bike: carbs capped at 120 g/h.")), adj.toString());
+    }
+
+    /** Empty LLM items → fall back to the base items (the `items or base`
+     * branch); blank summary → base summary untouched; base is not mutated. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void applyLlmTimelineEmptyItemsKeepsBase() {
+        Map<String, Object> baseBike = new LinkedHashMap<>();
+        baseBike.put("phase", "bike");
+        baseBike.put("phase_duration_s", 3600L);
+        baseBike.put("carbs_g", 75L);
+        List<Map<String, Object>> baseItems = new java.util.ArrayList<>(List.of(baseBike));
+        Map<String, Object> base = new LinkedHashMap<>();
+        base.put("items", baseItems);
+        base.put("summary", "deterministic");
+
+        Map<String, Object> plan = Nutrition.applyLlmTimeline(base, "", List.of());
+
+        // Items came from the base (validateFueling re-emits them, so it's a new
+        // list, but the bike phase carried through with its 75 g/h load).
+        List<Map<String, Object>> items = (List<Map<String, Object>>) plan.get("items");
+        assertEquals(1, items.size());
+        assertEquals("bike", items.get(0).get("phase"));
+        assertEquals(75L, items.get(0).get("carbs_g"));
+        assertEquals("deterministic", plan.get("summary")); // blank summary ignored
+        assertTrue((boolean) plan.get("llm_used"));
+        assertFalse(base.containsKey("llm_used"));           // base untouched
+        assertFalse(baseBike.containsKey("notes"));          // base item untouched
+    }
+
     @Test
     void validateFuelingClampsOverCap() {
         Map<String, Object> over = new LinkedHashMap<>();

@@ -9,11 +9,15 @@ import io.gamov.irontrainer.metrics.MetricDaily;
 import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.plan.PlannedWorkout;
 import io.gamov.irontrainer.races.Races;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +35,12 @@ public class NutritionResource {
 
     @Inject
     Races races;
+
+    @Inject
+    NutritionLlm llm;
+
+    @Inject
+    ObjectMapper mapper;
 
     @GET
     @Path("/workout/{workout_id}")
@@ -68,15 +78,75 @@ public class NutritionResource {
     @Path("/race-day")
     public Map<String, Object> raceDay() {
         int aid = current.require();
+        LOG.debugf("Nutrition race-day: athlete=%d", aid);
+        return assemble(aid).base();
+    }
+
+    /** POST /api/nutrition/race-day/regenerate — LLM-generated timeline over the
+     * deterministic prior, always safety-validated; falls back to the
+     * deterministic plan when the LLM is unavailable. Port of
+     * nutrition_router.race_day_regenerate. (The ?async=1 job variant is the
+     * async-envelope vertical, bean s6v3.) */
+    @POST
+    @Path("/race-day/regenerate")
+    public Map<String, Object> raceDayRegenerate() {
+        int aid = current.require();
+        return regenerateRaceDay(aid);
+    }
+
+    private Map<String, Object> regenerateRaceDay(int aid) {
+        // DB reads in a tx; the LLM call runs OUTSIDE it (external, may be slow).
+        RaceDayCtx ctx = QuarkusTransaction.requiringNew().call(() -> assemble(aid));
+        try {
+            NutritionLlm.Result r = llm.generate(
+                    json(ctx.profile()), json(ctx.race()), json(ctx.readiness()), json(ctx.base()));
+            LOG.infof("Race-day nutrition regenerated with LLM: athlete=%d items=%d", aid, r.items().size());
+            return Nutrition.applyLlmTimeline(ctx.base(), r.summary(), r.items());
+        } catch (NutritionLlm.Unavailable e) {
+            LOG.infof("Race-day nutrition: LLM unavailable (%s) — deterministic fallback.", e.getMessage());
+            Map<String, Object> plan = ctx.base();
+            List<String> adjustments = new ArrayList<>();
+            adjustments.add("LLM unavailable — showing the deterministic plan.");
+            if (plan.get("adjustments") instanceof List<?> existing) {
+                for (Object o : existing) adjustments.add(String.valueOf(o));
+            }
+            plan.put("adjustments", adjustments);
+            return plan;
+        }
+    }
+
+    /** The deterministic base plan + the inputs the LLM prompt needs (profile,
+     * race, readiness). DB reads — call inside a transaction. */
+    private RaceDayCtx assemble(int aid) {
         Athlete a = Athlete.findById(aid);
         Map<String, Object> race = races.effectiveRace(a);
         Map<String, Object> readiness = raceReadinessFor(aid, race);
-        LOG.debugf("Nutrition race-day: athlete=%d", aid);
-        return Nutrition.computeRaceDayPlan(
+        Map<String, Object> base = Nutrition.computeRaceDayPlan(
                 a == null ? null : a.bodyWeightKg,
                 a == null ? null : a.gelCarbG,
                 a == null ? null : a.sweatRateLH,
                 race, readiness);
+        Map<String, Object> profile = new LinkedHashMap<>();
+        profile.put("body_weight_kg", a == null ? null : a.bodyWeightKg);
+        profile.put("gel_carb_g", a == null ? null : a.gelCarbG);
+        profile.put("sweat_rate_l_h", a == null ? null : a.sweatRateLH);
+        profile.put("weekly_hours_target", a == null ? null : a.weeklyHoursTarget);
+        return new RaceDayCtx(profile, race, readiness, base);
+    }
+
+    private record RaceDayCtx(Map<String, Object> profile, Map<String, Object> race,
+                              Map<String, Object> readiness, Map<String, Object> base) {}
+
+    private String json(Object o) {
+        try {
+            return mapper.writeValueAsString(o);
+        } catch (Exception e) {
+            // Should never happen (plain Maps of primitives), but if it does don't
+            // feed the LLM an empty prompt silently — log so a wrong plan is
+            // traceable. The deterministic prior still guards the output.
+            LOG.warnf(e, "Nutrition LLM prompt serialization failed; sending {} for this input.");
+            return "{}";
+        }
     }
 
     /** Race-split projection feeding the fueling timeline — same assembly as
