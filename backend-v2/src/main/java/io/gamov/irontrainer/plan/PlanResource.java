@@ -1,7 +1,7 @@
 package io.gamov.irontrainer.plan;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.util.PyJson;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -21,9 +21,6 @@ public class PlanResource {
 
     @Inject
     CurrentAthlete current;
-
-    @Inject
-    ObjectMapper mapper;
 
     /** GET /api/plan — the active plan + its workouts, or {plan:null, workouts:[]}
      * when the athlete has no active plan. Mirrors repo._plan_dict /
@@ -45,8 +42,7 @@ public class PlanResource {
     }
 
     private List<Map<String, Object>> workouts(int planId, int aid) {
-        List<PlannedWorkout> rows = PlannedWorkout.list(
-                "athleteId = ?1 and planId = ?2 order by date", aid, planId);
+        List<PlannedWorkout> rows = PlannedWorkout.forPlan(aid, planId);
         List<Map<String, Object>> out = new ArrayList<>(rows.size());
         for (PlannedWorkout w : rows) {
             out.add(workoutDict(w));
@@ -93,17 +89,15 @@ public class PlanResource {
         return d;
     }
 
-    /** json.loads(x or "[]") — a null/blank column parses to an empty list. */
+    /** Mirror Python `json.loads(x or "[]")`: a null/EMPTY column → []. A
+     * non-empty value (incl. whitespace-only, which is truthy in Python) is
+     * parsed and, like Python, THROWS on malformed input → 500 — so a corrupt
+     * blob fails identically on both backends (the strangler serves reads with a
+     * 5xx local fallback, so the client still gets FastAPI's answer). */
     private Object parseJson(String json) {
-        if (json == null || json.isBlank()) {
+        if (json == null || json.isEmpty()) {
             return List.of();
         }
-        try {
-            return mapper.readValue(json, Object.class);
-        } catch (Exception e) {
-            // A malformed stored blob shouldn't 500 the read; mirror the empty default.
-            LOG.warnf(e, "Plan JSON column failed to parse; returning [].");
-            return List.of();
-        }
+        return PyJson.loads(json);
     }
 }

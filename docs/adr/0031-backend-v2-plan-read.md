@@ -43,6 +43,19 @@ The Python `model_dump` shape drove two entity additions:
   (`POST /api/plan/generate?use_llm=false`) — real weeks + workouts, both reading
   the same shared rows. This is the CI gate.
 
+## Review fixes (PR #71)
+
+- **Deterministic tie order.** The template schedules Swim+Bike on the same date,
+  and `ORDER BY date` alone leaves ties unspecified → a parity flake between
+  SQLModel and Hibernate. Both sides now order by `(date, id)` (= schedule order):
+  `repo.get_workouts` and a new `PlannedWorkout.forPlan(aid, planId)` finder shared
+  by the plan-read and export verticals (so they can't drift).
+- **json.loads parity.** `parseJson` now mirrors `json.loads(x or "[]")` exactly —
+  null/empty → `[]`, but a non-empty malformed blob THROWS (→ 500) instead of
+  silently returning `[]`, so a corrupt row fails identically on both backends
+  (reads have a 5xx local fallback, so the client still gets an answer). Added
+  `PyJson.loads` as the read-side counterpart to `PyJson.dumps`.
+
 ## Not in this slice
 
 The plan WRITES — `generate` (LLM season, reuses fd31's LangChain4j pattern +

@@ -51,6 +51,18 @@ public final class PyJson {
         }
     }
 
+    /** json.loads(s) — parse a shared-DB JSON blob into Maps/Lists/scalars. Like
+     * Python, this THROWS on malformed input (the caller that reads a possibly-
+     * null column should apply the `s or "[]"` default first) so a corrupt blob
+     * fails the same way on both backends rather than silently diverging. */
+    public static Object loads(String s) {
+        try {
+            return MAPPER.readValue(s, Object.class);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new RuntimeException("json.loads failed", e);
+        }
+    }
+
     /** datetime.now(timezone.utc).isoformat() — e.g. 2026-07-16T12:34:56.789012+00:00. */
     public static String utcNowIso() {
         return OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS).format(ISO);

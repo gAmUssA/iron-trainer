@@ -84,7 +84,7 @@ public class ExportResource {
         int athleteId = current.require();
         io.gamov.irontrainer.plan.Plan plan = io.gamov.irontrainer.plan.Plan.activeFor(athleteId);
         java.util.List<PlannedWorkout> workouts = plan == null ? java.util.List.of()
-                : PlannedWorkout.list("planId = ?1 and athleteId = ?2 order by date", plan.id, athleteId);
+                : PlannedWorkout.forPlan(athleteId, plan.id);   // shared (date, id) order
         Athlete a = Athlete.findById(athleteId);
         LOG.infof("Export plan.itw: athlete=%d workouts=%d plan=%s",
                 athleteId, workouts.size(), plan == null ? "none" : plan.id);

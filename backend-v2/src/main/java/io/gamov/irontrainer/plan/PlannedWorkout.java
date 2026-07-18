@@ -63,4 +63,14 @@ public class PlannedWorkout extends PanacheEntityBase {
 
     @Column(name = "created_at")
     public String createdAt;
+
+    /** An athlete's workouts for a plan, in schedule order. Ordered by (date, id):
+     * the template schedules multiple sports on the same date (Swim+Bike on day 1),
+     * so date alone leaves ties unspecified — the id tiebreak (= insertion/schedule
+     * order) keeps the list deterministic and byte-parity-stable vs FastAPI
+     * (repo.get_workouts, matched order). Shared by the plan-read and export
+     * verticals so both order identically. */
+    public static java.util.List<PlannedWorkout> forPlan(int athleteId, int planId) {
+        return list("athleteId = ?1 and planId = ?2 order by date, id", athleteId, planId);
+    }
 }
