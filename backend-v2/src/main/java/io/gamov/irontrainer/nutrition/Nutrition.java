@@ -391,7 +391,10 @@ public final class Nutrition {
         for (Map<String, Object> i : items) {
             Object ph = i.get("phase");
             if ((ph != null && phaseDurH.containsKey(ph)) || "swim".equals(ph)) continue;
-            String label = i.get("label") != null ? String.valueOf(i.get("label")) : String.valueOf(ph);
+            // Python `i.get("label") or phase`: an empty-string label is falsy too.
+            Object lab = i.get("label");
+            String label = (lab != null && !String.valueOf(lab).isEmpty())
+                    ? String.valueOf(lab) : String.valueOf(ph);
             boolean isTransition = ph != null && TRANSITION_PHASES.contains(ph);
             double carbCap = isTransition ? TRANSITION_MAX_CARB_G : MEAL_MAX_CARB_G;
             double fluidCap = isTransition ? TRANSITION_MAX_FLUID_ML : MEAL_MAX_FLUID_ML;
