@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: low
 created_at: 2026-07-17T01:18:13Z
-updated_at: 2026-07-18T13:27:45Z
+updated_at: 2026-07-18T13:44:32Z
 ---
 
 Port analysis.infer_profile + services.seed_profile_if_empty: infer ftp/threshold_hr/threshold_pace_run/css_swim from recent activity history when the profile is empty, called at the end of Strava sync + import. Deferred from [[iron-trainer-wc60]] (the sync works without it; it's a first-connect convenience — no-op once thresholds exist). Unit-test vs test_analysis/infer expectations.
@@ -29,3 +29,15 @@ Ported analysis.infer_profile + services.seed_profile_if_empty to backend-v2.
 seedProfileIfEmpty has no caller yet — it's prep the Strava sync (wc60) will use.
 
 94 backend-v2 + 57 parity tests green.
+
+## Code-review + scope note (PR #63)
+
+Fixed 2 confirmed findings: parseDay → Iso.parseDate (faithful fromisoformat);
+saveInferred updated_at → PyJson.utcNowIso (shared format).
+
+**seed_profile_if_empty deferred to wc60** (its only caller = Strava sync/import).
+Reasons: it was uncalled here; its transaction is caller-supplied; and a faithful
+port needs a recompute-tss-only path (Python seed calls recompute_tss() ONLY,
+leaving rebuild_metrics to the caller) that MetricsWrite doesn't expose. Porting
+it alongside its caller avoids guessing the recompute/rebuild + @Transactional
+contract. infer_profile (the core) + POST /api/athlete/infer shipped + parity-tested.
