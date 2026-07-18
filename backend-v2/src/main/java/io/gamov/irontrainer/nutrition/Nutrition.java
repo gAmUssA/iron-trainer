@@ -412,6 +412,42 @@ public final class Nutrition {
         return notes;
     }
 
+    /** apply_llm_timeline: overlay the LLM-generated timeline onto the
+     * deterministic base. The base stays the safety prior — each phase's duration
+     * is carried over so validateFueling can still rate-check the LLM's amounts —
+     * then re-clamp. Faithful port; does not mutate `base`. */
+    public static Map<String, Object> applyLlmTimeline(Map<String, Object> base,
+            String llmSummary, List<Map<String, Object>> llmItems) {
+        // phase → phase_duration_s from the base (truthy only; last-wins, as the
+        // Python dict comprehension).
+        Map<String, Object> durations = new LinkedHashMap<>();
+        if (base.get("items") instanceof List<?> baseItems) {
+            for (Object o : baseItems) {
+                if (o instanceof Map<?, ?> m) {
+                    Object ph = m.get("phase");
+                    Object dur = m.get("phase_duration_s");
+                    if (ph != null && dur != null && num(dur) != 0) {
+                        durations.put(String.valueOf(ph), dur);
+                    }
+                }
+            }
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> raw : llmItems) {
+            Map<String, Object> item = new LinkedHashMap<>(raw);
+            Object dur = durations.get(String.valueOf(item.get("phase")));
+            if (dur != null) item.put("phase_duration_s", dur);   // if dur: keep base duration
+            items.add(item);
+        }
+        Map<String, Object> plan = new LinkedHashMap<>(base);
+        plan.put("items", items.isEmpty() ? base.get("items") : items);
+        if (llmSummary != null && !llmSummary.isEmpty()) plan.put("summary", llmSummary);
+        plan.put("llm_used", true);
+        List<String> notes = validateFueling(plan);   // clamps the LLM amounts in place
+        plan.put("adjustments", notes);
+        return plan;
+    }
+
     /** Build a timeline item with the FastAPI key order. carbs/fluid/sodium are
      * Long (an integer field) or null (Python None). */
     private static Map<String, Object> item(String phase, long offsetMin, String label,
