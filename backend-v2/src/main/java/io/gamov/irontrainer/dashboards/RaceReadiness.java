@@ -123,7 +123,9 @@ public final class RaceReadiness {
 
     private static List<Map<String, Object>> cutoffChecks(Double swimS, Double bikeS, Double runS,
                                                           int t1, int t2, Map<String, Integer> cutoffs) {
-        Map<String, Integer> c = cutoffs != null ? cutoffs
+        // Python `cutoffs or {default}` — an empty (falsy) map falls back too, not
+        // just null; otherwise c.get("swim") is null → NPE unboxing into int limit.
+        Map<String, Integer> c = (cutoffs != null && !cutoffs.isEmpty()) ? cutoffs
                 : Map.of("swim", 70 * 60, "bike", 330 * 60, "finish", 510 * 60);
         List<Map<String, Object>> checks = new ArrayList<>();
         addCheck(checks, "Swim", swimS, c.get("swim"));
