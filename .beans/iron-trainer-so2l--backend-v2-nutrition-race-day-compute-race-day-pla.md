@@ -1,11 +1,11 @@
 ---
 # iron-trainer-so2l
 title: 'backend-v2: nutrition race-day (compute_race_day_plan + validate_fueling)'
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-07-18T01:46:14Z
-updated_at: 2026-07-18T03:57:38Z
+updated_at: 2026-07-18T04:19:19Z
 parent: iron-trainer-eom4
 ---
 
