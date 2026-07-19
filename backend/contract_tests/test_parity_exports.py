@@ -906,3 +906,29 @@ def test_plan_reconcile_weeks_ahead_422_parity(v1, v2):
     for bad in ("0", "5"):
         assert v1.post(f"/api/plan/reconcile?weeks_ahead={bad}&use_llm=false").status_code == 422
         assert v2.post(f"/api/plan/reconcile?weeks_ahead={bad}&use_llm=false").status_code == 422
+
+
+def test_plan_checkin_parity(v1, v2):
+    """POST /api/plan/checkin?use_llm=false: the composite loop. It's deeply
+    stateful — non-idempotent, and each call's next_week.hours_before snapshot is
+    taken before ITS OWN replan, so hours_before + the replan-delta story line
+    don't converge across two sequential calls; `synced`/the Strava story line
+    depend on connection state. So compare the CONVERGED fields (both backends
+    end on the same post-reconcile state) + the story minus those two lines.
+    Appended last so an active plan exists."""
+    payload = {"inputs": {"energy": 3, "sleep": 4}}
+    a = v1.post("/api/plan/checkin?use_llm=false", json=payload)
+    b = v2.post("/api/plan/checkin?use_llm=false", json=payload)
+    assert a.status_code == b.status_code == 200
+    aj, bj = a.json(), b.json()
+    assert aj["status"] == bj["status"] == "ok"
+    assert aj["inputs"] == bj["inputs"]
+    # reconcile (matched/compliance/form_flag/weeks_replanned), readiness, tests,
+    # key sessions all converge on the shared post-reconcile state.
+    for k in ("reconcile", "readiness", "tests_due", "key_sessions"):
+        assert aj[k] == bj[k], k
+
+    def stable(story):
+        return [s for s in story if "Strava" not in s and "replanned" not in s]
+
+    assert stable(aj["story"]) == stable(bj["story"])
