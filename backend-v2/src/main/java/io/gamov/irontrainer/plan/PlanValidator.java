@@ -123,20 +123,26 @@ public final class PlanValidator {
         return new Result(out, notes);
     }
 
-    /** validate_week_workouts: cap individual session durations. (The caller
-     * discards the notes; only the duration caps mutate the workouts.) */
-    public static List<Map<String, Object>> capWeekWorkouts(List<Map<String, Object>> workouts) {
+    public record WeekResult(List<Map<String, Object>> workouts, List<String> notes) {}
+
+    /** validate_week_workouts: cap individual session durations, returning the
+     * capped workouts + cap notes (replan-week surfaces them; generate discards
+     * them). The consecutive-hard-day loop is informational and adds no notes. */
+    public static WeekResult capWeekWorkouts(List<Map<String, Object>> workouts) {
         List<Map<String, Object>> fixed = new ArrayList<>();
+        List<String> notes = new ArrayList<>();
         for (Map<String, Object> w : workouts) {
             Map<String, Object> c = new LinkedHashMap<>(w);
             double capH = SESSION_CAPS_H.getOrDefault(String.valueOf(c.getOrDefault("sport", "")), 4.0);
             double dur = c.get("duration_s") == null ? 0.0 : ((Number) c.get("duration_s")).doubleValue();
             if (dur > capH * 3600) {
+                notes.add(c.get("date") + " " + c.get("sport") + ": capped to " + capH
+                        + "h (was " + Py.f1(dur / 3600) + "h).");
                 c.put("duration_s", (int) (capH * 3600));
             }
             fixed.add(c);
         }
-        return fixed;
+        return new WeekResult(fixed, notes);
     }
 
     // ABS_MAX_WEEK_HOURS clamp note formats "16.0" via f-string on a float 16.0.

@@ -849,3 +849,37 @@ def test_plan_generate_parity(v1, v2):
     # The saved season (weeks) + every expanded workout (steps, targets, fueling
     # note in the description, planned_tss) must be byte-identical.
     assert norm(plan_a) == norm(plan_b)
+
+
+def test_plan_replan_week_parity(v1, v2):
+    """POST /api/plan/replan-week?use_llm=false regenerates ONE week from the
+    template — deterministic, so both backends must produce the same response and
+    the same replaced workouts. Non-idempotent (replaces the week's rows): replan
+    on each, capture the week between, compare NORMALIZED. Appended after the
+    generate parity test so an active plan exists."""
+    from datetime import date, timedelta
+    ws = v1.get("/api/plan").json()["plan"]["weeks"][0]["week_start"]
+    we = (date.fromisoformat(ws) + timedelta(days=6)).isoformat()
+
+    def week_workouts(client):
+        return [w for w in client.get("/api/plan").json()["workouts"] if ws <= w["date"] <= we]
+
+    a = v1.post(f"/api/plan/replan-week?week_start={ws}&use_llm=false")
+    wk_a = week_workouts(v1)
+    b = v2.post(f"/api/plan/replan-week?week_start={ws}&use_llm=false")
+    wk_b = week_workouts(v2)
+    assert a.status_code == b.status_code == 200
+    # response identical (week_start, llm_used=false, workouts count, notes)
+    assert a.json() == b.json()
+    assert a.json()["llm_used"] is False and a.json()["workouts"] > 0
+
+    def norm(wos):
+        return [{k: v for k, v in w.items() if k not in ("id", "plan_id", "created_at")} for w in wos]
+
+    assert norm(wk_a) == norm(wk_b) and wk_a, "replaced week workouts must match and be non-empty"
+
+
+def test_plan_replan_week_unknown_400_parity(v1, v2):
+    """A week_start not in the plan → 400 on both backends (ValueError → HTTP 400)."""
+    assert v1.post("/api/plan/replan-week?week_start=2000-01-03&use_llm=false").status_code == 400
+    assert v2.post("/api/plan/replan-week?week_start=2000-01-03&use_llm=false").status_code == 400
