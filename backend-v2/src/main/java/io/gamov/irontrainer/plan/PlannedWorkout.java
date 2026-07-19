@@ -73,4 +73,34 @@ public class PlannedWorkout extends PanacheEntityBase {
     public static java.util.List<PlannedWorkout> forPlan(int athleteId, int planId) {
         return list("athleteId = ?1 and planId = ?2 order by date, id", athleteId, planId);
     }
+
+    /** save_workouts(replace_all=True): delete the plan's existing workouts and
+     * insert the given ones. Must run inside a transaction. Returns the count.
+     * Mirrors repo.save_workouts — status defaults to "planned"; steps →
+     * structure_json (PyJson.dumps). */
+    public static int saveAll(int athleteId, int planId, java.util.List<java.util.Map<String, Object>> workouts) {
+        delete("planId = ?1", planId);
+        for (java.util.Map<String, Object> w : workouts) {
+            PlannedWorkout pw = new PlannedWorkout();
+            pw.athleteId = athleteId;
+            pw.planId = planId;
+            pw.date = (String) w.get("date");
+            pw.sport = (String) w.get("sport");
+            pw.title = (String) w.get("title");
+            pw.description = (String) w.get("description");
+            pw.structureJson = io.gamov.irontrainer.util.PyJson.dumps(
+                    w.getOrDefault("steps", java.util.List.of()));
+            Object dur = w.get("duration_s");
+            pw.durationS = dur == null ? null : ((Number) dur).intValue();
+            Object dist = w.get("distance_m");
+            pw.distanceM = dist == null ? null : ((Number) dist).doubleValue();
+            Object tss = w.get("planned_tss");
+            pw.plannedTss = tss == null ? null : ((Number) tss).doubleValue();
+            pw.intensity = (String) w.get("intensity");
+            pw.status = "planned";   // SQLModel default
+            pw.createdAt = io.gamov.irontrainer.util.PyJson.utcNowIso();
+            pw.persist();
+        }
+        return workouts.size();
+    }
 }
