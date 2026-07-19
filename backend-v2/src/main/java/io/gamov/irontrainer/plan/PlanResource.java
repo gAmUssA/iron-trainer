@@ -170,8 +170,11 @@ public class PlanResource {
     public Map<String, Object> replanWeek(@QueryParam("week_start") String weekStart,
                                           @QueryParam("use_llm") String useLlmParam) {
         int aid = current.require();
-        if (weekStart == null || weekStart.isBlank()) {
-            throw new WebApplicationException(422);   // required query param (FastAPI 422)
+        // Only an ABSENT week_start is 422 (FastAPI required-param). A present-empty
+        // "?week_start=" is a valid string to FastAPI → flows through to the week
+        // lookup → 400 "Week  not in active plan." (matched below).
+        if (weekStart == null) {
+            throw new WebApplicationException(422);
         }
         boolean useLlm = Params.boolOr(useLlmParam, true);
         ReplanCtx ctx = QuarkusTransaction.requiringNew().call(() -> assembleReplan(aid, weekStart, useLlm));
@@ -180,14 +183,16 @@ public class PlanResource {
         boolean llmUsed = false;
         if (useLlm) {
             try {
+                // Throws Unavailable on no-key / failure / empty / malformed, so a
+                // returned list is always non-empty → llm_used=true.
                 workouts = llm.generateWeekWorkouts(
                         PyJson.dumps(ctx.week), PyJson.dumps(ctx.profile), PyJson.dumps(ctx.fitness));
-                llmUsed = !workouts.isEmpty();
+                llmUsed = true;
             } catch (PlanLlm.Unavailable e) {
                 workouts = null;
             }
         }
-        if (workouts == null || workouts.isEmpty()) {
+        if (workouts == null) {
             workouts = PlanTemplate.expandWeek(ctx.week, ctx.profile);
         }
 
@@ -262,7 +267,10 @@ public class PlanResource {
                     durS, (String) wo.get("intensity"), gelCarbG, bodyWeightKg, sweatRateLH);
             String note = Nutrition.fuelingNote(fueling);
             if (!note.isEmpty()) {
-                String base = String.valueOf(wo.getOrDefault("description", "")).stripTrailing();
+                // Python `(wo.get("description") or "").rstrip()`: a null/absent
+                // description → "" (not the literal "null").
+                Object desc = wo.get("description");
+                String base = (desc == null ? "" : String.valueOf(desc)).stripTrailing();
                 if (!base.contains(note)) {
                     wo.put("description", (base + "\n" + note).strip());
                 }

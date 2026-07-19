@@ -94,6 +94,13 @@ public class PlanLlm {
         }
         List<Map<String, Object>> out = new ArrayList<>();
         for (PlanAi.Workout wo : w.workouts()) {
+            // Guard the never-500 contract (as in adjustSeason): structured output
+            // doesn't hard-enforce required fields, so a workout missing date/sport
+            // would violate the NOT NULL columns on save (500) or render a "null"
+            // cap-note. Treat a malformed LLM week as unavailable → template.
+            if (wo.date() == null || wo.date().isBlank() || wo.sport() == null || wo.sport().isBlank()) {
+                throw new Unavailable("LLM workout missing date/sport.");
+            }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("date", wo.date());
             m.put("sport", wo.sport());
