@@ -883,3 +883,26 @@ def test_plan_replan_week_unknown_400_parity(v1, v2):
     """A week_start not in the plan → 400 on both backends (ValueError → HTTP 400)."""
     assert v1.post("/api/plan/replan-week?week_start=2000-01-03&use_llm=false").status_code == 400
     assert v2.post("/api/plan/replan-week?week_start=2000-01-03&use_llm=false").status_code == 400
+
+
+def test_plan_reconcile_parity(v1, v2):
+    """POST /api/plan/reconcile?use_llm=false: match actuals + replan upcoming
+    weeks, deterministically. Non-idempotent (writes statuses + replaces future
+    weeks), but the response has no volatile ids/timestamps and both backends
+    converge on the same state, so the responses compare byte-for-byte. Appended
+    after the replan tests so an active plan exists."""
+    a = v1.post("/api/plan/reconcile?weeks_ahead=2&use_llm=false")
+    b = v2.post("/api/plan/reconcile?weeks_ahead=2&use_llm=false")
+    assert a.status_code == b.status_code == 200
+    aj, bj = a.json(), b.json()
+    assert aj == bj
+    for k in ("matched", "compliance", "weeks_replanned", "replanned", "form_flag"):
+        assert k in aj, k
+    assert set(aj["matched"]) == {"completed", "skipped", "upcoming"}
+
+
+def test_plan_reconcile_weeks_ahead_422_parity(v1, v2):
+    """weeks_ahead out of [1,4] → 422 on both backends (FastAPI Query ge/le)."""
+    for bad in ("0", "5"):
+        assert v1.post(f"/api/plan/reconcile?weeks_ahead={bad}&use_llm=false").status_code == 422
+        assert v2.post(f"/api/plan/reconcile?weeks_ahead={bad}&use_llm=false").status_code == 422

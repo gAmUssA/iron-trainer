@@ -176,7 +176,11 @@ public class PlanResource {
         if (weekStart == null) {
             throw new WebApplicationException(422);
         }
-        boolean useLlm = Params.boolOr(useLlmParam, true);
+        return replanOneWeek(aid, weekStart, Params.boolOr(useLlmParam, true));
+    }
+
+    /** service.replan_week body — shared by the endpoint and reconcile. */
+    private Map<String, Object> replanOneWeek(int aid, String weekStart, boolean useLlm) {
         ReplanCtx ctx = QuarkusTransaction.requiringNew().call(() -> assembleReplan(aid, weekStart, useLlm));
 
         List<Map<String, Object>> workouts = null;
@@ -200,16 +204,86 @@ public class PlanResource {
         List<Map<String, Object>> fixed = wr.workouts();
         applyFueling(fixed, ctx.bodyWeightKg, ctx.gelCarbG, ctx.sweatRateLH);
         String weekEnd = LocalDate.parse(weekStart).plusDays(6).toString();
-        final boolean llmU = llmUsed;
         int n = QuarkusTransaction.requiringNew().call(() ->
                 PlannedWorkout.replaceWeek(aid, ctx.planId, weekStart, weekEnd, fixed));
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("week_start", weekStart);
-        resp.put("llm_used", llmU);
+        resp.put("llm_used", llmUsed);
         resp.put("workouts", n);
         resp.put("notes", wr.notes());
         return resp;
+    }
+
+    /** POST /api/plan/reconcile — match completed activities to planned workouts,
+     * then re-plan the next `weeks_ahead` (1-4) upcoming week(s). Port of
+     * plan_router.reconcile + service.reconcile. No active plan → 400. */
+    @POST
+    @Path("/reconcile")
+    public Map<String, Object> reconcile(@QueryParam("weeks_ahead") String weeksAheadParam,
+                                         @QueryParam("use_llm") String useLlmParam) {
+        int aid = current.require();
+        int weeksAhead = weeksAheadParam == null ? 1 : Params.intParam(weeksAheadParam);
+        if (weeksAhead < 1 || weeksAhead > 4) {
+            throw new WebApplicationException(422);   // FastAPI Query(ge=1, le=4)
+        }
+        boolean useLlm = Params.boolOr(useLlmParam, true);
+        LocalDate today = LocalDate.now();
+
+        Plan plan = QuarkusTransaction.requiringNew().call(() -> Plan.activeFor(aid));
+        if (plan == null) {
+            throw new BadRequestException("No active plan. Generate a plan first.");
+        }
+        final int planId = plan.id;
+
+        // 1) Match actuals to planned (writes statuses) — its own tx.
+        Map<String, Object> matched = QuarkusTransaction.requiringNew()
+                .call(() -> Reconcile.matchWorkouts(aid, planId, today));
+
+        // 2) Re-plan the next weeks_ahead future weeks (LLM outside its own tx).
+        String nextMonday = PlanTemplate.mondayOf(today).plusDays(7).toString();
+        List<String> upcoming = upcomingWeekStarts(plan.weeksJson, nextMonday, weeksAhead);
+        List<Map<String, Object>> replanned = new ArrayList<>();
+        for (String ws : upcoming) {
+            replanned.add(replanOneWeek(aid, ws, useLlm));
+        }
+
+        // 3) Compliance summary + form flag (reads).
+        Map<String, Object> compliance = QuarkusTransaction.requiringNew().call(() -> {
+            List<PlannedWorkout> wos = PlannedWorkout.forPlan(aid, planId);
+            List<Activity> acts = Activity.list(
+                    "athleteId = ?1 and (isDuplicate = 0 or isDuplicate is null) order by startDate", aid);
+            return Compliance.recent(wos, acts, today, 21);
+        });
+        String formFlag = QuarkusTransaction.requiringNew().call(() -> {
+            MetricDaily last = MetricDaily.find("athleteId = ?1 order by date desc", aid).firstResult();
+            return formFlag(last == null ? null : last.tsb);
+        });
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("matched", matched);
+        resp.put("compliance", compliance);
+        resp.put("weeks_replanned", upcoming);
+        resp.put("replanned", replanned);
+        resp.put("form_flag", formFlag);
+        return resp;
+    }
+
+    /** plan weeks with week_start >= nextMonday, first `weeksAhead` (Python
+     * [w for w in weeks if w.week_start >= next_monday][:weeks_ahead]). */
+    @SuppressWarnings("unchecked")
+    private List<String> upcomingWeekStarts(String weeksJson, String nextMonday, int weeksAhead) {
+        Object parsed = (weeksJson == null || weeksJson.isBlank()) ? List.of() : PyJson.loads(weeksJson);
+        List<String> matching = new ArrayList<>();
+        for (Object o : (List<Object>) parsed) {
+            if (o instanceof Map<?, ?> m) {
+                Object ws = m.get("week_start");
+                if (ws != null && String.valueOf(ws).compareTo(nextMonday) >= 0) {
+                    matching.add(String.valueOf(ws));
+                }
+            }
+        }
+        return matching.size() > weeksAhead ? new ArrayList<>(matching.subList(0, weeksAhead)) : matching;
     }
 
     /** Inputs replan_week reads: the active plan's week (by week_start), the
