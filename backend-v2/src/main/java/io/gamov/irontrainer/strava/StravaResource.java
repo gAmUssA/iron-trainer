@@ -9,8 +9,10 @@ import io.gamov.irontrainer.util.Params;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.CookieParam;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.InternalServerErrorException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.QueryParam;
@@ -20,6 +22,7 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
@@ -48,26 +51,39 @@ public class StravaResource {
     @Inject
     StravaOAuth oauth;
 
+    // Optional: ${SESSION_SECRET:} defaults to empty, which SmallRye's String
+    // converter treats as null (a required @ConfigProperty would fail boot).
     @ConfigProperty(name = "irontrainer.session-secret")
-    String sessionSecret;
+    Optional<String> sessionSecret;
 
     @ConfigProperty(name = "irontrainer.cookie-secure")
     boolean cookieSecure;
 
     /** GET /api/strava/connect — begin Strava OAuth (also the login entry point).
      * Mints a session cookie carrying the CSRF oauth_state and 307-redirects to
-     * Strava's consent screen. Port of strava_router.connect. */
+     * Strava's consent screen. Preserves any existing session (athlete_id) so a
+     * logged-in user who cancels at Strava stays logged in. Port of
+     * strava_router.connect. */
     @GET
     @Path("/connect")
-    public Response connect() {
+    public Response connect(@CookieParam("session") String sessionCookieIn) {
         if (!oauth.configured()) {
             throw new BadRequestException("Strava client ID/secret not configured in .env");
         }
+        String secret = sessionSecret.filter(s -> !s.isBlank()).orElse(null);
+        if (secret == null) {
+            // Fail loud, not silent: a blank secret mints a cookie neither backend
+            // can verify → a total, invisible login outage. (Prod has SESSION_SECRET.)
+            throw new InternalServerErrorException("SESSION_SECRET not configured");
+        }
         String state = StravaOAuth.newState();
-        Map<String, Object> session = new LinkedHashMap<>();
+        // Mutate the EXISTING session (like request.session[...]=state), preserving
+        // athlete_id; start fresh only when there's no valid session cookie.
+        Map<String, Object> existing = SessionCookie.read(sessionCookieIn, secret);
+        Map<String, Object> session = existing == null ? new LinkedHashMap<>() : new LinkedHashMap<>(existing);
         session.put("oauth_state", state);
         NewCookie cookie = new NewCookie.Builder("session")
-                .value(SessionCookie.sign(session, sessionSecret))
+                .value(SessionCookie.sign(session, secret))
                 .path("/")
                 .maxAge((int) SessionCookie.MAX_AGE_SECONDS)
                 .httpOnly(true)

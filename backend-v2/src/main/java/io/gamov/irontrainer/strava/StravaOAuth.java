@@ -18,18 +18,21 @@ public class StravaOAuth {
     static final String AUTHORIZE_URL = "https://www.strava.com/oauth/authorize";
     static final String SCOPE = "read,activity:read_all";
 
+    // Optional: the ${VAR:} defaults resolve to empty, which SmallRye's String
+    // converter treats as null (would fail a required @ConfigProperty at boot).
     @ConfigProperty(name = "strava.client-id")
-    String clientId;
+    java.util.Optional<String> clientId;
 
     @ConfigProperty(name = "strava.client-secret")
-    String clientSecret;
+    java.util.Optional<String> clientSecret;
 
     @ConfigProperty(name = "strava.redirect-uri")
     String redirectUri;
 
-    /** strava_configured: both client id and secret are set. */
+    /** strava_configured: both client id and secret are set (non-blank). */
     public boolean configured() {
-        return clientId != null && !clientId.isBlank() && clientSecret != null && !clientSecret.isBlank();
+        return clientId.filter(s -> !s.isBlank()).isPresent()
+                && clientSecret.filter(s -> !s.isBlank()).isPresent();
     }
 
     /** secrets.token_urlsafe(16) — 16 random bytes, urlsafe base64, no padding.
@@ -47,7 +50,7 @@ public class StravaOAuth {
      * approval_prompt, state (form-encoded values). */
     public String authorizeUrl(String state) {
         Map<String, String> params = new LinkedHashMap<>();
-        params.put("client_id", clientId);
+        params.put("client_id", clientId.orElse(""));
         params.put("redirect_uri", redirectUri);
         params.put("response_type", "code");
         params.put("scope", SCOPE);

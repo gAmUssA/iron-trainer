@@ -55,7 +55,16 @@ public final class SessionCookie {
             return null;
         }
         Object aid = session.get("athlete_id");
-        return aid instanceof Number n ? n.intValue() : null;
+        // Only an athlete_id that fits a signed 32-bit int (as before the refactor's
+        // canConvertToInt guard) — never silently truncate a huge value into a
+        // different athlete's id.
+        if (aid instanceof Number n) {
+            long v = n.longValue();
+            if (v >= Integer.MIN_VALUE && v <= Integer.MAX_VALUE && (double) v == n.doubleValue()) {
+                return (int) v;
+            }
+        }
+        return null;
     }
 
     /** Verify a {@code session} cookie and return its full decoded contents
