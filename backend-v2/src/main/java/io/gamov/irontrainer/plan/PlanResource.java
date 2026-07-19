@@ -248,24 +248,22 @@ public class PlanResource {
             replanned.add(replanOneWeek(aid, ws, useLlm));
         }
 
-        // 3) Compliance summary + form flag (reads).
-        Map<String, Object> compliance = QuarkusTransaction.requiringNew().call(() -> {
+        // 3) Compliance summary + form flag — both reads, one transaction.
+        Object[] cf = QuarkusTransaction.requiringNew().call(() -> {
             List<PlannedWorkout> wos = PlannedWorkout.forPlan(aid, planId);
             List<Activity> acts = Activity.list(
                     "athleteId = ?1 and (isDuplicate = 0 or isDuplicate is null) order by startDate", aid);
-            return Compliance.recent(wos, acts, today, 21);
-        });
-        String formFlag = QuarkusTransaction.requiringNew().call(() -> {
+            Map<String, Object> comp = Compliance.recent(wos, acts, today, 21);
             MetricDaily last = MetricDaily.find("athleteId = ?1 order by date desc", aid).firstResult();
-            return formFlag(last == null ? null : last.tsb);
+            return new Object[] {comp, formFlag(last == null ? null : last.tsb)};
         });
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("matched", matched);
-        resp.put("compliance", compliance);
+        resp.put("compliance", cf[0]);
         resp.put("weeks_replanned", upcoming);
         resp.put("replanned", replanned);
-        resp.put("form_flag", formFlag);
+        resp.put("form_flag", cf[1]);
         return resp;
     }
 
@@ -283,7 +281,8 @@ public class PlanResource {
                 }
             }
         }
-        return matching.size() > weeksAhead ? new ArrayList<>(matching.subList(0, weeksAhead)) : matching;
+        // Python seq[:weeks_ahead] via the shared slice-bound helper.
+        return new ArrayList<>(matching.subList(0, Params.sliceStop(weeksAhead, matching.size())));
     }
 
     /** Inputs replan_week reads: the active plan's week (by week_start), the

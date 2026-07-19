@@ -27,9 +27,12 @@ public final class Params {
     }
 
     /** Optional lax bool: absent/blank → the default; otherwise {@link #bool}
-     * (so "1"/"true"/… → true, junk → 422). Mirrors FastAPI
-     * `Query(default, alias=...)` for a bool param — needed for `?async=1`,
-     * which a plain JAX-RS boolean coerces to false. */
+     * (so "1"/"true"/… → true, junk → 422). Mirrors FastAPI `Query(default)` for
+     * a bool param — needed for `?async=1`, which a plain JAX-RS boolean coerces
+     * to false. Note: FastAPI 422s a present-but-EMPTY value ("?p="), but RESTEasy
+     * delivers such a param as null (indistinguishable from absent), so that exact
+     * edge can't be reproduced here without raw query-string parsing; no real
+     * client sends empty bool values, so we keep the simpler blank→default. */
     public static boolean boolOr(String v, boolean def) {
         return (v == null || v.isBlank()) ? def : bool(v);
     }
