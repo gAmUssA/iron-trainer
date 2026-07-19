@@ -1,11 +1,22 @@
 package io.gamov.irontrainer.plan;
 
 import io.gamov.irontrainer.activity.Activity;
+import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.jobs.JobRunner;
+import io.gamov.irontrainer.metrics.MetricDaily;
+import io.gamov.irontrainer.nutrition.Nutrition;
+import io.gamov.irontrainer.races.Races;
+import io.gamov.irontrainer.util.Params;
 import io.gamov.irontrainer.util.PyJson;
+import io.gamov.irontrainer.zones.HrZones;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.QueryParam;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,16 +24,29 @@ import java.util.List;
 import java.util.Map;
 import org.jboss.logging.Logger;
 
-/** Plan vertical (read side) — GET /api/plan, contract-parity with FastAPI
- * plan_router.get_plan (repo.get_active_plan + repo.get_workouts). The write
- * endpoints (generate/checkin/replan/reconcile) are separate slices. */
+/** Plan vertical — GET /api/plan (read), GET /api/plan/compliance, and
+ * POST /api/plan/generate (season generation). Contract-parity with FastAPI
+ * plan_router. checkin/replan/reconcile are later slices. */
 @Path("/api/plan")
 public class PlanResource {
 
     private static final Logger LOG = Logger.getLogger(PlanResource.class);
 
+    /** Athlete fields the season builder + week expander read. */
+    private static final List<String> PROFILE_KEYS = List.of(
+            "ftp", "threshold_hr", "max_hr", "threshold_pace_run", "css_swim", "weekly_hours_target");
+
     @Inject
     CurrentAthlete current;
+
+    @Inject
+    Races races;
+
+    @Inject
+    PlanLlm llm;
+
+    @Inject
+    JobRunner jobs;
 
     /** GET /api/plan — the active plan + its workouts, or {plan:null, workouts:[]}
      * when the athlete has no active plan. Mirrors repo._plan_dict /
@@ -66,6 +90,140 @@ public class PlanResource {
         out.put("recent", Compliance.recent(workouts, acts, LocalDate.now(), 21));
         return out;
     }
+
+    /** POST /api/plan/generate — build the deterministic season skeleton,
+     * optionally LLM-adapt it (falls back to the template when unavailable),
+     * safety-validate, expand every week to workouts (+ fueling), and save.
+     * ?async=1 runs it as a background job (kind generate_plan). Port of
+     * plan_router.generate + service.generate_plan. */
+    @POST
+    @Path("/generate")
+    public Map<String, Object> generate(@QueryParam("use_llm") String useLlmParam,
+                                        @QueryParam("async") String asyncParam) {
+        int aid = current.require();
+        boolean useLlm = Params.boolOr(useLlmParam, true);   // FastAPI Query(True)
+        if (Params.boolOr(asyncParam, false)) {
+            Map<String, Object> env = new LinkedHashMap<>();
+            env.put("job", jobs.submit(aid, "generate_plan", () -> generatePlan(aid, useLlm)));
+            return env;
+        }
+        return generatePlan(aid, useLlm);
+    }
+
+    private Map<String, Object> generatePlan(int aid, boolean useLlm) {
+        GenCtx ctx = QuarkusTransaction.requiringNew().call(() -> assembleGen(aid));
+        LocalDate today = LocalDate.now();                    // date.today()
+        Map<String, Object> season = PlanTemplate.buildSeason(
+                today, LocalDate.parse(ctx.raceDate), ctx.weeklyHours);
+        season.put("race_name", ctx.raceName);
+        season.put("base_weekly_hours", ctx.weeklyHours);
+
+        boolean llmUsed = false;
+        if (useLlm) {
+            try {
+                season = llm.adjustSeason(season, PyJson.dumps(ctx.profile),
+                        PyJson.dumps(ctx.zones), PyJson.dumps(ctx.fitness));
+                season.put("race_name", ctx.raceName);
+                season.put("race_date", ctx.raceDate);
+                season.put("base_weekly_hours", ctx.weeklyHours);
+                llmUsed = true;
+            } catch (PlanLlm.Unavailable e) {
+                LOG.infof("Plan generate: LLM unavailable (%s) — deterministic template.", e.getMessage());
+            }
+        }
+
+        PlanValidator.Result vr = PlanValidator.validateSeason(season);
+        Map<String, Object> finalSeason = vr.season();
+        final boolean llmU = llmUsed;
+        return QuarkusTransaction.requiringNew().call(() -> {
+            int planId = Plan.savePlan(aid, finalSeason);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> weeks = (List<Map<String, Object>>) finalSeason.get("weeks");
+            List<Map<String, Object>> all = new ArrayList<>();
+            for (Map<String, Object> wk : weeks) {
+                List<Map<String, Object>> wos = PlanTemplate.expandWeek(wk, ctx.profile);
+                wos = PlanValidator.capWeekWorkouts(wos);
+                applyFueling(wos, ctx);
+                all.addAll(wos);
+            }
+            int saved = PlannedWorkout.saveAll(aid, planId, all);
+            LOG.infof("Plan %d created: %s, %d weeks, %d workouts, %d adjustment(s).",
+                    planId, llmU ? "AI-adapted" : "template", weeks.size(), saved, vr.notes().size());
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("plan_id", planId);
+            resp.put("llm_used", llmU);
+            resp.put("weeks", weeks.size());
+            resp.put("workouts", saved);
+            resp.put("adjustments", vr.notes());
+            resp.put("summary", finalSeason.get("summary"));
+            return resp;
+        });
+    }
+
+    /** _apply_fueling: append the one-line fueling note to each workout's
+     * description (mutates in place). Mirrors service._apply_fueling. */
+    private void applyFueling(List<Map<String, Object>> workouts, GenCtx ctx) {
+        for (Map<String, Object> wo : workouts) {
+            Integer durS = wo.get("duration_s") == null ? null : ((Number) wo.get("duration_s")).intValue();
+            Map<String, Object> fueling = Nutrition.computeWorkoutFueling(
+                    durS, (String) wo.get("intensity"), ctx.gelCarbG, ctx.bodyWeightKg, ctx.sweatRateLH);
+            String note = Nutrition.fuelingNote(fueling);
+            if (!note.isEmpty()) {
+                String base = String.valueOf(wo.getOrDefault("description", "")).stripTrailing();
+                if (!base.contains(note)) {
+                    wo.put("description", (base + "\n" + note).strip());
+                }
+            }
+        }
+    }
+
+    /** Inputs generate_plan reads: race, athlete profile (build/expand + fuel),
+     * HR zones + fitness summary (LLM prompt context). */
+    private GenCtx assembleGen(int aid) {
+        Athlete a = Athlete.findById(aid);
+        Map<String, Object> race = races.effectiveRace(a);
+        Map<String, Object> profile = new LinkedHashMap<>();
+        profile.put("ftp", a == null ? null : a.ftp);
+        profile.put("threshold_hr", a == null ? null : a.thresholdHr);
+        profile.put("max_hr", a == null ? null : a.maxHr);
+        profile.put("threshold_pace_run", a == null ? null : a.thresholdPaceRun);
+        profile.put("css_swim", a == null ? null : a.cssSwim);
+        profile.put("weekly_hours_target", a == null ? null : a.weeklyHoursTarget);
+
+        double weeklyHours = (a != null && a.weeklyHoursTarget != null && a.weeklyHoursTarget != 0.0)
+                ? a.weeklyHoursTarget : 6.0;                 // weekly_hours_target or 6.0
+        Map<String, Object> zones = HrZones.hrZones(a == null ? null : a.thresholdHr, a == null ? null : a.maxHr);
+
+        List<MetricDaily> metrics = MetricDaily.list("athleteId = ?1 order by date", aid);
+        MetricDaily last = metrics.isEmpty() ? null : metrics.get(metrics.size() - 1);
+        Double tsb = last == null ? null : last.tsb;
+        Map<String, Object> fitness = new LinkedHashMap<>();
+        fitness.put("ctl", last == null ? null : last.ctl);
+        fitness.put("atl", last == null ? null : last.atl);
+        fitness.put("tsb", tsb);
+        fitness.put("form_flag", formFlag(tsb));
+
+        return new GenCtx((String) race.get("name"), (String) race.get("date"), weeklyHours,
+                profile, a == null ? null : a.bodyWeightKg, a == null ? null : a.gelCarbG,
+                a == null ? null : a.sweatRateLH, zones, fitness);
+    }
+
+    private static String formFlag(Double tsb) {
+        if (tsb == null) {
+            return "unknown";
+        }
+        if (tsb < -25) {
+            return "fatigued";
+        }
+        if (tsb > 10) {
+            return "fresh";
+        }
+        return "normal";
+    }
+
+    private record GenCtx(String raceName, String raceDate, double weeklyHours,
+                          Map<String, Object> profile, Double bodyWeightKg, Double gelCarbG,
+                          Double sweatRateLH, Map<String, Object> zones, Map<String, Object> fitness) {}
 
     private List<Map<String, Object>> workouts(int planId, int aid) {
         List<PlannedWorkout> rows = PlannedWorkout.forPlan(aid, planId);

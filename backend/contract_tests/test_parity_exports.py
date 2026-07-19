@@ -822,3 +822,30 @@ def test_plan_compliance_parity(v1, v2):
     for k in ("week_start", "planned_tss", "actual_tss", "completed", "skipped", "planned"):
         assert k in row, k
     assert aj["recent"] is not None and aj["recent"]["window_days"] == 21
+
+
+def test_plan_generate_parity(v1, v2):
+    """POST /api/plan/generate?use_llm=false is deterministic given the same
+    athlete/race/today, so both backends must build the same season + workouts.
+    It's a non-idempotent write (supersedes the active plan), so we generate on
+    each backend, read the result back, and compare NORMALIZED — dropping the
+    volatile plan_id/row-id/created_at. Appended last so it doesn't disturb the
+    other plan read tests. Both backends compute "today" on the same host."""
+    a = v1.post("/api/plan/generate?use_llm=false")
+    plan_a = v1.get("/api/plan").json()          # v1's fresh plan
+    b = v2.post("/api/plan/generate?use_llm=false")
+    plan_b = v2.get("/api/plan").json()          # v2's fresh plan (supersedes v1's)
+    assert a.status_code == b.status_code == 200
+    aj, bj = a.json(), b.json()
+    # Response identical except plan_id (a fresh row id per generate).
+    assert {k: v for k, v in aj.items() if k != "plan_id"} == {k: v for k, v in bj.items() if k != "plan_id"}
+    assert aj["llm_used"] is False and aj["weeks"] > 0 and aj["workouts"] > 0
+
+    def norm(p):
+        pl = {k: v for k, v in p["plan"].items() if k not in ("id", "created_at")}
+        wos = [{k: v for k, v in w.items() if k not in ("id", "plan_id", "created_at")} for w in p["workouts"]]
+        return {"plan": pl, "workouts": wos}
+
+    # The saved season (weeks) + every expanded workout (steps, targets, fueling
+    # note in the description, planned_tss) must be byte-identical.
+    assert norm(plan_a) == norm(plan_b)

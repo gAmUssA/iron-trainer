@@ -173,6 +173,29 @@ public final class Nutrition {
         return out;
     }
 
+    /** fueling_note: one-line fueling summary appended to a workout description /
+     * export. Port of nutrition.fueling_note (used by plan generation). */
+    public static String fuelingNote(Map<String, Object> fueling) {
+        if (!Boolean.TRUE.equals(fueling.get("needed"))) {
+            return "";
+        }
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        long carbGH = ((Number) fueling.get("carb_g_h")).longValue();
+        parts.add("Fuel: " + Py.f0(carbGH) + " g carbs/h (~" + fueling.get("gels_per_hour") + " gels/h)");
+        if (Boolean.TRUE.equals(fueling.get("mtc_required"))) {
+            parts.add("use glucose:fructose blend");
+        }
+        Object fluid = fueling.get("fluid_ml_h");
+        if (fluid != null && ((Number) fluid).doubleValue() != 0.0) {
+            parts.add(Py.f0(((Number) fluid).doubleValue()) + " mL fluid/h");
+        }
+        Object sodium = fueling.get("sodium_mg_h");
+        if (sodium != null && ((Number) sodium).doubleValue() != 0.0) {
+            parts.add(Py.f0(((Number) sodium).doubleValue()) + " mg sodium/h");
+        }
+        return String.join(" · ", parts);
+    }
+
     /** /daily: daily carb target from body weight + training volume. */
     public static Map<String, Object> computeDaily(Double bodyWeightKg, Double weeklyHoursTarget) {
         Map<String, Object> out = new LinkedHashMap<>();

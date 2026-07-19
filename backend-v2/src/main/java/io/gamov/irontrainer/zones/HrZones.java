@@ -28,6 +28,34 @@ public final class HrZones {
             new Band("Z4", "Threshold", 0.80, 0.90),
             new Band("Z5", "VO2max", 0.90, 1.00));
 
+    /** intensity → zone key (app/zones.py INTENSITY_ZONE). */
+    static final Map<String, String> INTENSITY_ZONE = Map.of(
+            "recovery", "Z1", "endurance", "Z2", "tempo", "Z3",
+            "threshold", "Z4", "vo2", "Z5", "test", "Z4");
+
+    /** zone_label(intensity): the Z-band label, or null. */
+    public static String zoneLabel(String intensity) {
+        return INTENSITY_ZONE.get(intensity);
+    }
+
+    /** hr_range_for_intensity: the (low, high) bpm band for this intensity, or
+     * null when it can't be computed (no thresholds, or unknown intensity). */
+    @SuppressWarnings("unchecked")
+    public static int[] hrRangeForIntensity(String intensity, Integer thresholdHr, Integer maxHr) {
+        Map<String, Object> table = hrZones(thresholdHr, maxHr);
+        String zoneKey = INTENSITY_ZONE.get(intensity);
+        List<Map<String, Object>> zs = (List<Map<String, Object>>) table.get("zones");
+        if (zoneKey == null || zs.isEmpty()) {
+            return null;
+        }
+        for (Map<String, Object> z : zs) {
+            if (zoneKey.equals(z.get("zone"))) {
+                return new int[] {((Number) z.get("low")).intValue(), ((Number) z.get("high")).intValue()};
+            }
+        }
+        return null;
+    }
+
     public static Map<String, Object> hrZones(Integer thresholdHr, Integer maxHr) {
         double base;
         List<Band> bands;
