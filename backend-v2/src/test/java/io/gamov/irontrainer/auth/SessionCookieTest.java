@@ -22,6 +22,26 @@ class SessionCookieTest {
             "eyJhdGhsZXRlX2lkIjogN30=.ZVPxAA.d-cuM89lfIvJTyg5a8oKFq6JAQ4";
 
     @Test
+    void mintsByteIdenticalToPython() {
+        // The strongest minting check: sign() must reproduce the Python
+        // itsdangerous/Starlette cookie byte-for-byte (so FastAPI verifies ours).
+        String minted = SessionCookie.sign(
+                new java.util.LinkedHashMap<>(java.util.Map.of("athlete_id", 7)), SECRET, SIGNED_AT);
+        assertEquals(COOKIE, minted);
+    }
+
+    @Test
+    void mintRoundTripsWithReadAndAthleteId() {
+        java.util.Map<String, Object> session = new java.util.LinkedHashMap<>();
+        session.put("oauth_state", "abc123");
+        session.put("athlete_id", 42);
+        String cookie = SessionCookie.sign(session, SECRET, SIGNED_AT);
+        assertEquals(42, SessionCookie.athleteId(cookie, SECRET, SIGNED_AT + 60));
+        assertEquals("abc123", SessionCookie.read(cookie, SECRET, SIGNED_AT + 60).get("oauth_state"));
+        assertNull(SessionCookie.read(cookie, "wrong-secret", SIGNED_AT + 60));   // tamper-evident
+    }
+
+    @Test
     void verifiesPythonSignedCookie() {
         // Just after signing → within the 14-day window.
         Integer aid = SessionCookie.athleteId(COOKIE, SECRET, SIGNED_AT + 60);
