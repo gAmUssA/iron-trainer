@@ -53,11 +53,23 @@ public class PlanLlm {
             throw new Unavailable("Model returned no season.");
         }
         Map<String, Object> merged = new LinkedHashMap<>(templateSeason);
-        if (t.summary() != null && !t.summary().isEmpty()) {
+        // Python out.get("summary", template): a present value (even "") overrides;
+        // only a missing/null summary keeps the template's.
+        if (t.summary() != null) {
             merged.put("summary", t.summary());
         }
         List<Map<String, Object>> weeks = convertWeeks(t.weeks());
         if (!weeks.isEmpty()) {
+            // Guard the never-500 contract: structured output doesn't hard-enforce
+            // required fields, so a week with a null/blank week_start would NPE
+            // later in expandWeek's LocalDate.parse (outside the Unavailable catch).
+            // Treat a malformed LLM season as unavailable → deterministic template.
+            for (Map<String, Object> w : weeks) {
+                Object ws = w.get("week_start");
+                if (ws == null || String.valueOf(ws).isBlank()) {
+                    throw new Unavailable("LLM season week missing week_start.");
+                }
+            }
             merged.put("weeks", weeks);
         }
         return merged;

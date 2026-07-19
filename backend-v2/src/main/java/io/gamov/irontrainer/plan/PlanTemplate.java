@@ -115,9 +115,13 @@ public final class PlanTemplate {
     /** expand_week: one skeleton week → structured daily workouts. */
     public static List<Map<String, Object>> expandWeek(Map<String, Object> week, Map<String, Object> profile) {
         LocalDate ws = LocalDate.parse((String) week.get("week_start"));
-        double hours = week.get("target_hours") == null ? 6.0 : ((Number) week.get("target_hours")).doubleValue();
+        // Python `week.get("target_hours") or 6.0`: a null OR 0.0/falsy value → 6.0.
+        Object th = week.get("target_hours");
+        double hours = (th == null || ((Number) th).doubleValue() == 0.0) ? 6.0 : ((Number) th).doubleValue();
         boolean recovery = Boolean.TRUE.equals(week.get("is_recovery"));
-        String phase = week.get("phase") == null ? "build" : (String) week.get("phase");
+        // Python `week.get("phase", "build")`: default ONLY on a MISSING key; a
+        // present null stays null (→ "hard" falls to tempo, not threshold).
+        String phase = week.containsKey("phase") ? (String) week.get("phase") : "build";
 
         double swimH = hours * SWIM_SPLIT, bikeH = hours * BIKE_SPLIT, runH = hours * RUN_SPLIT;
         String hard = recovery ? "endurance" : (("build".equals(phase) || "peak".equals(phase)) ? "threshold" : "tempo");

@@ -111,7 +111,7 @@ public class PlanResource {
     }
 
     private Map<String, Object> generatePlan(int aid, boolean useLlm) {
-        GenCtx ctx = QuarkusTransaction.requiringNew().call(() -> assembleGen(aid));
+        GenCtx ctx = QuarkusTransaction.requiringNew().call(() -> assembleGen(aid, useLlm));
         LocalDate today = LocalDate.now();                    // date.today()
         Map<String, Object> season = PlanTemplate.buildSeason(
                 today, LocalDate.parse(ctx.raceDate), ctx.weeklyHours);
@@ -179,7 +179,7 @@ public class PlanResource {
 
     /** Inputs generate_plan reads: race, athlete profile (build/expand + fuel),
      * HR zones + fitness summary (LLM prompt context). */
-    private GenCtx assembleGen(int aid) {
+    private GenCtx assembleGen(int aid, boolean useLlm) {
         Athlete a = Athlete.findById(aid);
         Map<String, Object> race = races.effectiveRace(a);
         Map<String, Object> profile = new LinkedHashMap<>();
@@ -192,16 +192,22 @@ public class PlanResource {
 
         double weeklyHours = (a != null && a.weeklyHoursTarget != null && a.weeklyHoursTarget != 0.0)
                 ? a.weeklyHoursTarget : 6.0;                 // weekly_hours_target or 6.0
-        Map<String, Object> zones = HrZones.hrZones(a == null ? null : a.thresholdHr, a == null ? null : a.maxHr);
 
-        List<MetricDaily> metrics = MetricDaily.list("athleteId = ?1 order by date", aid);
-        MetricDaily last = metrics.isEmpty() ? null : metrics.get(metrics.size() - 1);
-        Double tsb = last == null ? null : last.tsb;
-        Map<String, Object> fitness = new LinkedHashMap<>();
-        fitness.put("ctl", last == null ? null : last.ctl);
-        fitness.put("atl", last == null ? null : last.atl);
-        fitness.put("tsb", tsb);
-        fitness.put("form_flag", formFlag(tsb));
+        // HR zones + fitness summary are LLM-prompt context only — Python computes
+        // them inside `if use_llm`, so skip the work (incl. the metrics read) for
+        // the deterministic path.
+        Map<String, Object> zones = null;
+        Map<String, Object> fitness = null;
+        if (useLlm) {
+            zones = HrZones.hrZones(a == null ? null : a.thresholdHr, a == null ? null : a.maxHr);
+            MetricDaily last = MetricDaily.find("athleteId = ?1 order by date desc", aid).firstResult();
+            Double tsb = last == null ? null : last.tsb;
+            fitness = new LinkedHashMap<>();
+            fitness.put("ctl", last == null ? null : last.ctl);
+            fitness.put("atl", last == null ? null : last.atl);
+            fitness.put("tsb", tsb);
+            fitness.put("form_flag", formFlag(tsb));
+        }
 
         return new GenCtx((String) race.get("name"), (String) race.get("date"), weeklyHours,
                 profile, a == null ? null : a.bodyWeightKg, a == null ? null : a.gelCarbG,
