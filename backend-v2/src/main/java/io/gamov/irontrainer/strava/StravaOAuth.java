@@ -27,17 +27,18 @@ public class StravaOAuth {
     @ConfigProperty(name = "strava.redirect-uri")
     String redirectUri;
 
-    private static final SecureRandom RANDOM = new SecureRandom();
-
     /** strava_configured: both client id and secret are set. */
     public boolean configured() {
         return clientId != null && !clientId.isBlank() && clientSecret != null && !clientSecret.isBlank();
     }
 
-    /** secrets.token_urlsafe(16) — 16 random bytes, urlsafe base64, no padding. */
+    /** secrets.token_urlsafe(16) — 16 random bytes, urlsafe base64, no padding.
+     * A fresh SecureRandom per call (OAuth connect is infrequent): a static
+     * instance would be baked into the native image heap with a cached seed,
+     * which GraalVM rejects (and would be insecure). */
     public static String newState() {
         byte[] b = new byte[16];
-        RANDOM.nextBytes(b);
+        new SecureRandom().nextBytes(b);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(b);
     }
 
