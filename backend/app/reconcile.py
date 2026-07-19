@@ -13,11 +13,16 @@ from datetime import date, datetime, timedelta
 from . import repo
 
 # A planned sport is satisfied by these actual activity sports.
-_MATCHES: dict[str, set[str]] = {
-    "Swim": {"Swim"},
-    "Bike": {"Bike"},
-    "Run": {"Run"},
-    "Brick": {"Bike", "Run"},
+# Ordered lists (not sets): _best_match iterates these to build candidates, and a
+# set's iteration order is hash-randomized across processes — so on an exact
+# day+TSS tie for a Brick, the picked activity could differ run-to-run (and from
+# the deterministic backend-v2 port). Fixed [Bike, Run] order keeps matching
+# deterministic and identical on both backends.
+_MATCHES: dict[str, list[str]] = {
+    "Swim": ["Swim"],
+    "Bike": ["Bike"],
+    "Run": ["Run"],
+    "Brick": ["Bike", "Run"],
 }
 # Sports we expect to see on Strava; others (e.g. Strength) aren't marked skipped.
 _TRACKED = set(_MATCHES)
