@@ -32,6 +32,13 @@ class CheckinsTest {
     }
 
     @Test
+    void booleanFeelBecomesOne() {
+        // Python bool is an int: int(True)=1 → clamps to 1 (and False→0→clamp 1).
+        assertEquals(1, Checkins.sanitizeFeel(java.util.Map.of("energy", true)).get("energy"));
+        assertEquals(1, Checkins.sanitizeFeel(java.util.Map.of("energy", false)).get("energy"));
+    }
+
+    @Test
     void feelVsDataNullWhenNoScoresOrNotOk() {
         Map<String, Object> ok = Map.of("status", "ok", "level", "green");
         assertNull(Checkins.feelVsDataLine(null, ok));                       // no scores

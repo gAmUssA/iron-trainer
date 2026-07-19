@@ -36,10 +36,17 @@ public final class Py {
         return new BigDecimal(x).setScale(0, RoundingMode.HALF_EVEN).toBigInteger().toString();
     }
 
-    /** Python f"{x:+.0f}" (always-signed). */
+    /** Python f"{x:+.0f}" (always-signed). Note: Python KEEPS the minus for a
+     * value that rounds to zero from below — f"{-0.4:+.0f}" == "-0" — but f0/
+     * BigDecimal has no negative zero and returns "0", so restore the sign here
+     * for x<0 (or -0.0) that rounded away. (Bugs pp3s/t4md.) */
     public static String f0signed(double x) {
         String s = f0(x);
-        return s.startsWith("-") ? s : "+" + s;
+        if (s.startsWith("-")) {
+            return s;
+        }
+        boolean negative = x < 0.0 || (x == 0.0 && Double.doubleToRawLongBits(x) != 0L);   // x<0 or -0.0
+        return (negative ? "-" : "+") + s;
     }
 
     /** Python f"{x:.1f}". */

@@ -47,6 +47,14 @@ class PlanCheckinResourceTest {
     }
 
     @Test
+    void nonDictInputsIs422() {
+        generatePlan();
+        // CheckinBody.inputs is dict|None — a string value is a 422 in FastAPI.
+        given().contentType("application/json").body("{\"inputs\": \"3\"}")
+                .when().post("/api/plan/checkin?use_llm=false").then().statusCode(422);
+    }
+
+    @Test
     void asyncCheckinReturnsJob() {
         generatePlan();
         Integer jobId = given().contentType("application/json").when().post("/api/plan/checkin?use_llm=false&async=1").then()

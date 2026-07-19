@@ -299,15 +299,30 @@ public class PlanResource {
                                        @QueryParam("async") String asyncParam) {
         int aid = current.require();
         boolean useLlm = Params.boolOr(useLlmParam, true);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> inputs = (body != null && body.get("inputs") instanceof Map<?, ?> m)
-                ? (Map<String, Object>) m : null;
+        Map<String, Object> inputs = checkinInputs(body);
         if (Params.boolOr(asyncParam, false)) {
             Map<String, Object> env = new LinkedHashMap<>();
             env.put("job", jobs.submit(aid, "checkin", () -> weeklyCheckin(aid, useLlm, inputs)));
             return env;
         }
         return weeklyCheckin(aid, useLlm, inputs);
+    }
+
+    /** CheckinBody.inputs is dict|None: a present non-dict value (string/list) is
+     * a 422 in FastAPI, not silently ignored; absent/null → null. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> checkinInputs(Map<String, Object> body) {
+        if (body == null) {
+            return null;
+        }
+        Object raw = body.get("inputs");
+        if (raw == null) {
+            return null;
+        }
+        if (!(raw instanceof Map)) {
+            throw new WebApplicationException(422);
+        }
+        return (Map<String, Object>) raw;
     }
 
     private Map<String, Object> weeklyCheckin(int aid, boolean useLlm, Map<String, Object> inputs) {
@@ -416,9 +431,12 @@ public class PlanResource {
                 .call(() -> keySessions(aid, planId, today.toString(), nextSunday));
         out.put("key_sessions", key);
         if (!key.isEmpty()) {
-            String bits = key.stream().map(w -> w.get("title") + " ("
-                    + ((w.get("duration_s") == null ? 0L : ((Number) w.get("duration_s")).longValue()) / 60)
-                    + " min) on " + w.get("date")).collect(Collectors.joining("; "));
+            String bits = key.stream().map(w -> {
+                // Python f-string renders a null title as str(None) == "None".
+                String title = w.get("title") == null ? "None" : String.valueOf(w.get("title"));
+                long min = (w.get("duration_s") == null ? 0L : ((Number) w.get("duration_s")).longValue()) / 60;
+                return title + " (" + min + " min) on " + w.get("date");
+            }).collect(Collectors.joining("; "));
             story.add("Key sessions ahead: " + bits + ".");
         }
 

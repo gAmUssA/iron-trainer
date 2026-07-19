@@ -24,14 +24,24 @@ public final class Checkins {
         Map<String, Object> out = new LinkedHashMap<>();
         for (String k : FEEL_KEYS) {
             Object v = inputs.get(k);
-            if (v instanceof Number n) {
-                out.put(k, Math.max(1, Math.min(5, (int) n.doubleValue())));   // int(v) truncates
+            Integer iv = null;
+            if (v instanceof Boolean b) {
+                iv = b ? 1 : 0;                       // Python bool is an int: int(True)=1, int(False)=0
+            } else if (v instanceof Number n) {
+                iv = (int) n.doubleValue();           // int(v) truncates
+            }
+            if (iv != null) {
+                out.put(k, Math.max(1, Math.min(5, iv)));
             }
         }
         Object note = inputs.get("note");
         if (note instanceof String s && !s.strip().isEmpty()) {
             String t = s.strip();
-            out.put("note", t.length() > 280 ? t.substring(0, 280) : t);
+            // Python note[:280] slices by CODE POINT — never split a surrogate pair.
+            if (t.codePointCount(0, t.length()) > 280) {
+                t = t.substring(0, t.offsetByCodePoints(0, 280));
+            }
+            out.put("note", t);
         }
         return out.isEmpty() ? null : out;
     }
