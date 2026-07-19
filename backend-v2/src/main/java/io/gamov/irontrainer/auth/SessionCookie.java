@@ -1,11 +1,12 @@
 package io.gamov.irontrainer.auth;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.gamov.irontrainer.util.PyJson;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -29,7 +30,7 @@ import javax.crypto.spec.SecretKeySpec;
 public final class SessionCookie {
 
     /** Starlette SessionMiddleware default max_age (14 days). */
-    static final long MAX_AGE_SECONDS = 1_209_600L;
+    public static final long MAX_AGE_SECONDS = 1_209_600L;
 
     // django-concat: SHA1( salt + b"signer" + secret ), salt = b"itsdangerous.Signer".
     private static final byte[] DERIVE_PREFIX =
@@ -49,11 +50,26 @@ public final class SessionCookie {
      * @return the {@code athlete_id}, or {@code null} when the cookie is
      *         absent, malformed, tampered, expired, or carries no athlete. */
     public static Integer athleteId(String cookieValue, String secret, long nowEpochSeconds) {
+        Map<String, Object> session = read(cookieValue, secret, nowEpochSeconds);
+        if (session == null) {
+            return null;
+        }
+        Object aid = session.get("athlete_id");
+        return aid instanceof Number n ? n.intValue() : null;
+    }
+
+    /** Verify a {@code session} cookie and return its full decoded contents
+     * (e.g. for {@code oauth_state} in the Strava callback), or {@code null} when
+     * absent/malformed/tampered/expired. */
+    public static Map<String, Object> read(String cookieValue, String secret) {
+        return read(cookieValue, secret, Instant.now().getEpochSecond());
+    }
+
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> read(String cookieValue, String secret, long nowEpochSeconds) {
         if (cookieValue == null || secret == null || secret.isEmpty()) {
             return null;
         }
-        // Split on the LAST two dots: payload may itself be dot-free, but be
-        // robust — signature and timestamp are the final two segments.
         int sigDot = cookieValue.lastIndexOf('.');
         if (sigDot <= 0) {
             return null;
@@ -74,12 +90,8 @@ public final class SessionCookie {
             return null;
         }
 
-        // 2. Age gate: 0 <= now - ts <= MAX_AGE_SECONDS. (age<0 rejects a
-        // future-stamped cookie, exactly as itsdangerous 2.x SignatureExpired.)
-        // The >8-byte guard only bounds the long pack below; it is unreachable
-        // for a real cookie, since the signature (checked above) already proves
-        // the timestamp was minted with the secret — real Unix seconds fit in
-        // 4-5 bytes.
+        // 2. Age gate: 0 <= now - ts <= MAX_AGE_SECONDS (age<0 rejects a
+        // future-stamped cookie, as itsdangerous 2.x SignatureExpired).
         byte[] tsBytes = urlsafeDecode(tsPart);
         if (tsBytes == null || tsBytes.length == 0 || tsBytes.length > 8) {
             return null;
@@ -93,14 +105,43 @@ public final class SessionCookie {
             return null;
         }
 
-        // 3. Payload: STANDARD base64 → JSON → athlete_id.
+        // 3. Payload: STANDARD base64 → JSON → session map.
         try {
             byte[] json = Base64.getDecoder().decode(payloadPart);
-            JsonNode aid = MAPPER.readTree(json).get("athlete_id");
-            return (aid != null && aid.canConvertToInt()) ? aid.intValue() : null;
+            return MAPPER.readValue(json, Map.class);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** MINT a Starlette {@code SessionMiddleware} cookie value from a session map
+     * — the exact inverse of {@link #read}, byte-identical to Python
+     * itsdangerous/Starlette. Used by the Strava OAuth connect/callback
+     * (oauth_state / athlete_id login). Uses {@link PyJson#dumps} (", "/": "
+     * spacing) so the base64 payload matches Starlette's {@code json.dumps}. */
+    public static String sign(Map<String, Object> session, String secret) {
+        return sign(session, secret, Instant.now().getEpochSecond());
+    }
+
+    static String sign(Map<String, Object> session, String secret, long nowEpochSeconds) {
+        byte[] json = PyJson.dumps(session).getBytes(StandardCharsets.UTF_8);
+        String payload = Base64.getEncoder().encodeToString(json);   // STANDARD base64, padded
+        String tsPart = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(minimalBigEndian(nowEpochSeconds));
+        String signed = payload + "." + tsPart;
+        byte[] sig = hmacSha1(deriveKey(secret), signed.getBytes(StandardCharsets.UTF_8));
+        return signed + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(sig);
+    }
+
+    /** itsdangerous int_to_bytes: minimal big-endian ((bit_length+7)/8 bytes). */
+    private static byte[] minimalBigEndian(long v) {
+        int numBytes = v == 0 ? 1 : (64 - Long.numberOfLeadingZeros(v) + 7) / 8;
+        byte[] out = new byte[numBytes];
+        for (int i = numBytes - 1; i >= 0; i--) {
+            out[i] = (byte) (v & 0xFF);
+            v >>>= 8;
+        }
+        return out;
     }
 
     private static byte[] deriveKey(String secret) {

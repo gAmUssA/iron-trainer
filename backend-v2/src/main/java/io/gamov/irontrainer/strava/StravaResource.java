@@ -2,22 +2,29 @@ package io.gamov.irontrainer.strava;
 
 import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.auth.SessionCookie;
 import io.gamov.irontrainer.jobs.JobRunner;
 import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.util.Params;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.DefaultValue;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.NewCookie;
+import jakarta.ws.rs.core.Response;
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
-/** Strava vertical: de-duplication + activity sync. OAuth (connect/callback) and
- * the GDPR archive import are separate verticals (beans xtre/f6ui). */
+/** Strava vertical: OAuth connect (bean xtre) + de-duplication + activity sync.
+ * The OAuth callback/disconnect + GDPR import are separate slices (xtre/f6ui). */
 @Path("/api/strava")
 public class StravaResource {
 
@@ -37,6 +44,39 @@ public class StravaResource {
 
     @Inject
     JobRunner jobs;
+
+    @Inject
+    StravaOAuth oauth;
+
+    @ConfigProperty(name = "irontrainer.session-secret")
+    String sessionSecret;
+
+    @ConfigProperty(name = "irontrainer.cookie-secure")
+    boolean cookieSecure;
+
+    /** GET /api/strava/connect — begin Strava OAuth (also the login entry point).
+     * Mints a session cookie carrying the CSRF oauth_state and 307-redirects to
+     * Strava's consent screen. Port of strava_router.connect. */
+    @GET
+    @Path("/connect")
+    public Response connect() {
+        if (!oauth.configured()) {
+            throw new BadRequestException("Strava client ID/secret not configured in .env");
+        }
+        String state = StravaOAuth.newState();
+        Map<String, Object> session = new LinkedHashMap<>();
+        session.put("oauth_state", state);
+        NewCookie cookie = new NewCookie.Builder("session")
+                .value(SessionCookie.sign(session, sessionSecret))
+                .path("/")
+                .maxAge((int) SessionCookie.MAX_AGE_SECONDS)
+                .httpOnly(true)
+                .secure(cookieSecure)
+                .sameSite(NewCookie.SameSite.LAX)
+                .build();
+        LOG.debug("Strava OAuth connect: minted oauth_state, redirecting to Strava.");
+        return Response.temporaryRedirect(URI.create(oauth.authorizeUrl(state))).cookie(cookie).build();
+    }
 
     /** POST /api/strava/sync — pull activity summaries from Strava, upsert, prune
      * old, de-dup, and rebuild the PMC. Port of services.run_sync. 409 when Strava
