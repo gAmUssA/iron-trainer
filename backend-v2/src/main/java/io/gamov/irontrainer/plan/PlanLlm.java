@@ -75,6 +75,72 @@ public class PlanLlm {
         return merged;
     }
 
+    /** generate_week_workouts: LLM-designed concrete workouts for one week, as
+     * snake_case maps (steps included). Throws {@link Unavailable} when no key /
+     * the call fails / the model returns nothing → caller falls back to the
+     * template. */
+    public List<Map<String, Object>> generateWeekWorkouts(String weekJson, String profileJson, String contextJson) {
+        if (!available()) {
+            throw new Unavailable("ANTHROPIC_API_KEY not set.");
+        }
+        PlanAi.WeekWorkouts w;
+        try {
+            w = ai.generateWeek(weekJson, profileJson, contextJson);
+        } catch (RuntimeException e) {
+            throw new Unavailable(e.toString());
+        }
+        if (w == null || w.workouts() == null || w.workouts().isEmpty()) {
+            throw new Unavailable("Model returned no workouts.");
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (PlanAi.Workout wo : w.workouts()) {
+            // Guard the never-500 contract (as in adjustSeason): structured output
+            // doesn't hard-enforce required fields, so a workout missing date/sport
+            // would violate the NOT NULL columns on save (500) or render a "null"
+            // cap-note. Treat a malformed LLM week as unavailable → template.
+            if (wo.date() == null || wo.date().isBlank() || wo.sport() == null || wo.sport().isBlank()) {
+                throw new Unavailable("LLM workout missing date/sport.");
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("date", wo.date());
+            m.put("sport", wo.sport());
+            m.put("title", wo.title());
+            m.put("description", wo.description());
+            m.put("intensity", wo.intensity());
+            m.put("duration_s", wo.durationSec());
+            m.put("distance_m", wo.distanceM());
+            m.put("planned_tss", wo.plannedTss());
+            m.put("steps", convertSteps(wo.steps()));
+            out.add(m);
+        }
+        return out;
+    }
+
+    private static List<Map<String, Object>> convertSteps(List<PlanAi.Step> steps) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (steps == null) {
+            return out;
+        }
+        for (PlanAi.Step s : steps) {
+            Map<String, Object> sm = new LinkedHashMap<>();
+            sm.put("type", s.type());
+            sm.put("duration_s", s.durationSec());
+            PlanAi.Target t = s.target();
+            if (t == null) {
+                sm.put("target", null);
+            } else {
+                Map<String, Object> tm = new LinkedHashMap<>();
+                tm.put("type", t.type());
+                tm.put("unit", t.unit());
+                tm.put("low", t.low());
+                tm.put("high", t.high());
+                sm.put("target", tm);
+            }
+            out.add(sm);
+        }
+        return out;
+    }
+
     private static List<Map<String, Object>> convertWeeks(List<PlanAi.Week> weeks) {
         List<Map<String, Object>> out = new ArrayList<>();
         if (weeks == null) {

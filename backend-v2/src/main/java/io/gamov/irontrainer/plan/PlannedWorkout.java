@@ -80,6 +80,23 @@ public class PlannedWorkout extends PanacheEntityBase {
      * structure_json (PyJson.dumps). */
     public static int saveAll(int athleteId, int planId, java.util.List<java.util.Map<String, Object>> workouts) {
         delete("planId = ?1", planId);
+        insertAll(athleteId, planId, workouts);
+        return workouts.size();
+    }
+
+    /** replace_week_workouts: delete the plan's workouts in [weekStart, weekEnd]
+     * and insert the given ones (save_workouts replace_all=False). Must run in a
+     * transaction. Returns the inserted count. The delete is plan+date scoped
+     * (not athlete), matching repo.replace_week_workouts. */
+    public static int replaceWeek(int athleteId, int planId, String weekStart, String weekEnd,
+                                  java.util.List<java.util.Map<String, Object>> workouts) {
+        delete("planId = ?1 and date >= ?2 and date <= ?3", planId, weekStart, weekEnd);
+        insertAll(athleteId, planId, workouts);
+        return workouts.size();
+    }
+
+    private static void insertAll(int athleteId, int planId,
+                                  java.util.List<java.util.Map<String, Object>> workouts) {
         for (java.util.Map<String, Object> w : workouts) {
             PlannedWorkout pw = new PlannedWorkout();
             pw.athleteId = athleteId;
@@ -101,6 +118,5 @@ public class PlannedWorkout extends PanacheEntityBase {
             pw.createdAt = io.gamov.irontrainer.util.PyJson.utcNowIso();
             pw.persist();
         }
-        return workouts.size();
     }
 }

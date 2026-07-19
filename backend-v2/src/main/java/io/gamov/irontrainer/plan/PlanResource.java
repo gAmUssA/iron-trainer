@@ -12,11 +12,13 @@ import io.gamov.irontrainer.util.PyJson;
 import io.gamov.irontrainer.zones.HrZones;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.WebApplicationException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -142,8 +144,8 @@ public class PlanResource {
             List<Map<String, Object>> all = new ArrayList<>();
             for (Map<String, Object> wk : weeks) {
                 List<Map<String, Object>> wos = PlanTemplate.expandWeek(wk, ctx.profile);
-                wos = PlanValidator.capWeekWorkouts(wos);
-                applyFueling(wos, ctx);
+                wos = PlanValidator.capWeekWorkouts(wos).workouts();
+                applyFueling(wos, ctx.bodyWeightKg(), ctx.gelCarbG(), ctx.sweatRateLH());
                 all.addAll(wos);
             }
             int saved = PlannedWorkout.saveAll(aid, planId, all);
@@ -160,16 +162,115 @@ public class PlanResource {
         });
     }
 
+    /** POST /api/plan/replan-week — regenerate ONE week's workouts (LLM or the
+     * template fallback), safety-cap, fuel, and replace that week's rows. Port of
+     * plan_router.replan_week + service.replan_week. ValueError → 400. */
+    @POST
+    @Path("/replan-week")
+    public Map<String, Object> replanWeek(@QueryParam("week_start") String weekStart,
+                                          @QueryParam("use_llm") String useLlmParam) {
+        int aid = current.require();
+        // Only an ABSENT week_start is 422 (FastAPI required-param). A present-empty
+        // "?week_start=" is a valid string to FastAPI → flows through to the week
+        // lookup → 400 "Week  not in active plan." (matched below).
+        if (weekStart == null) {
+            throw new WebApplicationException(422);
+        }
+        boolean useLlm = Params.boolOr(useLlmParam, true);
+        ReplanCtx ctx = QuarkusTransaction.requiringNew().call(() -> assembleReplan(aid, weekStart, useLlm));
+
+        List<Map<String, Object>> workouts = null;
+        boolean llmUsed = false;
+        if (useLlm) {
+            try {
+                // Throws Unavailable on no-key / failure / empty / malformed, so a
+                // returned list is always non-empty → llm_used=true.
+                workouts = llm.generateWeekWorkouts(
+                        PyJson.dumps(ctx.week), PyJson.dumps(ctx.profile), PyJson.dumps(ctx.fitness));
+                llmUsed = true;
+            } catch (PlanLlm.Unavailable e) {
+                workouts = null;
+            }
+        }
+        if (workouts == null) {
+            workouts = PlanTemplate.expandWeek(ctx.week, ctx.profile);
+        }
+
+        PlanValidator.WeekResult wr = PlanValidator.capWeekWorkouts(workouts);
+        List<Map<String, Object>> fixed = wr.workouts();
+        applyFueling(fixed, ctx.bodyWeightKg, ctx.gelCarbG, ctx.sweatRateLH);
+        String weekEnd = LocalDate.parse(weekStart).plusDays(6).toString();
+        final boolean llmU = llmUsed;
+        int n = QuarkusTransaction.requiringNew().call(() ->
+                PlannedWorkout.replaceWeek(aid, ctx.planId, weekStart, weekEnd, fixed));
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("week_start", weekStart);
+        resp.put("llm_used", llmU);
+        resp.put("workouts", n);
+        resp.put("notes", wr.notes());
+        return resp;
+    }
+
+    /** Inputs replan_week reads: the active plan's week (by week_start), the
+     * athlete profile (expand + fuel), and the fitness summary (LLM context). */
+    @SuppressWarnings("unchecked")
+    private ReplanCtx assembleReplan(int aid, String weekStart, boolean useLlm) {
+        Athlete a = Athlete.findById(aid);
+        Plan plan = Plan.activeFor(aid);
+        if (plan == null) {
+            throw new BadRequestException("No active plan. Generate a plan first.");
+        }
+        Object parsed = (plan.weeksJson == null || plan.weeksJson.isBlank())
+                ? List.of() : PyJson.loads(plan.weeksJson);
+        Map<String, Object> week = null;
+        for (Object o : (List<Object>) parsed) {
+            if (o instanceof Map<?, ?> m && weekStart.equals(m.get("week_start"))) {
+                week = (Map<String, Object>) m;
+                break;
+            }
+        }
+        if (week == null) {
+            throw new BadRequestException("Week " + weekStart + " not in active plan.");
+        }
+        Map<String, Object> profile = new LinkedHashMap<>();
+        profile.put("ftp", a == null ? null : a.ftp);
+        profile.put("threshold_hr", a == null ? null : a.thresholdHr);
+        profile.put("max_hr", a == null ? null : a.maxHr);
+        profile.put("threshold_pace_run", a == null ? null : a.thresholdPaceRun);
+        profile.put("css_swim", a == null ? null : a.cssSwim);
+
+        Map<String, Object> fitness = null;
+        if (useLlm) {
+            MetricDaily last = MetricDaily.find("athleteId = ?1 order by date desc", aid).firstResult();
+            Double tsb = last == null ? null : last.tsb;
+            fitness = new LinkedHashMap<>();
+            fitness.put("ctl", last == null ? null : last.ctl);
+            fitness.put("atl", last == null ? null : last.atl);
+            fitness.put("tsb", tsb);
+            fitness.put("form_flag", formFlag(tsb));
+        }
+        return new ReplanCtx(plan.id, week, profile, fitness,
+                a == null ? null : a.bodyWeightKg, a == null ? null : a.gelCarbG, a == null ? null : a.sweatRateLH);
+    }
+
+    private record ReplanCtx(int planId, Map<String, Object> week, Map<String, Object> profile,
+                             Map<String, Object> fitness, Double bodyWeightKg, Double gelCarbG, Double sweatRateLH) {}
+
     /** _apply_fueling: append the one-line fueling note to each workout's
      * description (mutates in place). Mirrors service._apply_fueling. */
-    private void applyFueling(List<Map<String, Object>> workouts, GenCtx ctx) {
+    private void applyFueling(List<Map<String, Object>> workouts,
+                             Double bodyWeightKg, Double gelCarbG, Double sweatRateLH) {
         for (Map<String, Object> wo : workouts) {
             Integer durS = wo.get("duration_s") == null ? null : ((Number) wo.get("duration_s")).intValue();
             Map<String, Object> fueling = Nutrition.computeWorkoutFueling(
-                    durS, (String) wo.get("intensity"), ctx.gelCarbG, ctx.bodyWeightKg, ctx.sweatRateLH);
+                    durS, (String) wo.get("intensity"), gelCarbG, bodyWeightKg, sweatRateLH);
             String note = Nutrition.fuelingNote(fueling);
             if (!note.isEmpty()) {
-                String base = String.valueOf(wo.getOrDefault("description", "")).stripTrailing();
+                // Python `(wo.get("description") or "").rstrip()`: a null/absent
+                // description → "" (not the literal "null").
+                Object desc = wo.get("description");
+                String base = (desc == null ? "" : String.valueOf(desc)).stripTrailing();
                 if (!base.contains(note)) {
                     wo.put("description", (base + "\n" + note).strip());
                 }

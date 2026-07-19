@@ -37,4 +37,34 @@ public interface PlanAi {
 
     record Week(Integer weekIndex, String weekStart, String phase, Boolean isRecovery,
                 String focus, Double targetHours, Double targetTss) {}
+
+    /** Design one week of concrete structured workouts — port of
+     * planning/llm.generate_week_workouts. The validator caps + fueling run after,
+     * and the deterministic template is the fallback. Structured output →
+     * {@link WeekWorkouts}. */
+    @SystemMessage("""
+            You are an expert IRONMAN 70.3 coach. Design one week of concrete, \
+            structured swim/bike/run workouts with warmup/main/cooldown steps and \
+            explicit power (W), pace (sec/km or sec/100m) or HR targets derived from \
+            the athlete's thresholds. Name the HR zone in the description (e.g. 'Z2 \
+            endurance'). Total duration should match the week's target_hours. Adapt to \
+            the athlete's current state in the context. Output the workouts as \
+            structured JSON.""")
+    @UserMessage("""
+            Week skeleton: {week}
+            Athlete thresholds: {profile}
+            Context (fitness / feel): {context}
+
+            Return this week's concrete workouts.""")
+    WeekWorkouts generateWeek(String week, String profile, String context);
+
+    record WeekWorkouts(List<Workout> workouts) {}
+
+    record Workout(String date, String sport, String title, String description, String intensity,
+                   Integer durationSec, Double distanceM, Double plannedTss, List<Step> steps) {}
+
+    record Step(String type, Integer durationSec, Target target) {}
+
+    /** Step target: power/pace → low/high numeric; hr → bpm band; open → nulls. */
+    record Target(String type, String unit, Integer low, Integer high) {}
 }
