@@ -53,3 +53,22 @@ ingest.
 ## Remaining for Phase 7
 
 PUT /api/athlete/profile · export ZIP bundles · device pairing (token minting).
+
+## Code-review fixes (applied before merge)
+
+5 CONFIRMED parity findings fixed:
+1. **parseDate leniency** — matches Python `strptime(%z)` + `fromisoformat`: colon
+   OR non-colon offsets, plus offset-less (naive) and bare-date ISO fallbacks
+   (space or `T`). Was dropping those as bad_dates.
+2. **date/startDate (+ sleepEnd/date) fallback** — Python truthy `or`: an
+   empty-string date now falls through to `startDate` instead of being kept as `""`.
+3. **num() booleans** — Python `bool` is an `int` subclass, so a JSON boolean qty
+   coerces to 1.0/0.0 instead of being dropped.
+4. **`?days` 422 parity** — `Params.intParam` (not a raw `@QueryParam int`) so a
+   non-numeric `?days` is 422, matching FastAPI (a raw int would 404 on RESTEasy).
+5. **ingest auth** — `current.require()` moved INSIDE the per-day try, so an
+   unauthenticated caller with data gets `200 {ok:true, days:0}` (the 401 is
+   swallowed), exactly matching FastAPI's `except Exception` around
+   `upsert_daily_recovery → current_athlete_id`.
+
+v2 suite 179 green; health parity re-verified vs real backends.

@@ -63,6 +63,31 @@ class HealthIngestTest {
         assertEquals(7.25, r.days.get("2026-07-13").get("sleep_h"));
     }
 
+    @Test
+    void lenientDatesTruthyFallbackAndBooleans() {
+        Map<String, Object> payload = Map.of("data", Map.of("metrics", List.of(
+                // colon offset with a space separator
+                metric("resting_heart_rate", "bpm", List.of(
+                        rec("date", "2026-07-14 06:00:00 -04:00", 50.0))),
+                // empty date falls through to startDate (Python `or`)
+                Map.of("name", "vo2max", "data", List.of(Map.of(
+                        "date", "", "startDate", "2026-07-14 06:00:00 -0400", "qty", 55.0))),
+                // boolean qty coerces to 1.0 (Python bool is an int subclass)
+                Map.of("name", "respiratory_rate", "data", List.of(Map.of(
+                        "date", "2026-07-14 06:00:00 -0400", "qty", true))),
+                // naive (offset-less) ISO date
+                metric("weight_body_mass", "kg", List.of(
+                        rec("date", "2026-07-14T06:00:00", 70.0))))));
+
+        HealthIngest.Result r = HealthIngest.parsePayload(payload);
+        assertEquals(0, r.badDates);
+        Map<String, Object> day = r.days.get("2026-07-14");
+        assertEquals(50.0, day.get("rhr_bpm"));          // colon offset parsed
+        assertEquals(55.0, day.get("vo2max"));           // empty date → startDate fallback
+        assertEquals(1.0, day.get("respiratory_rate"));  // boolean true → 1.0
+        assertEquals(70.0, day.get("weight_kg"));        // naive ISO date
+    }
+
     private static Map<String, Object> metric(String name, String units, List<Object> data) {
         return Map.of("name", name, "units", units, "data", data);
     }

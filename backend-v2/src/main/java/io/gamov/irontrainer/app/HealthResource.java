@@ -7,7 +7,6 @@ import io.gamov.irontrainer.util.Params;
 import io.gamov.irontrainer.util.PyJson;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -70,8 +69,11 @@ public class HealthResource {
     @Path("/recovery")
     @Produces(MediaType.APPLICATION_JSON)
     @jakarta.transaction.Transactional
-    public Map<String, Object> recovery(@QueryParam("days") @DefaultValue("35") int days) {
+    public Map<String, Object> recovery(@QueryParam("days") String daysParam) {
         int aid = current.require();
+        // Params.intParam (not a raw @QueryParam int) → 422 on a non-numeric value,
+        // matching FastAPI's `days: int = 35` (a raw int would 404 on RESTEasy).
+        int days = daysParam == null ? 35 : Params.intParam(daysParam);
         int limit = Math.max(1, Math.min(days, 365));
         List<DailyRecovery> rows = DailyRecovery
                 .<DailyRecovery>find("athleteId = ?1 order by date desc", aid).page(0, limit).list();
@@ -123,15 +125,18 @@ public class HealthResource {
         Map<String, Object> payload = parsed instanceof Map<?, ?> mp ? (Map<String, Object>) mp : Map.of();
         HealthIngest.Result r = HealthIngest.parsePayload(payload);
         int stored = 0;
-        if (!r.days.isEmpty()) {
-            int aid = current.require();   // 401 only when there's data to store (FastAPI parity)
-            for (Map.Entry<String, Map<String, Object>> e : r.days.entrySet()) {
-                try {
-                    upsertDailyRecovery(aid, e.getKey(), e.getValue());
-                    stored++;
-                } catch (Exception ex) {   // one bad day must not 500 the batch
-                    LOG.warnf("Recovery upsert failed for %s: %s", e.getKey(), ex.toString());
-                }
+        for (Map.Entry<String, Map<String, Object>> e : r.days.entrySet()) {
+            try {
+                // Resolve the athlete INSIDE the per-day try, like FastAPI (whose
+                // upsert_daily_recovery calls current_athlete_id): an auth failure
+                // (401) is caught here and swallowed, so an unauthenticated caller
+                // with data gets {ok:true, days:0} — NOT a 401. Matches
+                // health_router.ingest's `except Exception`.
+                int aid = current.require();
+                upsertDailyRecovery(aid, e.getKey(), e.getValue());
+                stored++;
+            } catch (Exception ex) {   // one bad day (or a 401) must not 500 the batch
+                LOG.warnf("Recovery upsert failed for %s: %s", e.getKey(), ex.toString());
             }
         }
         Map<String, Object> parsedOut = new LinkedHashMap<>();
