@@ -1,7 +1,17 @@
-# Railway config-as-code. Builds the repo Dockerfile and health-checks the API.
-# Set service env vars in the Railway dashboard (or `railway variables`).
+# ⚠️ DECOMMISSIONED 2026-07-20 — this is the retired FastAPI service (`iron-trainer`).
+# backend-v2 (Quarkus) is now the front door at iron-trainer.up.railway.app
+# (strangler migration complete; bean iron-trainer-foi1). The running deployment
+# was removed (`railway down`). The service is kept STOPPED as a rollback path —
+# its vars (incl. SESSION_SECRET) are still referenced by backend-v2, so don't
+# delete the service. `watchPatterns` below points at a path that never changes,
+# so pushes to main do NOT auto-revive this service.
+#
+# Rollback to FastAPI: remove the sentinel watchPatterns (or `railway up` this
+# service) so it deploys again, then swap the iron-trainer.up.railway.app domain
+# back from backend-v2 to this service.
 [build]
 builder = "dockerfile"
+watchPatterns = ["_decommissioned_never_matches_/**"]
 
 [deploy]
 healthcheckPath = "/api/health"
