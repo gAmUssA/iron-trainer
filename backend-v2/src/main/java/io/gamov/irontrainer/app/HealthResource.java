@@ -1,16 +1,18 @@
 package io.gamov.irontrainer.app;
 
-import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.util.Params;
-import jakarta.transaction.Transactional;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import javax.sql.DataSource;
 import org.jboss.logging.Logger;
 
 /** GET /api/health — liveness by default; ?deep=1 also checks DB connectivity
@@ -19,18 +21,23 @@ import org.jboss.logging.Logger;
 public class HealthResource {
 
     private static final Logger LOG = Logger.getLogger(HealthResource.class);
-    static final String VERSION = "0.1.0";
+
+    @Inject
+    DataSource dataSource;
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    @Transactional
     public Response health(@QueryParam("deep") String deepParam) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("status", "ok");
-        out.put("version", VERSION);
+        out.put("version", AppInfo.VERSION);
         if (Params.boolOr(deepParam, false)) {
-            try {
-                Athlete.getEntityManager().createNativeQuery("SELECT 1").getSingleResult();
+            // Probe on a raw pooled connection OUTSIDE any JTA transaction (like
+            // FastAPI's separate engine connection). NOT @Transactional: a failed
+            // SELECT would mark the request transaction rollback-only and the
+            // interceptor would turn this intended 503 into a bodyless 500.
+            try (Connection c = dataSource.getConnection(); Statement st = c.createStatement()) {
+                st.execute("SELECT 1");
                 out.put("database", "ok");
             } catch (Exception e) {
                 // Full error to the logs only — DB errors can echo the DSN; this

@@ -2,6 +2,7 @@ package io.gamov.irontrainer.app;
 
 import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.auth.SessionCookie;
 import io.gamov.irontrainer.races.Races;
 import io.gamov.irontrainer.strava.StravaOAuth;
 import jakarta.inject.Inject;
@@ -23,9 +24,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 @Path("/api")
 public class StatusResource {
 
-    // Matches FastAPI app.__version__ (backend/app/__init__.py).
-    static final String VERSION = "0.1.0";
-
     @Inject
     CurrentAthlete current;
 
@@ -40,6 +38,9 @@ public class StatusResource {
 
     @ConfigProperty(name = "irontrainer.cookie-secure")
     boolean cookieSecure;
+
+    @ConfigProperty(name = "irontrainer.session-secret")
+    Optional<String> sessionSecret;
 
     @ConfigProperty(name = "quarkus.langchain4j.anthropic.api-key")
     Optional<String> anthropicKey;
@@ -60,7 +61,7 @@ public class StatusResource {
         raceOut.put("date", race.get("date"));
         raceOut.put("distance", race.get("distance"));
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("version", VERSION);
+        out.put("version", AppInfo.VERSION);
         out.put("race", raceOut);
         out.put("strava_configured", strava.configured());
         out.put("anthropic_configured", anthropicConfigured());
@@ -102,7 +103,13 @@ public class StatusResource {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("ok", true);
         Response.ResponseBuilder rb = Response.ok(body);
-        if (sessionCookieIn != null) {
+        // Starlette emits the delete cookie only when the session DECODED to
+        // non-empty — a garbage/expired/empty cookie is treated as no session, so
+        // no Set-Cookie. Mirror that: decode first, emit only for a non-empty one.
+        String secret = sessionSecret.filter(s -> !s.isBlank()).orElse(null);
+        Map<String, Object> session = (sessionCookieIn == null || secret == null)
+                ? null : SessionCookie.read(sessionCookieIn, secret);
+        if (session != null && !session.isEmpty()) {
             rb.header("Set-Cookie",
                     "session=null; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; httponly; samesite=lax"
                             + (cookieSecure ? "; secure" : ""));
@@ -110,10 +117,10 @@ public class StatusResource {
         return rb.build();
     }
 
-    /** anthropic_configured: bool(anthropic_api_key). v2's key defaults to the
-     * "no-key" boot sentinel when ANTHROPIC_API_KEY is unset — treat that (and a
-     * blank) as not configured. */
+    /** anthropic_configured: Python bool(anthropic_api_key) — ANY non-empty string
+     * (even whitespace) is configured. v2's key defaults to the "no-key" boot
+     * sentinel when ANTHROPIC_API_KEY is unset — treat that (and empty) as not. */
     private boolean anthropicConfigured() {
-        return anthropicKey.map(k -> !k.isBlank() && !"no-key".equals(k)).orElse(false);
+        return anthropicKey.map(k -> !k.isEmpty() && !"no-key".equals(k)).orElse(false);
     }
 }

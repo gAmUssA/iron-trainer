@@ -13,8 +13,13 @@ import io.gamov.irontrainer.auth.CurrentAthlete;
 
 /** GET /api/athlete — the athlete profile (thresholds + nutrition), plus a
  * connected flag. Port of athlete_router.get_profile. The PUT (edit thresholds)
- * is a separate slice — it recomputes TSS and refreshes future plan targets. */
-@Path("/api/athlete")
+ * is a separate slice — it recomputes TSS and refreshes future plan targets.
+ *
+ * Rooted at {@code /api} (NOT {@code /api/athlete}): a class path of
+ * {@code /api/athlete} is the longest prefix match for {@code /api/athlete/race}
+ * etc., so RESTEasy would route those here and 404 them instead of to their
+ * owning resources. At {@code /api} the methods pool with the sibling resources. */
+@Path("/api")
 public class ProfileResource {
 
     @Inject
@@ -22,6 +27,7 @@ public class ProfileResource {
 
     // repo._PUBLIC — the columns exposed to the client, in this order.
     @GET
+    @Path("/athlete")
     @Produces(MediaType.APPLICATION_JSON)
     @Transactional
     public Map<String, Object> getProfile() {

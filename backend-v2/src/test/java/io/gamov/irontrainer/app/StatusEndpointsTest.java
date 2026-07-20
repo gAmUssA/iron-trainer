@@ -1,15 +1,17 @@
 package io.gamov.irontrainer.app;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 
+import io.gamov.irontrainer.auth.SessionCookie;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.response.Response;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** The app-level tail ported from FastAPI: /api/health, /api/status, /api/me,
@@ -79,12 +81,24 @@ class StatusEndpointsTest {
     }
 
     @Test
-    void logoutWithSessionDeletesCookie() {
-        given().cookie("session", "whatever").when().post("/api/auth/logout")
+    void logoutWithValidSessionDeletesCookie() {
+        // A valid, non-empty signed session (test-secret-key) → the delete cookie.
+        String cookie = SessionCookie.sign(Map.of("athlete_id", 1), "test-secret-key");
+        given().cookie("session", cookie).when().post("/api/auth/logout")
                 .then().statusCode(200)
                 .body("ok", is(true))
-                .header("Set-Cookie", anyOf(
+                .header("Set-Cookie", allOf(
                         containsString("session=null"),
                         containsString("expires=Thu, 01 Jan 1970")));
+    }
+
+    @Test
+    void logoutWithGarbageSessionSetsNoCookie() {
+        // An undecodable cookie is treated as no session (Starlette parity) → no cookie.
+        Response r = given().cookie("session", "not-a-valid-signed-cookie")
+                .when().post("/api/auth/logout")
+                .then().statusCode(200).body("ok", is(true))
+                .extract().response();
+        org.hamcrest.MatcherAssert.assertThat(r.getHeader("Set-Cookie"), nullValue());
     }
 }
