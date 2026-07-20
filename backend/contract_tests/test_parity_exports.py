@@ -510,6 +510,30 @@ def test_logout_parity(v1, v2):
     assert "set-cookie" not in a.headers and "set-cookie" not in b.headers
 
 
+def test_health_ingest_recovery_parity(v1, v2):
+    """POST the SAME Health-Auto-Export payload to both backends (upsert is
+    last-write-wins → idempotent), then read /api/health/recovery. The ingest
+    response AND the resulting rows must be byte-identical — this exercises the
+    payload parser (offset-local dates, lb→kg, same-day averaging, sleep stages)."""
+    payload = {"data": {"metrics": [
+        {"name": "heart_rate_variability", "units": "ms", "data": [
+            {"date": "2026-07-13 07:00:00 -0400", "qty": 55},
+            {"date": "2026-07-13 08:00:00 -0400", "qty": 65}]},
+        {"name": "weight_body_mass", "units": "lb", "data": [
+            {"date": "2026-07-13 06:00:00 -0400", "qty": 154}]},
+        {"name": "sleep_analysis", "data": [
+            {"sleepEnd": "2026-07-13 06:30:00 -0400", "sleepStart": "2026-07-12 23:00:00 -0400",
+             "core": 4.0, "deep": 1.5, "rem": 1.0}]},
+        {"name": "unknown_metric_x", "data": [
+            {"date": "2026-07-13 06:00:00 -0400", "qty": 1}]},
+    ]}}
+    a = v1.post("/api/health/ingest", json=payload)
+    b = v2.post("/api/health/ingest", json=payload)
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    assert v1.get("/api/health/recovery").json() == v2.get("/api/health/recovery").json()
+
+
 # ── Races (catalog + selection) ───────────────────────────────────────────────
 # The race catalog is seeded on FastAPI startup (db._seed_races) into the shared
 # Postgres, so both backends read the same rows. set_athlete_race is a write —
