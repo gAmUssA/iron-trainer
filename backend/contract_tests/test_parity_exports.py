@@ -534,6 +534,17 @@ def test_health_ingest_recovery_parity(v1, v2):
     assert v1.get("/api/health/recovery").json() == v2.get("/api/health/recovery").json()
 
 
+def test_profile_update_validation_parity(v1, v2):
+    """PUT /api/athlete/profile with an out-of-bounds / wrong-type field is 422 on
+    both backends (pydantic Field bounds vs the ported checks). Validation-only —
+    a rejected PUT writes nothing, so this can't perturb the shared metrics the
+    readiness/pmc parity tests depend on (a successful PUT would rebuild_metrics)."""
+    for bad in ({"ftp": -5}, {"ftp": 999999}, {"threshold_hr": 40},
+                {"max_hr": 150.5}, {"gi_tolerance": "nope"}, {"sweat_rate_l_h": 9}):
+        assert v1.put("/api/athlete/profile", json=bad).status_code == 422, bad
+        assert v2.put("/api/athlete/profile", json=bad).status_code == 422, bad
+
+
 # ── Races (catalog + selection) ───────────────────────────────────────────────
 # The race catalog is seeded on FastAPI startup (db._seed_races) into the shared
 # Postgres, so both backends read the same rows. set_athlete_race is a write —
