@@ -467,6 +467,49 @@ def test_strava_import_rejects_non_export_parity(v1, v2):
     assert a.status_code == b.status_code == 400, (a.status_code, b.status_code)
 
 
+# ── App-level tail (health / status / me / athlete profile / logout) ──────────
+# The parity harness runs FastAPI with auth_required=false but backend-v2 with
+# auth_required=true, so responses that echo `auth_required` are normalized on
+# that one field before comparison; everything else must be byte-identical.
+
+def test_health_parity(v1, v2):
+    for path in ("/api/health", "/api/health?deep=1"):
+        a = v1.get(path)
+        b = v2.get(path)
+        assert a.status_code == b.status_code == 200, path
+        assert a.json() == b.json(), path
+
+
+def test_athlete_profile_parity(v1, v2):
+    a = v1.get("/api/athlete")
+    b = v2.get("/api/athlete")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()   # connected + the _PUBLIC profile columns
+
+
+def test_status_parity(v1, v2):
+    a = v1.get("/api/status").json()
+    b = v2.get("/api/status").json()
+    a.pop("auth_required"); b.pop("auth_required")   # harness-asymmetric config
+    assert a == b
+
+
+def test_me_parity(v1, v2):
+    a = v1.get("/api/me").json()
+    b = v2.get("/api/me").json()
+    a.pop("auth_required"); b.pop("auth_required")   # harness-asymmetric config
+    assert a == b
+
+
+def test_logout_parity(v1, v2):
+    a = v1.post("/api/auth/logout")
+    b = v2.post("/api/auth/logout")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json() == {"ok": True}
+    # Bearer clients carry no session → neither backend sets a Set-Cookie.
+    assert "set-cookie" not in a.headers and "set-cookie" not in b.headers
+
+
 # ── Races (catalog + selection) ───────────────────────────────────────────────
 # The race catalog is seeded on FastAPI startup (db._seed_races) into the shared
 # Postgres, so both backends read the same rows. set_athlete_race is a write —

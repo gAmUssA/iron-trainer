@@ -51,6 +51,9 @@ public class Athlete extends PanacheEntityBase {
     @Column(name = "sweat_rate_l_h")
     public Double sweatRateLH;
 
+    @Column(name = "gi_tolerance")
+    public String giTolerance;
+
     // Race selection (set by the races vertical: catalog pick or custom race).
     @Column(name = "race_id")
     public Integer raceId;
