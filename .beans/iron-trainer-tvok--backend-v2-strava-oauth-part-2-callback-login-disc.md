@@ -1,11 +1,11 @@
 ---
 # iron-trainer-tvok
 title: 'backend-v2: Strava OAuth part 2 — callback (login) + disconnect'
-status: in-progress
+status: completed
 type: feature
 priority: high
 created_at: 2026-07-19T23:35:51Z
-updated_at: 2026-07-20T00:39:40Z
+updated_at: 2026-07-20T00:48:54Z
 ---
 
 Second slice of the Strava OAuth migration (xtre part 1 shipped connect + session-cookie minting, PR #77).
@@ -35,3 +35,6 @@ Blocked-by: none (part 1 merged). Pattern: worktree + ADR.
 
 ## Code-review fixes (7 CONFIRMED)
 empty-param truthiness; orphan-athlete forced-id+seq bump; disconnect+exchange catch narrowed to WebApplicationException|ProcessingException; allowlist BigInteger (no overflow 500); Set-Cookie on consumed oauth_state. +2 callback tests. v2 161 green; parity re-verified.
+
+## Merged
+PR #78 merged. All 12 CI checks green (native + parity). 7 code-review findings fixed before merge. Strava OAuth vertical complete (connect+callback+disconnect on backend-v2). Next: flip connect+callback together at the front door (wire STRAVA_* + ALLOWED_STRAVA_IDS to backend-v2).
