@@ -1,6 +1,11 @@
 """Alembic environment — targets the SQLModel metadata and pulls the database
 URL from the application settings, so the same migrations run against SQLite or
-Postgres."""
+Postgres.
+
+⚠️ FROZEN (2026-07-20): the schema is now owned by backend-v2 (Quarkus) Flyway.
+Do NOT add new Alembic revisions — see FROZEN.md in this directory. (No code
+guard here on purpose: init_db() imports this on FastAPI startup, so failing
+here would break the rollback path.)"""
 
 from __future__ import annotations
 

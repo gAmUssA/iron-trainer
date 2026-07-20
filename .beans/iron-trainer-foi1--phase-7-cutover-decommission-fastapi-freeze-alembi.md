@@ -1,11 +1,11 @@
 ---
 # iron-trainer-foi1
 title: 'Phase 7 cutover: decommission FastAPI, freeze Alembic'
-status: todo
+status: in-progress
 type: task
 priority: normal
 created_at: 2026-07-17T04:45:21Z
-updated_at: 2026-07-20T18:27:13Z
+updated_at: 2026-07-20T22:09:20Z
 parent: iron-trainer-eom4
 ---
 
@@ -37,3 +37,12 @@ This session's tail (after the Strava vertical): p4co (app tail: health/status/m
 2. Wire STRAVA_* + CORS_ORIGINS + ALLOWED_STRAVA_IDS on backend-v2 (DONE — already configured).
 3. End-to-end verify: real login, disconnect, import, device pairing, HealthKit ingest.
 4. Decommission FastAPI, freeze Alembic.
+
+## Decommission (safe stop) 2026-07-20
+Viktor confirmed the app works on the Quarkus front door + chose **safe stop (reversible)**.
+- [x] FastAPI deployment REMOVED (`railway down` on service iron-trainer/b9a5a044) — Python stopped, front door (backend-v2) unaffected (verified 200).
+- [x] Prevent auto-revival: root railway.toml watchPatterns → sentinel (no main-push redeploys). FastAPI service + vars KEPT (SESSION_SECRET ref intact, rollback available).
+- [x] Alembic FROZEN: backend/alembic/FROZEN.md + env.py banner (no code guard — env.py runs on startup via init_db, a guard would break rollback). Schema now owned by backend-v2 Flyway.
+### Deferred (needs relinquishing rollback)
+- [ ] Full delete of the FastAPI Railway service (requires migrating SESSION_SECRET off it first — MCP was unauthorized this session)
+- [ ] Remove FastAPI code (backend/) from the repo
