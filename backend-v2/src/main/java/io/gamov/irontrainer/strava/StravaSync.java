@@ -69,6 +69,41 @@ public class StravaSync {
         return QuarkusTransaction.requiringNew().call(() -> finalizeSync(aid, raw.size(), up, df.fetched()));
     }
 
+    /** Import pre-parsed activities from a Strava GDPR export (no API needed).
+     * Mirrors run_sync's post-steps: upsert → prune → de-dup (LOCAL, no device
+     * lookups, since there's no token) → seed thresholds → rebuild the PMC. Port
+     * of services.import_archive's tail. */
+    public Map<String, Object> runImport(int aid, List<Map<String, Object>> activities) {
+        int withStreams = 0;
+        for (Map<String, Object> a : activities) {
+            if (Boolean.TRUE.equals(a.get("device_watts"))) {
+                withStreams++;
+            }
+        }
+        final int streams = withStreams;
+        return QuarkusTransaction.requiringNew().call(() -> {
+            int upserted = upsert(aid, activities);
+            int pruned = pruneOld(aid);
+            List<Activity> acts = Activity.list("athleteId = ?1 order by startDate", aid);
+            Dedup.Result d = Dedup.markDuplicates(acts);   // local (no device fetch)
+            Map<String, Object> seeded = Analysis.seedProfileIfEmpty(aid, LocalDate.now());
+            int metricsDays = MetricsWrite.rebuildMetrics(aid, acts);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("parsed", activities.size());
+            out.put("upserted", upserted);
+            out.put("with_streams", streams);
+            out.put("pruned_old", pruned);
+            out.put("total_activities", acts.size());
+            out.put("duplicates_removed", d.duplicates());
+            out.put("metrics_days", metricsDays);
+            out.put("profile_seeded", seeded != null);
+            LOG.infof("Archive import done: parsed=%d upserted=%d streams=%d pruned=%d dups=%d days=%d%s",
+                    activities.size(), upserted, streams, pruned, d.duplicates(), metricsDays,
+                    seeded != null ? " (thresholds inferred)" : "");
+            return out;
+        });
+    }
+
     private record Upserted(int upserted, int pruned, List<Long> need) {}
 
     /** Paginated fetch, mirroring strava.fetch_activities (per_page 200 until a
