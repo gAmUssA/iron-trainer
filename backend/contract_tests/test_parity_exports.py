@@ -1065,3 +1065,31 @@ def test_plan_checkin_parity(v1, v2):
         return [s for s in story if "Strava" not in s and "replanned" not in s]
 
     assert stable(aj["story"]) == stable(bj["story"])
+
+
+def test_device_pairing_parity(v1, v2):
+    """Cross-backend pairing: v1 mints a code (shared-DB row), v2 claims it → a
+    bearer token that authenticates on BOTH backends (shared token_hash). Tokens
+    are random so bytes can't match — assert response shape, the 600s TTL, the
+    working token, and the invalid-code 400."""
+    import httpx
+    pc = v1.post("/api/device/pairing-code", json={"name": "parity"})
+    assert pc.status_code == 200
+    assert set(pc.json().keys()) == {"code", "expires_at", "expires_in"}
+    assert pc.json()["expires_in"] == 600
+    code = pc.json()["code"]
+
+    claim = v2.post("/api/device/claim", json={"code": code, "device_name": "parity-dev"})
+    assert claim.status_code == 200
+    assert set(claim.json().keys()) == {"token", "athlete"}
+    assert set(claim.json()["athlete"].keys()) == {"name", "strava_athlete_id"}
+    token = claim.json()["token"]
+
+    # The minted token authenticates on both backends (one shared device_token row).
+    h = {"Authorization": f"Bearer {token}"}
+    assert httpx.get(f"{v1.base_url}/api/me", headers=h, timeout=30).json()["authenticated"] is True
+    assert httpx.get(f"{v2.base_url}/api/me", headers=h, timeout=30).json()["authenticated"] is True
+
+    # An invalid/expired code is 400 on both (distinct codes avoid the throttle).
+    assert v1.post("/api/device/claim", json={"code": "deadbeef"}).status_code == 400
+    assert v2.post("/api/device/claim", json={"code": "0badc0de"}).status_code == 400
