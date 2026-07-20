@@ -72,11 +72,15 @@ class DevicePairingTest {
     }
 
     @Test
-    void invalidCodeIs400AndMissingCodeIs422() {
+    void claimBodyValidation() {
         given().contentType("application/json").body("{\"code\":\"deadbeef\"}")
-                .when().post("/api/device/claim").then().statusCode(400);
+                .when().post("/api/device/claim").then().statusCode(400);   // invalid code
         given().contentType("application/json").body("{}")
                 .when().post("/api/device/claim").then().statusCode(422);   // code required
+        given().contentType("application/json").body("{\"code\":\"x\",\"device_name\":123}")
+                .when().post("/api/device/claim").then().statusCode(422);   // device_name not a string
+        given().contentType("application/json").body("[]")
+                .when().post("/api/device/claim").then().statusCode(422);   // non-object body
     }
 
     @Test

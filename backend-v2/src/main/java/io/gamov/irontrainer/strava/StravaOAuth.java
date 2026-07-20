@@ -4,8 +4,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import java.math.BigInteger;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -111,14 +109,9 @@ public class StravaOAuth {
         return "";
     }
 
-    /** secrets.token_urlsafe(16) — 16 random bytes, urlsafe base64, no padding.
-     * A fresh SecureRandom per call (OAuth connect is infrequent): a static
-     * instance would be baked into the native image heap with a cached seed,
-     * which GraalVM rejects (and would be insecure). */
+    /** secrets.token_urlsafe(16) — the CSRF oauth_state. */
     public static String newState() {
-        byte[] b = new byte[16];
-        new SecureRandom().nextBytes(b);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(b);
+        return io.gamov.irontrainer.util.SecureTokens.urlsafe(16);
     }
 
     /** authorize_url: the Strava consent URL. Param order matches Python

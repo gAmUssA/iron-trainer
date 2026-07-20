@@ -1,5 +1,6 @@
 package io.gamov.irontrainer.auth;
 
+import io.gamov.irontrainer.util.PyJson;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.SocketAddress;
 import jakarta.inject.Inject;
@@ -38,9 +39,20 @@ public class DeviceResource {
     @Path("/pairing-code")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, Object> pairingCode(Map<String, Object> body) {
+    public Map<String, Object> pairingCode(String rawBody) {
+        // PairingCodeRequest | None: an absent body is fine; a present body must be
+        // a valid object with a string-or-null name (422 otherwise). Validate
+        // before the auth check (pydantic 422 precedes the handler's 401).
+        Map<String, Object> body = parseOptionalObject(rawBody);
+        String name = null;
+        if (body != null) {
+            Object n = body.get("name");
+            if (n != null && !(n instanceof String)) {
+                throw new WebApplicationException(422);
+            }
+            name = (String) n;
+        }
         int aid = current.require();   // 401 when auth required and not logged in
-        String name = body != null && body.get("name") instanceof String s ? s : null;
         Map<String, Object> out = devices.createPairingCode(aid, name);
         LOG.infof("Issued device pairing code for athlete %d (expires %s).", aid, out.get("expires_at"));
         return out;
@@ -73,18 +85,25 @@ public class DeviceResource {
     @Path("/claim")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, Object> claim(Map<String, Object> body,
+    public Map<String, Object> claim(String rawBody,
                                      @HeaderParam("X-Forwarded-For") String xff,
                                      @Context HttpServerRequest request) {
+        // Validate the body FIRST — FastAPI's pydantic ClaimRequest 422 precedes the
+        // endpoint (and thus the throttle). code is required; device_name is str|None
+        // (a non-string is rejected, not silently dropped).
+        Map<String, Object> body = parseRequiredObject(rawBody);
+        if (!(body.get("code") instanceof String code)) {
+            throw new WebApplicationException(422);
+        }
+        Object dn = body.get("device_name");
+        if (dn != null && !(dn instanceof String)) {
+            throw new WebApplicationException(422);
+        }
+        String deviceName = (String) dn;
         String client = clientKey(xff, request);
         if (throttle.throttled(client)) {
             throw new WebApplicationException("Too many attempts — try again in a minute.", 429);
         }
-        // ClaimRequest.code is required (a missing/non-string code → 422).
-        if (body == null || !(body.get("code") instanceof String code)) {
-            throw new WebApplicationException(422);
-        }
-        String deviceName = body.get("device_name") instanceof String s ? s : null;
         Map<String, Object> result = devices.claimPairingCode(code.strip(), deviceName);
         if (result == null) {
             throttle.recordFailure(client);
@@ -114,10 +133,40 @@ public class DeviceResource {
      * a proxy), else the socket host. XFF is spoofable, but that only spreads an
      * attacker across throttle keys — friction, not the security boundary. */
     private static String clientKey(String xff, HttpServerRequest request) {
-        if (xff != null && !xff.isBlank()) {
+        // Python `if xff:` — a present-but-whitespace header is truthy (keys on the
+        // stripped-empty first hop), so match with isEmpty (not isBlank).
+        if (xff != null && !xff.isEmpty()) {
             return xff.split(",")[0].strip();
         }
         SocketAddress addr = request == null ? null : request.remoteAddress();
         return addr != null ? addr.host() : "unknown";
+    }
+
+    /** A present body must be a JSON object; malformed/non-object → 422 (pydantic).
+     * Null when the body is absent (an optional model). */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parseOptionalObject(String rawBody) {
+        if (rawBody == null || rawBody.isBlank()) {
+            return null;
+        }
+        Object parsed;
+        try {
+            parsed = PyJson.loads(rawBody);
+        } catch (RuntimeException e) {
+            throw new WebApplicationException(422);   // malformed JSON
+        }
+        if (!(parsed instanceof Map)) {
+            throw new WebApplicationException(422);   // not an object
+        }
+        return (Map<String, Object>) parsed;
+    }
+
+    /** Like parseOptionalObject but the body is required (absent → 422). */
+    private static Map<String, Object> parseRequiredObject(String rawBody) {
+        Map<String, Object> m = parseOptionalObject(rawBody);
+        if (m == null) {
+            throw new WebApplicationException(422);
+        }
+        return m;
     }
 }

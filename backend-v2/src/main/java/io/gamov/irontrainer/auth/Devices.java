@@ -2,12 +2,11 @@ package io.gamov.irontrainer.auth;
 
 import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.util.PyJson;
+import io.gamov.irontrainer.util.SecureTokens;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
-import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.Base64;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -25,7 +24,7 @@ public class Devices {
     /** create_pairing_code: an 8-hex-char code, 10-min TTL. */
     @Transactional
     public Map<String, Object> createPairingCode(int aid, String name) {
-        String code = tokenHex(4);
+        String code = SecureTokens.hex(4);
         long expiresAt = Instant.now().getEpochSecond() + PAIRING_TTL_S;
         DeviceToken t = new DeviceToken();
         t.athleteId = aid;
@@ -44,7 +43,7 @@ public class Devices {
     /** create_bearer_token: mint a token directly (no pairing dance). */
     @Transactional
     public String createBearerToken(String name, int aid) {
-        String token = tokenUrlsafe(32);
+        String token = SecureTokens.urlsafe(32);
         DeviceToken t = new DeviceToken();
         t.athleteId = aid;
         t.name = name;
@@ -59,14 +58,20 @@ public class Devices {
     @Transactional
     public Map<String, Object> claimPairingCode(String code, String deviceName) {
         long now = Instant.now().getEpochSecond();
-        DeviceToken row = DeviceToken.find("pairingCode", code).firstResult();
+        // PESSIMISTIC_WRITE (SELECT … FOR UPDATE) serializes concurrent claims of
+        // the same code: the second waits, then sees tokenHash != null → rejected.
+        // Without the lock, two racing claims could both pass the unclaimed check
+        // and mint tokens (last-writer-wins leaves one device's token unstored →
+        // permanent 401). FastAPI's single worker serialized these implicitly.
+        DeviceToken row = DeviceToken.find("pairingCode", code)
+                .withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (row == null || row.tokenHash != null) {
             return null;   // unknown or already claimed
         }
         if (row.pairingExpiresAt != null && row.pairingExpiresAt < now) {
             return null;   // expired
         }
-        String token = tokenUrlsafe(32);
+        String token = SecureTokens.urlsafe(32);
         row.tokenHash = BearerAuthFilter.sha256(token);
         row.pairingCode = null;
         row.pairingExpiresAt = null;
@@ -98,21 +103,5 @@ public class Devices {
     @Transactional
     public int revokeTokens(int aid) {
         return (int) DeviceToken.delete("athleteId", aid);
-    }
-
-    /** secrets.token_urlsafe(nbytes) — urlsafe base64, no padding. A fresh
-     * SecureRandom per call (minting is infrequent; a static instance would be
-     * baked into the native-image heap, which GraalVM rejects). */
-    private static String tokenUrlsafe(int nbytes) {
-        byte[] b = new byte[nbytes];
-        new SecureRandom().nextBytes(b);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(b);
-    }
-
-    /** secrets.token_hex(nbytes) — 2 hex chars per byte. */
-    private static String tokenHex(int nbytes) {
-        byte[] b = new byte[nbytes];
-        new SecureRandom().nextBytes(b);
-        return HexFormat.of().formatHex(b);
     }
 }

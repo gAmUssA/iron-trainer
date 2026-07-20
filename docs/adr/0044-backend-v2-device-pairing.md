@@ -52,3 +52,22 @@ on backend-v2.
 **This completes the port — every FastAPI endpoint is now on backend-v2.** The
 remaining Phase-7 work (bean foi1) is the operational front-door cutover +
 FastAPI decommission, not code.
+
+## Code-review fixes (applied before merge)
+
+Security-focused review — 1 PLAUSIBLE (concurrency) + 4 CONFIRMED + 1 cleanup:
+1. **Concurrent-claim race** — `claimPairingCode` now takes a
+   `PESSIMISTIC_WRITE` lock (SELECT … FOR UPDATE) so two racing claims of the same
+   code serialize; the second sees `token_hash != null` → rejected. Without it,
+   both could mint tokens (last-writer-wins → one device permanently 401s).
+2. **Non-string `device_name`** → 422 (was silently dropped); same for
+   pairing-code `name`.
+3. **Throttle order** — the body is validated (422) BEFORE the throttle check
+   (429), matching FastAPI's pydantic-then-endpoint order.
+4. **Non-object / malformed claim body** → 422 (parse the raw body + require an
+   object), not a Jackson 400.
+5. **X-Forwarded-For whitespace** — `!isEmpty` (Python truthiness), not `!isBlank`.
+6. **Token idiom de-duplicated** into `util.SecureTokens` (`urlsafe`/`hex`);
+   `StravaOAuth.newState` reuses it too.
+
+v2 suite 191 green; device + strava parity re-verified vs real backends.
