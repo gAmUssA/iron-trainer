@@ -1,6 +1,7 @@
 package io.gamov.irontrainer.strava;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import java.math.BigInteger;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -78,18 +79,21 @@ public class StravaOAuth {
 
     /** is_allowed: whether this Strava athlete may log in (empty allowlist = all). */
     public boolean isAllowed(long stravaAthleteId) {
-        Set<Long> allow = allowedIds();
-        return allow.isEmpty() || allow.contains(stravaAthleteId);
+        Set<BigInteger> allow = allowedIds();
+        return allow.isEmpty() || allow.contains(BigInteger.valueOf(stravaAthleteId));
     }
 
     /** allowed_strava_id_set: comma-split, keep the all-digit tokens (parity with
-     * the Python `tok.isdigit()` filter — non-numeric junk is silently dropped). */
-    private Set<Long> allowedIds() {
-        Set<Long> out = new LinkedHashSet<>();
+     * the Python `tok.isdigit()` filter — non-numeric junk is silently dropped).
+     * BigInteger (not long) matches Python's arbitrary-precision `int(tok)`: an
+     * over-long id stays in the set (never matches a real athlete) instead of
+     * throwing and 500-ing every login, and leading zeros normalize the same. */
+    private Set<BigInteger> allowedIds() {
+        Set<BigInteger> out = new LinkedHashSet<>();
         for (String tok : allowedStravaIds.orElse("").split(",")) {
             String t = tok.strip();
             if (!t.isEmpty() && t.chars().allMatch(Character::isDigit)) {
-                out.add(Long.parseLong(t));
+                out.add(new BigInteger(t));
             }
         }
         return out;

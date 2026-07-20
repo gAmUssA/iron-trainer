@@ -84,3 +84,27 @@ Locations agree. All Optional/defaulted so an unset env never fails native boot
 Flip `connect`+`callback` (+ optionally `disconnect`) at the front door; then the
 GDPR archive import (bean f6ui) is the remaining Strava slice before Phase-7
 decommission (bean foi1).
+
+## Code-review fixes (applied before merge)
+
+The local multi-agent review flagged 7 CONFIRMED parity divergences; all fixed:
+1. **Empty-param truthiness** — callback now uses `if error or not code` semantics
+   (empty-string `error`/`code` are falsy), matching FastAPI's redirect outcomes.
+2. **Orphan default athlete** — local-mode `persistTokens` now forces
+   `id = defaultAthleteId` (FastAPI's `Athlete(id=…)`) via an explicit insert, and
+   bumps the id sequence so a later serial insert can't collide.
+3. **disconnect exception scope** — narrowed `catch` to
+   `WebApplicationException | ProcessingException` (FastAPI's `(NotConnected,
+   httpx.HTTPError)`); an unexpected error now 500s instead of masking a purge.
+4. **exchange exception scope** — same narrowing around `exchangeCode` (FastAPI's
+   `httpx.HTTPError`).
+5. **Allowlist overflow** — `allowedIds` uses `BigInteger` (Python's
+   arbitrary-precision `int(tok)`): an over-long id stays in the set and never
+   matches, instead of throwing and 500-ing every login.
+6. **Set-Cookie on consumed oauth_state** — the local-success / exchange_failed /
+   not_allowed returns now re-emit the cleared session cookie when an incoming
+   oauth_state was consumed (Starlette re-signs a mutated session).
+
+(2 findings refuted; 1 PLAUSIBLE duplication left as-is — the two persist helpers
+resolve the athlete by different keys.) Tests: v2 suite 161 green; Strava parity
+(callback + dedup) verified vs real backends.

@@ -19,7 +19,9 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.InternalServerErrorException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -111,10 +113,14 @@ public class StravaResource {
                              @QueryParam("state") String state,
                              @QueryParam("error") String error,
                              @CookieParam("session") String sessionCookieIn) {
-        if (error != null || code == null) {
+        // Python truthiness parity: `if error or not code` — an empty-string error
+        // is NOT an error, and an empty-string code counts as no code.
+        boolean hasError = error != null && !error.isEmpty();
+        boolean hasCode = code != null && !code.isEmpty();
+        if (hasError || !hasCode) {
             // Strava bounced the user back denied/cancelled (e.g. access_denied).
             LOG.infof("Strava authorization returned without a code (error=%s).", error);
-            return redirect("strava_error", error != null ? error : "no_code").build();
+            return redirect("strava_error", hasError ? error : "no_code").build();
         }
         String secret = sessionSecret.filter(s -> !s.isBlank()).orElse(null);
         Map<String, Object> existing = secret == null ? null : SessionCookie.read(sessionCookieIn, secret);
@@ -123,43 +129,53 @@ public class StravaResource {
         if (authRequired) {
             Object savedState = session.get("oauth_state");
             if (state == null || !state.equals(savedState)) {
+                // Returns BEFORE consuming oauth_state — FastAPI does not pop here,
+                // so no session mutation → no Set-Cookie (parity).
                 LOG.warn("Strava callback with invalid OAuth state.");
                 return redirect("strava_error", "invalid_state").build();
             }
         }
-        session.remove("oauth_state");
+        // Consume oauth_state. FastAPI pops it here, so Starlette re-emits the
+        // (mutated) session cookie on EVERY later return — exchange_failed,
+        // not_allowed, local success, and auth success. Mirror that: whenever we
+        // actually removed an oauth_state, carry a cleared-session Set-Cookie.
+        boolean consumedState = session.remove("oauth_state") != null;
+        String clearedCookie = (consumedState && secret != null) ? setCookieHeader(session, secret) : null;
 
         Map<String, Object> token;
         try {
             token = oauth.exchangeCode(code);
-        } catch (RuntimeException e) {
+        } catch (WebApplicationException | ProcessingException e) {   // httpx.HTTPError parity
             LOG.warnf("Strava token exchange failed: %s", e.toString());
-            return redirect("strava_error", "exchange_failed").build();
+            return withCookie(redirect("strava_error", "exchange_failed"), clearedCookie);
         }
         Object athObj = token.get("athlete");
         Map<?, ?> ath = athObj instanceof Map<?, ?> m ? m : Map.of();
         Long stravaId = ath.get("id") instanceof Number n ? n.longValue() : null;
 
-        String loginCookie = null;
         int athleteId;
         if (authRequired) {
             if (stravaId == null || !oauth.isAllowed(stravaId)) {
                 LOG.warnf("Rejected Strava login for athlete id %s (not on allowlist).", stravaId);
-                return redirect("strava_error", "not_allowed").build();
+                return withCookie(redirect("strava_error", "not_allowed"), clearedCookie);
             }
             athleteId = persistLogin(stravaId, token);   // find-or-create + save tokens (name too)
             session.put("athlete_id", athleteId);
-            loginCookie = setCookieHeader(session, secret); // mint the athlete_id LOGIN session
-            LOG.infof("Strava login: athlete %d (strava id %d) signed in.", athleteId, stravaId);
-        } else {
-            // Local single-user mode: attach to the default athlete (no new users).
-            athleteId = defaultAthleteId;
-            persistTokens(athleteId, token);
-            LOG.infof("Strava connected to local default athlete (strava id %s).", stravaId);
+            // Mint the athlete_id LOGIN session (oauth_state already consumed).
+            return withCookie(redirect("connected", "1"), setCookieHeader(session, secret));
         }
-        Response.ResponseBuilder rb = redirect("connected", "1");
-        if (loginCookie != null) {
-            rb.header("Set-Cookie", loginCookie);
+        // Local single-user mode: attach to the default athlete (no new users).
+        athleteId = defaultAthleteId;
+        persistTokens(athleteId, token);
+        LOG.infof("Strava connected to local default athlete (strava id %s).", stravaId);
+        return withCookie(redirect("connected", "1"), clearedCookie);
+    }
+
+    /** Build a redirect Response, attaching a Set-Cookie only when one is present
+     * (mirrors Starlette emitting a cookie exactly when the session was mutated). */
+    private static Response withCookie(Response.ResponseBuilder rb, String setCookie) {
+        if (setCookie != null) {
+            rb.header("Set-Cookie", setCookie);
         }
         return rb.build();
     }
@@ -176,8 +192,10 @@ public class StravaResource {
         try {
             oauth.deauthorize(tokens.validAccessToken(aid));   // 409 NotConnected → skip
             deauthorized = true;
-        } catch (RuntimeException e) {
-            // Already revoked / token gone / not connected — still purge local data.
+        } catch (WebApplicationException | ProcessingException e) {
+            // NotConnected (409) / Strava HTTP or connection error — still purge
+            // local data (FastAPI: except (NotConnected, httpx.HTTPError)). An
+            // unexpected error propagates → 500, matching FastAPI.
             LOG.infof("Deauthorize skipped (%s); proceeding to local deletion.", e.toString());
         }
         Map<String, Object> summary = disconnectStrava(aid);
@@ -210,10 +228,22 @@ public class StravaResource {
         QuarkusTransaction.requiringNew().run(() -> {
             Athlete a = Athlete.findById(athleteId);
             if (a == null) {
-                // Local mode's default athlete normally exists (seeded); create a
-                // row if not so tokens aren't silently dropped.
-                a = new Athlete();
-                a.persist();
+                // Local mode's default athlete normally exists (seeded). If not,
+                // force the id (FastAPI's save_tokens does Athlete(id=athlete_id));
+                // a bare persist() would take a serial-generated id, orphaning the
+                // tokens from the athlete every reader resolves to.
+                Athlete.getEntityManager()
+                        .createNativeQuery("INSERT INTO athlete (id) VALUES (?1)")
+                        .setParameter(1, athleteId)
+                        .executeUpdate();
+                // Keep the id sequence ahead of the forced id — an explicit-id
+                // insert doesn't advance it, so a later serial insert would collide.
+                Athlete.getEntityManager()
+                        .createNativeQuery("SELECT setval(pg_get_serial_sequence('athlete','id'), "
+                                + "GREATEST((SELECT max(id) FROM athlete), ?1))")
+                        .setParameter(1, athleteId)
+                        .getSingleResult();
+                a = Athlete.findById(athleteId);
             }
             tokens.saveTokens(a, token);
         });

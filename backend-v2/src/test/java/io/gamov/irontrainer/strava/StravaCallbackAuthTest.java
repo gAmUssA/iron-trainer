@@ -26,13 +26,15 @@ import org.junit.jupiter.api.Test;
 @QuarkusTestResource(value = WireMockStravaLogin.class, restrictToAnnotatedClass = true)
 class StravaCallbackAuthTest {
 
-    /** Deployment mode with a single-athlete allowlist (424242 = WireMock's athlete). */
+    /** Deployment mode with an allowlist containing the WireMock athlete (424242)
+     * plus an over-long numeric token — which must be kept (never matches) rather
+     * than overflow a long and 500 every login (BigInteger parity fix). */
     public static class AuthProfile implements QuarkusTestProfile {
         @Override
         public Map<String, String> getConfigOverrides() {
             return Map.of(
                     "irontrainer.auth-required", "true",
-                    "irontrainer.allowed-strava-ids", "424242");
+                    "irontrainer.allowed-strava-ids", "424242,99999999999999999999999999");
         }
     }
 

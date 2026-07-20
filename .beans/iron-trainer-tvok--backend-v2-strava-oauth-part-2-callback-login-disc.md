@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: high
 created_at: 2026-07-19T23:35:51Z
-updated_at: 2026-07-20T00:08:59Z
+updated_at: 2026-07-20T00:39:40Z
 ---
 
 Second slice of the Strava OAuth migration (xtre part 1 shipped connect + session-cookie minting, PR #77).
@@ -32,3 +32,6 @@ Blocked-by: none (part 1 merged). Pattern: worktree + ADR.
 - Config: irontrainer.auth-required, allowed-strava-ids; frontend-origin default aligned to localhost:5173.
 - Tests: StravaCallbackTest (local), StravaCallbackAuthTest (auth+allowlist login mint), StravaDisconnectTest, + callback error-redirect parity (verified vs real backends). v2 suite 159 green.
 - ADR 0038.
+
+## Code-review fixes (7 CONFIRMED)
+empty-param truthiness; orphan-athlete forced-id+seq bump; disconnect+exchange catch narrowed to WebApplicationException|ProcessingException; allowlist BigInteger (no overflow 500); Set-Cookie on consumed oauth_state. +2 callback tests. v2 161 green; parity re-verified.
