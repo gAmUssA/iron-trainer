@@ -66,6 +66,15 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
         </dependency>
+        <!-- BootUI developer console (https://www.julien-dubois.com/boot-ui) — a
+             richer dev/test-mode UI alongside Quarkus Dev UI. Targets Quarkus 3.37.x.
+             Wires up only in dev/test launch modes and stays dark in production, so it
+             is safe on the classpath: http://localhost:8080/bootui in `quarkus:dev`. -->
+        <dependency>
+            <groupId>com.julien-dubois.bootui</groupId>
+            <artifactId>bootui-quarkus</artifactId>
+            <version>1.12.0</version>
+        </dependency>
         <dependency>
             <groupId>com.garmin</groupId>
             <artifactId>fit</artifactId>
