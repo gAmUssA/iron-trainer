@@ -23,6 +23,19 @@ public class DeviceToken extends PanacheEntityBase {
 
     public String name;
 
+    // Pairing dance: a short-lived code the native app exchanges for a token.
+    @Column(name = "pairing_code")
+    public String pairingCode;
+
+    @Column(name = "pairing_expires_at")
+    public Long pairingExpiresAt;
+
     @Column(name = "token_hash")
     public String tokenHash;
+
+    @Column(name = "created_at")
+    public String createdAt;
+
+    @Column(name = "last_used_at")
+    public String lastUsedAt;
 }
