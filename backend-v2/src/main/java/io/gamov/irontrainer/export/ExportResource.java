@@ -17,8 +17,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.jboss.logging.Logger;
@@ -130,14 +134,16 @@ public class ExportResource {
     public Response weekZip(@PathParam("week_start") String weekStart) {
         int aid = current.require();
         // date.fromisoformat(week_start) — a malformed date propagates (500), parity.
-        String end = LocalDate.parse(weekStart).plusDays(6).toString();
+        // The FILTER still compares the RAW week_start string (so a compact-form
+        // "20260705" parses but excludes the extended-form dates → 404, like Python).
+        String end = parseIsoDate(weekStart).plusDays(6).toString();
         Plan plan = Plan.activeFor(aid);
         List<PlannedWorkout> all = plan == null ? List.of() : PlannedWorkout.forPlan(aid, plan.id);
         List<PlannedWorkout> workouts = new ArrayList<>();
         for (PlannedWorkout w : all) {
             // week_start <= (w.date or "") <= end
             String d = w.date == null ? "" : w.date;
-            if (d.compareTo(weekStart) >= 0 && d.compareTo(end) <= 0 && !d.isEmpty()) {
+            if (d.compareTo(weekStart) >= 0 && d.compareTo(end) <= 0) {
                 workouts.add(w);
             }
         }
@@ -161,31 +167,55 @@ public class ExportResource {
      * parity is on the extracted entries, not the raw archive. */
     private byte[] bundleZip(List<PlannedWorkout> workouts, Athlete a, Double ftp) {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        Set<String> seen = new HashSet<>();
         try (ZipOutputStream z = new ZipOutputStream(bos)) {
             for (PlannedWorkout w : workouts) {
-                putEntry(z, filename(w, "fit"), fit.workoutFit(w));
+                putEntry(z, seen, filename(w, "fit"), fit.workoutFit(w));
                 String zwoXml = zwo.workoutZwo(w, ftp);
                 if (zwoXml != null && !zwoXml.isEmpty()) {   // Python `if zwo:`
-                    putEntry(z, filename(w, "zwo"), zwoXml.getBytes(StandardCharsets.UTF_8));
+                    putEntry(z, seen, filename(w, "zwo"), zwoXml.getBytes(StandardCharsets.UTF_8));
                 }
-                putEntry(z, filename(w, "itw"), itw.workoutItw(w, a).getBytes(StandardCharsets.UTF_8));
+                putEntry(z, seen, filename(w, "itw"), itw.workoutItw(w, a).getBytes(StandardCharsets.UTF_8));
             }
-            putEntry(z, "IMPORT_INSTRUCTIONS.txt", README);
+            putEntry(z, seen, "IMPORT_INSTRUCTIONS.txt", readme());
         } catch (IOException e) {
             throw new RuntimeException("Failed to build the export zip", e);
         }
         return bos.toByteArray();
     }
 
-    private static void putEntry(ZipOutputStream z, String name, byte[] data) throws IOException {
+    private static void putEntry(ZipOutputStream z, Set<String> seen, String name, byte[] data)
+            throws IOException {
+        // Java's ZipOutputStream throws on a duplicate entry name; Python's
+        // zipfile.writestr tolerates it (both extract to the same file). Keep the
+        // first → a 200 with a valid zip, not a 500. Only reachable for two
+        // workouts with the same (date, sport, title).
+        if (!seen.add(name)) {
+            return;
+        }
         z.putNextEntry(new ZipEntry(name));
         z.write(data);
         z.closeEntry();
     }
 
-    /** filename(workout, ext) = "{date}_{sport}_{slug(title)}.{ext}". */
+    /** filename(workout, ext) = "{date}_{sport}_{slug(title)}.{ext}". A null date/
+     * sport renders as "None" (Python f-string), not Java's "null". */
     private static String filename(PlannedWorkout w, String ext) {
-        return w.date + "_" + w.sport + "_" + slug(w.title) + "." + ext;
+        return noneIfNull(w.date) + "_" + noneIfNull(w.sport) + "_" + slug(w.title) + "." + ext;
+    }
+
+    private static String noneIfNull(String s) {
+        return s == null ? "None" : s;
+    }
+
+    /** date.fromisoformat parity (3.11+): extended ("2026-07-05") OR basic
+     * ("20260705") ISO; anything else propagates as a 500. */
+    private static LocalDate parseIsoDate(String s) {
+        try {
+            return LocalDate.parse(s, DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException e) {
+            return LocalDate.parse(s, DateTimeFormatter.BASIC_ISO_DATE);
+        }
     }
 
     /** _slug: non-alphanumerics → '-', trimmed of leading/trailing '-', ≤40 chars,
@@ -200,7 +230,18 @@ public class ExportResource {
         return s.isEmpty() ? "workout" : s;
     }
 
-    private static final byte[] README = loadReadme();
+    // Lazy (not a static-final initializer): a resource-load failure then only
+    // fails the zip request, not class init — which would 500 the already-shipped
+    // .fit/.itw/.zwo/plan.itw endpoints too.
+    private static volatile byte[] readmeCache;
+
+    private static byte[] readme() {
+        byte[] r = readmeCache;
+        if (r == null) {
+            readmeCache = r = loadReadme();
+        }
+        return r;
+    }
 
     private static byte[] loadReadme() {
         try (InputStream in = ExportResource.class.getResourceAsStream("/import_instructions.txt")) {

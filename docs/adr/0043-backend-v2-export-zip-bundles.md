@@ -45,3 +45,18 @@ parity-tested by the per-workout export tests with the right comparison per type
 
 Device pairing (pairing-code / claim / ingest-token / DELETE tokens) — bearer-token
 minting, the last slice. After it, every FastAPI endpoint is ported.
+
+## Code-review fixes (applied before merge)
+
+3 CONFIRMED + 1 PLAUSIBLE fixed:
+1. **Duplicate entry names** — two workouts with the same (date,sport,title) made
+   `putNextEntry` throw (500) where Python's `writestr` tolerates it (200); now
+   de-duplicated (keep first) → a valid 200 zip.
+2. **Compact-ISO week_start** — `LocalDate.parse` rejected `"20260705"` that
+   `date.fromisoformat` (3.11+) accepts → 500; now parses extended OR basic ISO
+   (the raw string still drives the filter → 404 for a compact form, like Python).
+3. **`filename` null date/sport** — renders `"None"` (Python f-string), not `"null"`.
+4. **README load decoupled** — lazy (not a static-final initializer) so a
+   resource-load failure can't 500 the already-shipped .fit/.itw/.zwo/plan.itw.
+
+v2 suite 186 green; export-zip parity re-verified vs real backends.

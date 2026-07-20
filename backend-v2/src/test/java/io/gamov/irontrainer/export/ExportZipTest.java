@@ -52,6 +52,8 @@ class ExportZipTest {
     void noActivePlanIs404() {
         given().when().get("/api/export/plan.zip").then().statusCode(404);
         given().when().get("/api/export/week/2026-01-05.zip").then().statusCode(404);
+        // Compact ISO (date.fromisoformat accepts it) parses → empty → 404, not 500.
+        given().when().get("/api/export/week/20260105.zip").then().statusCode(404);
     }
 
     @Test
