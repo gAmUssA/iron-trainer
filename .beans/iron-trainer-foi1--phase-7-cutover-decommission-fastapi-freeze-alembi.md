@@ -5,7 +5,7 @@ status: todo
 type: task
 priority: normal
 created_at: 2026-07-17T04:45:21Z
-updated_at: 2026-07-20T04:33:28Z
+updated_at: 2026-07-20T18:27:13Z
 parent: iron-trainer-eom4
 ---
 
@@ -26,3 +26,14 @@ Decision 2026-07-20: hold ALL remaining Strava write-flips; cut the whole vertic
 - [ ] Confirm STRAVA_REDIRECT_URI still points at the public callback host after the swap.
 - [ ] Verify a real login end-to-end (connect → Strava consent → callback → athlete_id session cookie).
 - [ ] Verify a real disconnect + a real archive import.
+
+## PORT COMPLETE (2026-07-20)
+Every FastAPI endpoint (all 52) is now ported to backend-v2, parity-tested, and deployed. Verified by the endpoint diff: ZERO FastAPI-only endpoints remain. The Phase-7 CODE gate is CLEAR.
+
+This session's tail (after the Strava vertical): p4co (app tail: health/status/me/logout/athlete-GET), 0jwt (health recovery+ingest), wksi (profile PUT), w5w0 (export zip), 3qcz (device pairing). PRs #80–#84, ADRs 0040–0044.
+
+### What remains = OPERATIONAL cutover only (not code):
+1. Front door = backend-v2 (DNS/routing swap) OR proxy all remaining /api/* to it. Login (connect/callback) + import can only route to backend-v2 directly (can't strangler-flip — see the Strava cutover notes above).
+2. Wire STRAVA_* + CORS_ORIGINS + ALLOWED_STRAVA_IDS on backend-v2 (DONE — already configured).
+3. End-to-end verify: real login, disconnect, import, device pairing, HealthKit ingest.
+4. Decommission FastAPI, freeze Alembic.
