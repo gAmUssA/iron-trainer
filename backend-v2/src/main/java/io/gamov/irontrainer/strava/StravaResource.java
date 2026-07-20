@@ -1,11 +1,15 @@
 package io.gamov.irontrainer.strava;
 
 import io.gamov.irontrainer.activity.Activity;
+import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.auth.DeviceToken;
 import io.gamov.irontrainer.auth.SessionCookie;
 import io.gamov.irontrainer.jobs.JobRunner;
+import io.gamov.irontrainer.metrics.MetricDaily;
 import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.util.Params;
+import io.gamov.irontrainer.util.PyJson;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.BadRequestException;
@@ -15,10 +19,13 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.InternalServerErrorException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.QueryParam;
-import jakarta.ws.rs.core.NewCookie;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,8 +33,9 @@ import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
-/** Strava vertical: OAuth connect (bean xtre) + de-duplication + activity sync.
- * The OAuth callback/disconnect + GDPR import are separate slices (xtre/f6ui). */
+/** Strava vertical: OAuth connect + callback (login) + disconnect (bean xtre)
+ * plus de-duplication + activity sync. The GDPR archive import is a separate
+ * slice (bean f6ui). */
 @Path("/api/strava")
 public class StravaResource {
 
@@ -59,6 +67,11 @@ public class StravaResource {
     @ConfigProperty(name = "irontrainer.cookie-secure")
     boolean cookieSecure;
 
+    // settings.default_athlete_id — the identity used in local no-login mode
+    // (callback's non-auth branch attaches the tokens to this athlete).
+    @ConfigProperty(name = "irontrainer.default-athlete-id")
+    int defaultAthleteId;
+
     /** GET /api/strava/connect — begin Strava OAuth (also the login entry point).
      * Mints a session cookie carrying the CSRF oauth_state and 307-redirects to
      * Strava's consent screen. Preserves any existing session (athlete_id) so a
@@ -82,16 +95,207 @@ public class StravaResource {
         Map<String, Object> existing = SessionCookie.read(sessionCookieIn, secret);
         Map<String, Object> session = existing == null ? new LinkedHashMap<>() : new LinkedHashMap<>(existing);
         session.put("oauth_state", state);
-        NewCookie cookie = new NewCookie.Builder("session")
-                .value(SessionCookie.sign(session, secret))
-                .path("/")
-                .maxAge((int) SessionCookie.MAX_AGE_SECONDS)
-                .httpOnly(true)
-                .secure(cookieSecure)
-                .sameSite(NewCookie.SameSite.LAX)
-                .build();
         LOG.debug("Strava OAuth connect: minted oauth_state, redirecting to Strava.");
-        return Response.temporaryRedirect(URI.create(oauth.authorizeUrl(state))).cookie(cookie).build();
+        return Response.temporaryRedirect(URI.create(oauth.authorizeUrl(state)))
+                .header("Set-Cookie", setCookieHeader(session, secret)).build();
+    }
+
+    /** GET /api/strava/callback — the OAuth redirect target (LOGIN happens here).
+     * Port of strava_router.callback:
+     *  - denied/no-code → SPA redirect with strava_error;
+     *  - auth mode: verify oauth_state (CSRF), exchange the code, allowlist-gate,
+     *    find-or-create the athlete, mint an athlete_id LOGIN session, save tokens;
+     *  - local mode: attach tokens to the default athlete (no new users).
+     * All outcomes 307-redirect back to the SPA with a query flag. */
+    @GET
+    @Path("/callback")
+    public Response callback(@QueryParam("code") String code,
+                             @QueryParam("state") String state,
+                             @QueryParam("error") String error,
+                             @CookieParam("session") String sessionCookieIn) {
+        // Python truthiness parity: `if error or not code` — an empty-string error
+        // is NOT an error, and an empty-string code counts as no code.
+        boolean hasError = error != null && !error.isEmpty();
+        boolean hasCode = code != null && !code.isEmpty();
+        if (hasError || !hasCode) {
+            // Strava bounced the user back denied/cancelled (e.g. access_denied).
+            LOG.infof("Strava authorization returned without a code (error=%s).", error);
+            return redirect("strava_error", hasError ? error : "no_code").build();
+        }
+        String secret = sessionSecret.filter(s -> !s.isBlank()).orElse(null);
+        Map<String, Object> existing = secret == null ? null : SessionCookie.read(sessionCookieIn, secret);
+        Map<String, Object> session = existing == null ? new LinkedHashMap<>() : new LinkedHashMap<>(existing);
+        boolean authRequired = oauth.authRequired();
+        if (authRequired) {
+            Object savedState = session.get("oauth_state");
+            if (state == null || !state.equals(savedState)) {
+                // Returns BEFORE consuming oauth_state — FastAPI does not pop here,
+                // so no session mutation → no Set-Cookie (parity).
+                LOG.warn("Strava callback with invalid OAuth state.");
+                return redirect("strava_error", "invalid_state").build();
+            }
+        }
+        // Consume oauth_state. FastAPI pops it here, so Starlette re-emits the
+        // (mutated) session cookie on EVERY later return — exchange_failed,
+        // not_allowed, local success, and auth success. Mirror that: whenever we
+        // actually removed an oauth_state, carry a cleared-session Set-Cookie.
+        boolean consumedState = session.remove("oauth_state") != null;
+        String clearedCookie = (consumedState && secret != null) ? setCookieHeader(session, secret) : null;
+
+        Map<String, Object> token;
+        try {
+            token = oauth.exchangeCode(code);
+        } catch (WebApplicationException | ProcessingException e) {   // httpx.HTTPError parity
+            LOG.warnf("Strava token exchange failed: %s", e.toString());
+            return withCookie(redirect("strava_error", "exchange_failed"), clearedCookie);
+        }
+        Object athObj = token.get("athlete");
+        Map<?, ?> ath = athObj instanceof Map<?, ?> m ? m : Map.of();
+        Long stravaId = ath.get("id") instanceof Number n ? n.longValue() : null;
+
+        int athleteId;
+        if (authRequired) {
+            if (stravaId == null || !oauth.isAllowed(stravaId)) {
+                LOG.warnf("Rejected Strava login for athlete id %s (not on allowlist).", stravaId);
+                return withCookie(redirect("strava_error", "not_allowed"), clearedCookie);
+            }
+            athleteId = persistLogin(stravaId, token);   // find-or-create + save tokens (name too)
+            session.put("athlete_id", athleteId);
+            // Mint the athlete_id LOGIN session (oauth_state already consumed).
+            return withCookie(redirect("connected", "1"), setCookieHeader(session, secret));
+        }
+        // Local single-user mode: attach to the default athlete (no new users).
+        athleteId = defaultAthleteId;
+        persistTokens(athleteId, token);
+        LOG.infof("Strava connected to local default athlete (strava id %s).", stravaId);
+        return withCookie(redirect("connected", "1"), clearedCookie);
+    }
+
+    /** Build a redirect Response, attaching a Set-Cookie only when one is present
+     * (mirrors Starlette emitting a cookie exactly when the session was mutated). */
+    private static Response withCookie(Response.ResponseBuilder rb, String setCookie) {
+        if (setCookie != null) {
+            rb.header("Set-Cookie", setCookie);
+        }
+        return rb.build();
+    }
+
+    /** POST /api/strava/disconnect — revoke access at Strava, then purge the
+     * athlete's synced activities + derived metrics + device tokens and clear the
+     * stored Strava tokens/name (API agreement §7.4). Deauthorize is best-effort
+     * (already-revoked/gone still purges locally). Port of strava_router.disconnect. */
+    @POST
+    @Path("/disconnect")
+    public Map<String, Object> disconnect() {
+        int aid = current.require();   // 401 when auth is required and nobody is logged in
+        boolean deauthorized = false;
+        try {
+            oauth.deauthorize(tokens.validAccessToken(aid));   // 409 NotConnected → skip
+            deauthorized = true;
+        } catch (WebApplicationException | ProcessingException e) {
+            // NotConnected (409) / Strava HTTP or connection error — still purge
+            // local data (FastAPI: except (NotConnected, httpx.HTTPError)). An
+            // unexpected error propagates → 500, matching FastAPI.
+            LOG.infof("Deauthorize skipped (%s); proceeding to local deletion.", e.toString());
+        }
+        Map<String, Object> summary = disconnectStrava(aid);
+        LOG.infof("Athlete %d disconnected Strava: deleted %s activities, %s metric days.",
+                aid, summary.get("deleted_activities"), summary.get("deleted_metrics"));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("deauthorized", deauthorized);
+        out.putAll(summary);
+        out.put("message", "Disconnected. Your Strava activities and derived data have been deleted.");
+        return out;
+    }
+
+    /** find_or_create_athlete (by Strava id) + save_tokens, in one transaction.
+     * saveTokens sets the name/tokens/expiry, so create only needs the strava id. */
+    private int persistLogin(long stravaId, Map<String, Object> token) {
+        return QuarkusTransaction.requiringNew().call(() -> {
+            Athlete a = Athlete.find("stravaAthleteId", stravaId).firstResult();
+            if (a == null) {
+                a = new Athlete();
+                a.stravaAthleteId = stravaId;
+                a.persist();
+            }
+            tokens.saveTokens(a, token);
+            return a.id;
+        });
+    }
+
+    /** save_tokens(athlete_id, token) for the local default athlete (non-auth). */
+    private void persistTokens(int athleteId, Map<String, Object> token) {
+        QuarkusTransaction.requiringNew().run(() -> {
+            Athlete a = Athlete.findById(athleteId);
+            if (a == null) {
+                // Local mode's default athlete normally exists (seeded). If not,
+                // force the id (FastAPI's save_tokens does Athlete(id=athlete_id));
+                // a bare persist() would take a serial-generated id, orphaning the
+                // tokens from the athlete every reader resolves to.
+                Athlete.getEntityManager()
+                        .createNativeQuery("INSERT INTO athlete (id) VALUES (?1)")
+                        .setParameter(1, athleteId)
+                        .executeUpdate();
+                // Keep the id sequence ahead of the forced id — an explicit-id
+                // insert doesn't advance it, so a later serial insert would collide.
+                Athlete.getEntityManager()
+                        .createNativeQuery("SELECT setval(pg_get_serial_sequence('athlete','id'), "
+                                + "GREATEST((SELECT max(id) FROM athlete), ?1))")
+                        .setParameter(1, athleteId)
+                        .getSingleResult();
+                a = Athlete.findById(athleteId);
+            }
+            tokens.saveTokens(a, token);
+        });
+    }
+
+    /** disconnect_strava: delete this athlete's Strava-sourced data and clear the
+     * stored tokens + Strava name. Returns the deletion summary (§2.5). */
+    private Map<String, Object> disconnectStrava(int aid) {
+        return QuarkusTransaction.requiringNew().call(() -> {
+            long acts = Activity.delete("athleteId", aid);
+            long metrics = MetricDaily.delete("athleteId", aid);
+            long devices = DeviceToken.delete("athleteId", aid);
+            Athlete a = Athlete.findById(aid);
+            if (a != null) {
+                a.stravaAccessToken = null;
+                a.stravaRefreshToken = null;
+                a.stravaTokenExpiresAt = null;
+                a.stravaAthleteId = null;
+                a.name = null;   // name came from Strava
+                a.updatedAt = PyJson.utcNowIso();
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("deleted_activities", (int) acts);
+            out.put("deleted_metrics", (int) metrics);
+            out.put("revoked_devices", (int) devices);
+            return out;
+        });
+    }
+
+    /** The itsdangerous-signed {@code session} Set-Cookie header value, byte-matching
+     * Starlette SessionMiddleware EXACTLY: {@code session=<v>; path=/; Max-Age=1209600;
+     * httponly; samesite=lax} (+ {@code ; secure} when COOKIE_SECURE). Emitted as a raw
+     * header, NOT via NewCookie, because JAX-RS NewCookie quotes the value and appends
+     * {@code Version=1} (RFC 2109) — which Starlette never does, so the strangler's two
+     * backends would otherwise emit a different cookie for the same session. Shared by
+     * connect + callback. */
+    private String setCookieHeader(Map<String, Object> session, String secret) {
+        String header = "session=" + SessionCookie.sign(session, secret)
+                + "; path=/; Max-Age=" + SessionCookie.MAX_AGE_SECONDS + "; httponly; samesite=lax";
+        return cookieSecure ? header + "; secure" : header;
+    }
+
+    /** _redirect: 307 back to the SPA ({origin}/?key=value), so OAuth outcomes
+     * surface as an in-app banner. Relative "/?..." when no origin is configured
+     * (matches FastAPI's empty cors_origin_list). */
+    private Response.ResponseBuilder redirect(String key, String value) {
+        String url = oauth.frontendOrigin() + "/?" + enc(key) + "=" + enc(value);
+        return Response.temporaryRedirect(URI.create(url));
+    }
+
+    private static String enc(String s) {
+        return URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 
     /** POST /api/strava/sync — pull activity summaries from Strava, upsert, prune
