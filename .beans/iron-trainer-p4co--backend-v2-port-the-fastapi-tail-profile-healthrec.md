@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: high
 created_at: 2026-07-20T04:41:43Z
-updated_at: 2026-07-20T15:47:52Z
+updated_at: 2026-07-20T16:41:24Z
 ---
 
 Bundle the non-token-minting FastAPI-only endpoints to backend-v2 so Phase 7 can proceed. Excludes device-pairing token minting (separate security slice). Endpoints: GET /api/athlete, PUT /api/athlete/profile, GET /api/health, POST /api/health/ingest, GET /api/health/recovery, GET /api/status, GET /api/me, POST /api/auth/logout, GET /api/export/plan.zip, GET /api/export/week/{week_start}.zip.
@@ -21,3 +21,6 @@ GET /api/health(+deep), GET /api/status, GET /api/me, POST /api/auth/logout, GET
 
 ## Code-review fixes
 parseDate leniency (colon/non-colon offset, naive, bare date); truthy date/startDate fallback; num() boolean coercion; ?days via Params.intParam (422 parity); ingest 401 swallowed per-day (FastAPI parity). v2 179 green; parity re-verified.
+
+## Code-review fixes
+numeric-string + bool→float coercion (pydantic lax); empty/non-object body → 422; refreshFuture aborts on bad week_start; applyFueling de-duplicated. v2 183 green; parity re-verified.

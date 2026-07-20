@@ -1,37 +1,102 @@
 package io.gamov.irontrainer.athlete;
 
+import io.gamov.irontrainer.activity.Activity;
+import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.metrics.Metrics;
+import io.gamov.irontrainer.metrics.Metrics.Thresholds;
+import io.gamov.irontrainer.metrics.Metrics.TssResult;
+import io.gamov.irontrainer.metrics.MetricsWrite;
+import io.gamov.irontrainer.plan.PlanTargets;
+import io.gamov.irontrainer.util.PyJson;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import org.jboss.logging.Logger;
 
-import io.gamov.irontrainer.auth.CurrentAthlete;
-
-/** GET /api/athlete — the athlete profile (thresholds + nutrition), plus a
- * connected flag. Port of athlete_router.get_profile. The PUT (edit thresholds)
- * is a separate slice — it recomputes TSS and refreshes future plan targets.
- *
- * Rooted at {@code /api} (NOT {@code /api/athlete}): a class path of
- * {@code /api/athlete} is the longest prefix match for {@code /api/athlete/race}
- * etc., so RESTEasy would route those here and 404 them instead of to their
- * owning resources. At {@code /api} the methods pool with the sibling resources. */
+/** /api/athlete profile: read (get_profile) + edit thresholds (update_profile).
+ * Rooted at {@code /api} so it pools with the other /api/athlete/* resources
+ * rather than shadowing them (a class @Path of /api/athlete is the longest prefix
+ * match for /api/athlete/race and would 404 it). Port of
+ * athlete_router.get_profile / update_profile. */
 @Path("/api")
 public class ProfileResource {
+
+    private static final Logger LOG = Logger.getLogger(ProfileResource.class);
+
+    // Threshold/nutrition fields that drive workout prescriptions — changing any
+    // means future planned workouts should be re-derived (_TARGET_FIELDS).
+    private static final Set<String> TARGET_FIELDS = Set.of(
+            "ftp", "threshold_hr", "max_hr", "threshold_pace_run", "css_swim",
+            "body_weight_kg", "gel_carb_g", "sweat_rate_l_h");
 
     @Inject
     CurrentAthlete current;
 
-    // repo._PUBLIC — the columns exposed to the client, in this order.
+    @Inject
+    PlanTargets planTargets;
+
     @GET
     @Path("/athlete")
     @Produces(MediaType.APPLICATION_JSON)
     @Transactional
     public Map<String, Object> getProfile() {
-        Athlete a = Athlete.findById(current.require());
+        return profileResponse(Athlete.findById(current.require()));
+    }
+
+    /** PUT /api/athlete/profile — edit thresholds. exclude_unset semantics: only
+     * keys the client SENT are applied (a sent null clears the field; an unsent
+     * field is untouched). A threshold change recomputes TSS for every activity,
+     * rebuilds the PMC, and refreshes future plan targets. */
+    @PUT
+    @Path("/athlete/profile")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> updateProfile(String rawBody) {
+        // Validate BEFORE the auth check: FastAPI's pydantic 422 precedes the 401
+        // that save_profile → current_athlete_id would raise, so an invalid body is
+        // 422 even for an unauthenticated caller.
+        Map<String, Object> changes = validate(parseObjectBody(rawBody));
+        int aid = current.require();
+
+        Map<String, Object> before = QuarkusTransaction.requiringNew().call(() -> targetSnapshot(aid));
+        QuarkusTransaction.requiringNew().run(() -> saveProfile(aid, changes));
+        // Threshold changes alter TSS for every activity and thus the whole PMC.
+        QuarkusTransaction.requiringNew().run(() -> recomputeTss(aid));
+        QuarkusTransaction.requiringNew().run(() -> MetricsWrite.rebuildMetrics(aid));
+
+        Map<String, Object> out = QuarkusTransaction.requiringNew().call(
+                () -> profileResponse(Athlete.findById(aid)));
+        // New thresholds → refresh FUTURE workout targets (never past/current week).
+        // Best-effort: the save is already committed, so a refresh failure must not
+        // turn a successful save into a 500.
+        if (targetChanged(changes, before)) {
+            try {
+                out.put("plan_weeks_refreshed", planTargets.refreshFuture(aid, LocalDate.now()));
+            } catch (RuntimeException e) {
+                LOG.error("Future-target refresh failed after profile update.", e);
+                out.put("plan_weeks_refreshed", 0);
+            }
+        }
+        return out;
+    }
+
+    // ── response ──────────────────────────────────────────────────────────────
+
+    /** {connected, profile{…_PUBLIC…}} — the get_profile body, in _PUBLIC order. */
+    private static Map<String, Object> profileResponse(Athlete a) {
         Map<String, Object> p = new LinkedHashMap<>();
         p.put("strava_athlete_id", a == null ? null : a.stravaAthleteId);
         p.put("name", a == null ? null : a.name);
@@ -51,5 +116,199 @@ public class ProfileResource {
         out.put("connected", a != null && a.stravaRefreshToken != null && !a.stravaRefreshToken.isEmpty());
         out.put("profile", p);
         return out;
+    }
+
+    // ── body parsing + validation (ProfileUpdate: required object; Field bounds) ──
+
+    /** The body must be a JSON object (FastAPI's required ProfileUpdate model): an
+     * absent/empty/malformed/non-object body → 422, matching pydantic. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parseObjectBody(String rawBody) {
+        if (rawBody == null || rawBody.isBlank()) {
+            throw new WebApplicationException(422);   // required body
+        }
+        Object parsed;
+        try {
+            parsed = PyJson.loads(rawBody);
+        } catch (RuntimeException e) {
+            throw new WebApplicationException(422);   // malformed JSON
+        }
+        if (!(parsed instanceof Map)) {
+            throw new WebApplicationException(422);   // not an object
+        }
+        return (Map<String, Object>) parsed;
+    }
+
+    /** exclude_unset: only present model keys → changes (null clears); unknown
+     * keys ignored (pydantic default). Out-of-bounds / wrong-type → 422. */
+    private static Map<String, Object> validate(Map<String, Object> body) {
+        Map<String, Object> c = new LinkedHashMap<>();
+        floatField(body, c, "ftp", 0, 1000);
+        intField(body, c, "threshold_hr", 60, 250);
+        intField(body, c, "max_hr", 60, 250);
+        floatField(body, c, "threshold_pace_run", 90, 1200);
+        floatField(body, c, "css_swim", 40, 600);
+        floatField(body, c, "weekly_hours_target", 0, 60);
+        floatField(body, c, "body_weight_kg", 25, 250);
+        floatField(body, c, "gel_carb_g", 5, 120);
+        floatField(body, c, "sweat_rate_l_h", 0, 5);
+        if (body.containsKey("gi_tolerance")) {
+            Object v = body.get("gi_tolerance");
+            if (v == null) {
+                c.put("gi_tolerance", null);
+            } else if (v instanceof String s && Set.of("low", "medium", "high").contains(s)) {
+                c.put("gi_tolerance", s);
+            } else {
+                throw new WebApplicationException(422);
+            }
+        }
+        return c;
+    }
+
+    /** Field(gt, lt) as a float — strictly >gt AND <lt. pydantic (lax) coerces a
+     * numeric string and a bool (True→1.0) to a float. */
+    private static void floatField(Map<String, Object> body, Map<String, Object> c, String name,
+                                   double gt, double lt) {
+        if (!body.containsKey(name)) {
+            return;
+        }
+        Object v = body.get(name);
+        if (v == null) {
+            c.put(name, null);
+            return;
+        }
+        Double d = coerceDouble(v);
+        if (d == null || d <= gt || d >= lt) {
+            throw new WebApplicationException(422);
+        }
+        c.put(name, d);
+    }
+
+    /** Field(gt, lt) as an int. pydantic (lax) coerces a numeric string and a
+     * whole float (150.0→150) but REJECTS a bool and a fractional value. */
+    private static void intField(Map<String, Object> body, Map<String, Object> c, String name,
+                                 int gt, int lt) {
+        if (!body.containsKey(name)) {
+            return;
+        }
+        Object v = body.get(name);
+        if (v == null) {
+            c.put(name, null);
+            return;
+        }
+        Integer i = coerceInt(v);
+        if (i == null || i <= gt || i >= lt) {
+            throw new WebApplicationException(422);
+        }
+        c.put(name, i);
+    }
+
+    /** pydantic-lax float coercion: Number, bool→1.0/0.0, or a numeric string. */
+    private static Double coerceDouble(Object v) {
+        if (v instanceof Boolean b) {
+            return b ? 1.0 : 0.0;
+        }
+        if (v instanceof Number n) {
+            return n.doubleValue();
+        }
+        if (v instanceof String s) {
+            try {
+                return Double.parseDouble(s.strip());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /** pydantic-lax int coercion: an integer-valued Number, or an integer string.
+     * A bool and a fractional value are rejected (return null). */
+    private static Integer coerceInt(Object v) {
+        if (v instanceof Boolean) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            double d = n.doubleValue();
+            return (d == Math.floor(d) && !Double.isInfinite(d)) ? (int) d : null;
+        }
+        if (v instanceof String s) {
+            try {
+                return Integer.parseInt(s.strip());   // "160" ok; "160.5"/"160.0" → reject
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    // ── persistence ─────────────────────────────────────────────────────────
+
+    private static Map<String, Object> targetSnapshot(int aid) {
+        Athlete a = Athlete.findById(aid);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("ftp", a == null ? null : a.ftp);
+        m.put("threshold_hr", a == null ? null : a.thresholdHr);
+        m.put("max_hr", a == null ? null : a.maxHr);
+        m.put("threshold_pace_run", a == null ? null : a.thresholdPaceRun);
+        m.put("css_swim", a == null ? null : a.cssSwim);
+        m.put("body_weight_kg", a == null ? null : a.bodyWeightKg);
+        m.put("gel_carb_g", a == null ? null : a.gelCarbG);
+        m.put("sweat_rate_l_h", a == null ? null : a.sweatRateLH);
+        return m;
+    }
+
+    private static boolean targetChanged(Map<String, Object> changes, Map<String, Object> before) {
+        for (String k : TARGET_FIELDS) {
+            if (changes.containsKey(k) && !Objects.equals(changes.get(k), before.get(k))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** save_profile: set present keys (a null clears), bump updated_at if changed. */
+    private static void saveProfile(int aid, Map<String, Object> changes) {
+        Athlete a = Athlete.findById(aid);
+        if (a == null) {
+            return;
+        }
+        boolean changed = false;
+        for (Map.Entry<String, Object> e : changes.entrySet()) {
+            setField(a, e.getKey(), e.getValue());
+            changed = true;
+        }
+        if (changed) {
+            a.updatedAt = PyJson.utcNowIso();
+        }
+    }
+
+    private static void setField(Athlete a, String k, Object v) {
+        switch (k) {
+            case "ftp" -> a.ftp = (Double) v;
+            case "threshold_hr" -> a.thresholdHr = (Integer) v;
+            case "max_hr" -> a.maxHr = (Integer) v;
+            case "threshold_pace_run" -> a.thresholdPaceRun = (Double) v;
+            case "css_swim" -> a.cssSwim = (Double) v;
+            case "weekly_hours_target" -> a.weeklyHoursTarget = (Double) v;
+            case "body_weight_kg" -> a.bodyWeightKg = (Double) v;
+            case "gel_carb_g" -> a.gelCarbG = (Double) v;
+            case "sweat_rate_l_h" -> a.sweatRateLH = (Double) v;
+            case "gi_tolerance" -> a.giTolerance = (String) v;
+            default -> { }
+        }
+    }
+
+    /** recompute_tss: recost every activity's TSS from the current thresholds. */
+    private static void recomputeTss(int aid) {
+        Thresholds th = MetricsWrite.thresholds(aid);
+        List<Activity> acts = Activity.list("athleteId = ?1", aid);
+        for (Activity a : acts) {
+            TssResult r = Metrics.computeTss(a.sport,
+                    a.movingTime == null ? null : a.movingTime.doubleValue(),
+                    a.distance, a.weightedPower, a.avgPower, a.avgHr, th);
+            a.tss = r.tss();
+            a.intensityFactor = r.intensityFactor();
+            a.tssMethod = r.method();
+        }
     }
 }
