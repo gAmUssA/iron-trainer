@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * loop in services.deduplicate: cap, 429→break, other-error→skip, and a
  * successful-but-deviceless fetch still counts. */
 @QuarkusTest
-@QuarkusTestResource(WireMockStrava.class)
+@QuarkusTestResource(value = WireMockStrava.class, restrictToAnnotatedClass = true)
 class DedupServiceTest {
 
     @Inject

@@ -31,6 +31,24 @@ public interface StravaApi {
                               @FormParam("grant_type") String grantType,
                               @FormParam("refresh_token") String refreshToken);
 
+    /** POST /oauth/token — exchange an authorization code for tokens (login).
+     * Same endpoint as refresh, but the form carries `code` + grant_type
+     * authorization_code. Port of strava.exchange_code. The response includes
+     * the `athlete` block used to find-or-create the user. */
+    @POST
+    @Path("/oauth/token")
+    @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
+    Map<String, Object> exchangeCode(@FormParam("client_id") String clientId,
+                                     @FormParam("client_secret") String clientSecret,
+                                     @FormParam("code") String code,
+                                     @FormParam("grant_type") String grantType);
+
+    /** POST /oauth/deauthorize — revoke the app's access for this athlete at
+     * Strava (disconnect). Port of strava.deauthorize. */
+    @POST
+    @Path("/oauth/deauthorize")
+    void deauthorize(@HeaderParam("Authorization") String authorization);
+
     /** GET /api/v3/athlete/activities — one page of activity summaries. `after`
      * (unix seconds) is omitted when null (Quarkus drops null query params). */
     @GET

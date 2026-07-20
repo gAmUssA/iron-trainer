@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * upsert → dedup → rebuild PMC. Exercises the real Strava REST client over HTTP
  * plus the Dev Services Postgres write path. */
 @QuarkusTest
-@QuarkusTestResource(WireMockStrava.class)
+@QuarkusTestResource(value = WireMockStrava.class, restrictToAnnotatedClass = true)
 class StravaSyncTest {
 
     @Inject

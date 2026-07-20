@@ -439,6 +439,18 @@ def test_strava_dedup_not_connected_409_parity(v1, v2):
     assert v2.post("/api/strava/dedup?fetch=true").status_code == 409
 
 
+def test_strava_callback_error_redirect_parity(v1, v2):
+    """GET /api/strava/callback without a usable code redirects (307) back to the
+    SPA with a strava_error flag. The token-exchange happy path needs live Strava,
+    but the denied/no-code branches are pure and must redirect to the IDENTICAL
+    Location on both backends (same origin + same error code). No-follow clients."""
+    for path in ("/api/strava/callback?error=access_denied", "/api/strava/callback"):
+        a = v1.get(path)
+        b = v2.get(path)
+        assert a.status_code == b.status_code == 307, path
+        assert a.headers["location"] == b.headers["location"], path
+
+
 # ── Races (catalog + selection) ───────────────────────────────────────────────
 # The race catalog is seeded on FastAPI startup (db._seed_races) into the shared
 # Postgres, so both backends read the same rows. set_athlete_race is a write —
