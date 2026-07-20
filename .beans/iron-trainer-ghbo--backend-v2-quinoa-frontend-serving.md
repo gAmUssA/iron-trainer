@@ -1,11 +1,11 @@
 ---
 # iron-trainer-ghbo
-title: 'backend-v2: Quinoa frontend serving'
+title: 'backend-v2: build SPA in Docker (stop committing dist)'
 status: todo
 type: task
 priority: deferred
 created_at: 2026-07-17T04:45:21Z
-updated_at: 2026-07-18T03:28:22Z
+updated_at: 2026-07-20T18:48:38Z
 parent: iron-trainer-eom4
 blocked_by:
     - iron-trainer-foi1
@@ -31,3 +31,6 @@ bundles it via Quinoa `ui-dir` or META-INF/resources → serve SPA + fallback);
 watchPatterns → backend-v2/** + frontend/**. Config: `quarkus.quinoa.ui-dir=../frontend`,
 `enable-spa-routing=true`. Not parity-testable — verify by curling backend-v2 `/` for
 index.html + SPA fallback post-deploy.
+
+## Update 2026-07-20: Quinoa infeasible on Quarkus 3.37
+No released quarkus-quinoa supports Quarkus 3.37 (it references the removed `HttpBuildTimeConfig`, renamed to `VertxHttpBuildTimeConfig`). Front door instead serves the SPA via static `META-INF/resources` + `SpaFallback` NotFoundException mapper (bean 7fso). This bean is now the follow-up: **stop committing the built dist** by moving the Railway backend-v2 root dir to repo-root and building the SPA in a Docker stage (frontend/ becomes reachable in the build context). Requires a Railway dashboard root-directory change + Dockerfile COPY-path rewrite + watchPatterns incl frontend/**.
