@@ -217,6 +217,33 @@ def test_cross_tenant_404_parity(v1, v2):
     assert v2.get("/api/export/workout/999999.itw").status_code == 404
 
 
+def test_export_zip_parity(v1, v2):
+    """GET /api/export/plan.zip bundles the active plan: .fit for every workout,
+    .zwo for bike, .itw for all, + IMPORT_INSTRUCTIONS.txt. Zip container bytes and
+    the .fit/.zwo entry bytes intentionally differ (deflate/tz, live FIT timestamp,
+    ms durations, .zwo whitespace), so parity is on the ENTRY NAMES (filename()
+    parity), the README bytes, and structural validity of each entry."""
+    import io
+    import json as _json
+    import zipfile
+    a = v1.get("/api/export/plan.zip")
+    b = v2.get("/api/export/plan.zip")
+    assert a.status_code == b.status_code == 200
+    assert a.headers["content-type"] == b.headers["content-type"] == "application/zip"
+    za = zipfile.ZipFile(io.BytesIO(a.content))
+    zb = zipfile.ZipFile(io.BytesIO(b.content))
+    assert set(za.namelist()) == set(zb.namelist())          # filename() parity — the core
+    assert "IMPORT_INSTRUCTIONS.txt" in za.namelist()
+    assert za.read("IMPORT_INSTRUCTIONS.txt") == zb.read("IMPORT_INSTRUCTIONS.txt")
+    assert any(n.endswith(".fit") for n in za.namelist()), "the plan has workouts"
+    for n in za.namelist():
+        if n.endswith(".fit"):
+            assert za.read(n)[8:12] == zb.read(n)[8:12] == b".FIT"   # both valid FIT
+        elif n.endswith(".itw"):
+            _json.loads(za.read(n))
+            _json.loads(zb.read(n))                                   # both valid JSON
+
+
 def test_nutrition_daily_parity(v1, v2):
     """Deterministic daily-carb math (body weight seeded) must be byte-identical,
     incl. integer-vs-float JSON emission (round()→int, weekly_hours→float)."""

@@ -2,14 +2,25 @@ package io.gamov.irontrainer.export;
 
 import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.plan.Plan;
 import io.gamov.irontrainer.plan.PlannedWorkout;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Response;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.jboss.logging.Logger;
 
 /** Exports vertical — first strangled path. Bearer-authenticated (iOS),
@@ -91,6 +102,115 @@ public class ExportResource {
         return Response.ok(itw.planItw(workouts, plan, a))
                 .header("Content-Disposition", "attachment; filename=\"iron-trainer-plan.itw\"")
                 .build();
+    }
+
+    /** GET /api/export/plan.zip — the whole active plan bundled: .fit for every
+     * workout, .zwo for bike, .itw for all, + IMPORT_INSTRUCTIONS.txt. 404 when no
+     * active plan. Port of export_router.plan_zip. */
+    @GET
+    @Path("/plan.zip")
+    @Produces("application/zip")
+    @Transactional
+    public Response planZip() {
+        int aid = current.require();
+        Plan plan = Plan.activeFor(aid);
+        List<PlannedWorkout> workouts = plan == null ? List.of() : PlannedWorkout.forPlan(aid, plan.id);
+        if (workouts.isEmpty()) {
+            throw new NotFoundException("No active plan to export");
+        }
+        return zipResponse(aid, workouts, "iron-trainer-plan.zip");
+    }
+
+    /** GET /api/export/week/{week_start}.zip — one week's workouts bundled. 404
+     * when the week has none. Port of export_router.week_zip. */
+    @GET
+    @Path("/week/{week_start}.zip")
+    @Produces("application/zip")
+    @Transactional
+    public Response weekZip(@PathParam("week_start") String weekStart) {
+        int aid = current.require();
+        // date.fromisoformat(week_start) — a malformed date propagates (500), parity.
+        String end = LocalDate.parse(weekStart).plusDays(6).toString();
+        Plan plan = Plan.activeFor(aid);
+        List<PlannedWorkout> all = plan == null ? List.of() : PlannedWorkout.forPlan(aid, plan.id);
+        List<PlannedWorkout> workouts = new ArrayList<>();
+        for (PlannedWorkout w : all) {
+            // week_start <= (w.date or "") <= end
+            String d = w.date == null ? "" : w.date;
+            if (d.compareTo(weekStart) >= 0 && d.compareTo(end) <= 0 && !d.isEmpty()) {
+                workouts.add(w);
+            }
+        }
+        if (workouts.isEmpty()) {
+            throw new NotFoundException("No workouts in that week");
+        }
+        return zipResponse(aid, workouts, "iron-trainer-week-" + weekStart + ".zip");
+    }
+
+    private Response zipResponse(int aid, List<PlannedWorkout> workouts, String name) {
+        Athlete a = Athlete.findById(aid);
+        byte[] data = bundleZip(workouts, a, a == null ? null : a.ftp);
+        LOG.infof("Export %s: athlete=%d workouts=%d bytes=%d", name, aid, workouts.size(), data.length);
+        return Response.ok(data)
+                .header("Content-Disposition", "attachment; filename=\"" + name + "\"")
+                .build();
+    }
+
+    /** bundle_zip: .fit for every workout, .zwo for bike (when eligible), .itw for
+     * all, + the README. Zip container bytes differ from Python's (deflate/tz), so
+     * parity is on the extracted entries, not the raw archive. */
+    private byte[] bundleZip(List<PlannedWorkout> workouts, Athlete a, Double ftp) {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (ZipOutputStream z = new ZipOutputStream(bos)) {
+            for (PlannedWorkout w : workouts) {
+                putEntry(z, filename(w, "fit"), fit.workoutFit(w));
+                String zwoXml = zwo.workoutZwo(w, ftp);
+                if (zwoXml != null && !zwoXml.isEmpty()) {   // Python `if zwo:`
+                    putEntry(z, filename(w, "zwo"), zwoXml.getBytes(StandardCharsets.UTF_8));
+                }
+                putEntry(z, filename(w, "itw"), itw.workoutItw(w, a).getBytes(StandardCharsets.UTF_8));
+            }
+            putEntry(z, "IMPORT_INSTRUCTIONS.txt", README);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to build the export zip", e);
+        }
+        return bos.toByteArray();
+    }
+
+    private static void putEntry(ZipOutputStream z, String name, byte[] data) throws IOException {
+        z.putNextEntry(new ZipEntry(name));
+        z.write(data);
+        z.closeEntry();
+    }
+
+    /** filename(workout, ext) = "{date}_{sport}_{slug(title)}.{ext}". */
+    private static String filename(PlannedWorkout w, String ext) {
+        return w.date + "_" + w.sport + "_" + slug(w.title) + "." + ext;
+    }
+
+    /** _slug: non-alphanumerics → '-', trimmed of leading/trailing '-', ≤40 chars,
+     * "workout" when empty. */
+    static String slug(String text) {
+        String s = (text == null ? "" : text).strip()
+                .replaceAll("[^A-Za-z0-9]+", "-")
+                .replaceAll("^-+|-+$", "");
+        if (s.length() > 40) {
+            s = s.substring(0, 40);
+        }
+        return s.isEmpty() ? "workout" : s;
+    }
+
+    private static final byte[] README = loadReadme();
+
+    private static byte[] loadReadme() {
+        try (InputStream in = ExportResource.class.getResourceAsStream("/import_instructions.txt")) {
+            if (in == null) {
+                throw new IllegalStateException("import_instructions.txt not on the classpath");
+            }
+            return in.readAllBytes();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private PlannedWorkout owned(int id, int athleteId) {

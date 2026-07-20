@@ -1,0 +1,31 @@
+Iron Trainer — importing your workouts
+======================================
+
+Two destinations, two file types:
+
+GARMIN CONNECT — all sports (bike, run, swim). Use the .fit files.
+  1. Garmin Connect (web) -> Training & Planning -> Workouts -> Import.
+  2. Select a .fit file; it appears as a structured workout.
+  3. "Send to Device" (or schedule it on a date) -> it syncs to your Garmin.
+  (Wahoo and Suunto also accept these structured workouts.)
+
+TRAININGPEAKS — bike only. Use the .zwo files.
+  1. trainingpeaks.com -> Workout Library -> (...) on a folder -> "Workout Import".
+  2. Select the .zwo files. TrainingPeaks' import ONLY accepts power-based bike
+     .zwo — it does not import .fit, and it cannot import run or swim workouts.
+  3. Drag each onto a calendar date. With TP Premium linked to your device, the
+     bike workout syncs automatically.
+
+APPLE WORKOUTS (Apple Watch) — all sports. Use the .itw files.
+  1. Install the Iron Trainer helper app (iOS 18+) from TestFlight/App Store.
+  2. Open a .itw file (from Files, Mail, or AirDrop) — it opens in the app.
+  3. Preview the session, then "Open in Workout app" or "Schedule" it on its
+     planned date. It syncs to your Apple Watch.
+  (.itw is Iron Trainer's own JSON; the helper app builds the native Apple
+   workout on-device, since Apple's .workout format can't be generated here.)
+
+So: run & swim (and bike, if you prefer) -> Garmin Connect via .fit.
+    Bike into TrainingPeaks -> .zwo.
+    Apple Watch -> .itw via the Iron Trainer helper app.
+
+Filenames encode the planned date and sport, e.g. 2026-07-06_Bike_Long-ride.fit
