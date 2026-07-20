@@ -244,7 +244,14 @@ public class StravaResource {
             java.nio.file.Path tmp;
             try {
                 tmp = Files.createTempFile("strava-import-", ".zip");
-                Files.copy(file.uploadedFile(), tmp, StandardCopyOption.REPLACE_EXISTING);
+                // MOVE the already-on-disk multipart upload (avoids a second full
+                // copy → ~2x temp disk for a multi-GB export); fall back to copy
+                // only when the temp dirs are on different filesystems.
+                try {
+                    Files.move(file.uploadedFile(), tmp, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException | UnsupportedOperationException moveFailed) {
+                    Files.copy(file.uploadedFile(), tmp, StandardCopyOption.REPLACE_EXISTING);
+                }
             } catch (IOException e) {
                 throw new InternalServerErrorException("Could not stage the upload.");
             }

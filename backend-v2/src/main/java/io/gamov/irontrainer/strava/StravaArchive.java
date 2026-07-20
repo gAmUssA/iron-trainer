@@ -109,8 +109,11 @@ public final class StravaArchive {
     // ── activities.csv ────────────────────────────────────────────────────────
 
     private static Map<String, Object> rowToActivity(Map<String, String> row) {
+        // Python `row.get("Activity ID") or row.get("Activity Id")` — an empty
+        // string is falsy, so a present-but-blank primary falls through to the
+        // alternate-case column (not just an absent one).
         String aid = row.get("Activity ID");
-        if (aid == null) {
+        if (aid == null || aid.isEmpty()) {
             aid = row.get("Activity Id");
         }
         if (aid == null || aid.strip().isEmpty()) {
@@ -153,6 +156,23 @@ public final class StravaArchive {
             return null;
         }
         String s = v.strip().replace(",", "");
+        if (s.isEmpty()) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** GPX/TCX stream values use Python's bare float(): whitespace-trimmed, but
+     * (unlike the CSV _num) NO thousands-comma stripping — "1,234" is rejected. */
+    static Double plainDouble(String v) {
+        if (v == null) {
+            return null;
+        }
+        String s = v.strip();
         if (s.isEmpty()) {
             return null;
         }
@@ -376,7 +396,7 @@ public final class StravaArchive {
                     text.append(r.getText());
                 } else if (ev == XMLStreamConstants.END_ELEMENT) {
                     String name = r.getLocalName().toLowerCase(Locale.ROOT);
-                    Double val = num(text.toString());
+                    Double val = plainDouble(text.toString());
                     if (val != null) {
                         if (name.equals("power") || name.equals("watts")) {
                             power.add(val);
@@ -412,12 +432,12 @@ public final class StravaArchive {
                     String parent = stack.peek();
                     if (stack.contains("Trackpoint")) {
                         if (name.equals("Watts")) {
-                            Double v = num(text.toString());
+                            Double v = plainDouble(text.toString());
                             if (v != null) {
                                 power.add(v);
                             }
                         } else if (name.equals("Value") && "HeartRateBpm".equals(parent)) {
-                            Double v = num(text.toString());
+                            Double v = plainDouble(text.toString());
                             if (v != null) {
                                 hr.add(v);
                             }

@@ -118,6 +118,10 @@ class StravaArchiveTest {
         assertEquals(1234.5, StravaArchive.num("1,234.5"));
         assertNull(StravaArchive.num("  "));
         assertNull(StravaArchive.num(null));
+        // GPX/TCX values use bare float() semantics — a comma is REJECTED (Python
+        // float("1,234") raises), unlike the CSV _num which strips thousands commas.
+        assertEquals(250.0, StravaArchive.plainDouble(" 250 "));
+        assertNull(StravaArchive.plainDouble("1,234"));
         assertEquals("2021-04-30T13:30:45", StravaArchive.parseDate("Apr 30, 2021, 1:30:45 PM"));
         assertEquals("not a date", StravaArchive.parseDate("not a date"));
     }
