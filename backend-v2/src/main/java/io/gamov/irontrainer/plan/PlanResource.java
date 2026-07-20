@@ -615,8 +615,9 @@ public class PlanResource {
                              Map<String, Object> fitness, Double bodyWeightKg, Double gelCarbG, Double sweatRateLH) {}
 
     /** _apply_fueling: append the one-line fueling note to each workout's
-     * description (mutates in place). Mirrors service._apply_fueling. */
-    private void applyFueling(List<Map<String, Object>> workouts,
+     * description (mutates in place). Mirrors service._apply_fueling. Static +
+     * package-visible so PlanTargets (future-week refresh) shares this one copy. */
+    static void applyFueling(List<Map<String, Object>> workouts,
                              Double bodyWeightKg, Double gelCarbG, Double sweatRateLH) {
         for (Map<String, Object> wo : workouts) {
             Integer durS = wo.get("duration_s") == null ? null : ((Number) wo.get("duration_s")).intValue();

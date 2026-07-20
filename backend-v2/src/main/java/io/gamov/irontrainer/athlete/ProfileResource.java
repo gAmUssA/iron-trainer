@@ -64,11 +64,11 @@ public class ProfileResource {
     @Path("/athlete/profile")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, Object> updateProfile(Map<String, Object> body) {
+    public Map<String, Object> updateProfile(String rawBody) {
         // Validate BEFORE the auth check: FastAPI's pydantic 422 precedes the 401
         // that save_profile → current_athlete_id would raise, so an invalid body is
         // 422 even for an unauthenticated caller.
-        Map<String, Object> changes = validate(body == null ? Map.of() : body);
+        Map<String, Object> changes = validate(parseObjectBody(rawBody));
         int aid = current.require();
 
         Map<String, Object> before = QuarkusTransaction.requiringNew().call(() -> targetSnapshot(aid));
@@ -118,7 +118,26 @@ public class ProfileResource {
         return out;
     }
 
-    // ── validation (ProfileUpdate: Field bounds → 422) ──────────────────────────
+    // ── body parsing + validation (ProfileUpdate: required object; Field bounds) ──
+
+    /** The body must be a JSON object (FastAPI's required ProfileUpdate model): an
+     * absent/empty/malformed/non-object body → 422, matching pydantic. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parseObjectBody(String rawBody) {
+        if (rawBody == null || rawBody.isBlank()) {
+            throw new WebApplicationException(422);   // required body
+        }
+        Object parsed;
+        try {
+            parsed = PyJson.loads(rawBody);
+        } catch (RuntimeException e) {
+            throw new WebApplicationException(422);   // malformed JSON
+        }
+        if (!(parsed instanceof Map)) {
+            throw new WebApplicationException(422);   // not an object
+        }
+        return (Map<String, Object>) parsed;
+    }
 
     /** exclude_unset: only present model keys → changes (null clears); unknown
      * keys ignored (pydantic default). Out-of-bounds / wrong-type → 422. */
@@ -146,7 +165,8 @@ public class ProfileResource {
         return c;
     }
 
-    /** Field(gt, lt) as a float — strictly >gt AND <lt. */
+    /** Field(gt, lt) as a float — strictly >gt AND <lt. pydantic (lax) coerces a
+     * numeric string and a bool (True→1.0) to a float. */
     private static void floatField(Map<String, Object> body, Map<String, Object> c, String name,
                                    double gt, double lt) {
         if (!body.containsKey(name)) {
@@ -157,17 +177,15 @@ public class ProfileResource {
             c.put(name, null);
             return;
         }
-        if (v instanceof Boolean || !(v instanceof Number n)) {
-            throw new WebApplicationException(422);
-        }
-        double d = n.doubleValue();
-        if (d <= gt || d >= lt) {
+        Double d = coerceDouble(v);
+        if (d == null || d <= gt || d >= lt) {
             throw new WebApplicationException(422);
         }
         c.put(name, d);
     }
 
-    /** Field(gt, lt) as an int — a fractional value is rejected (pydantic int). */
+    /** Field(gt, lt) as an int. pydantic (lax) coerces a numeric string and a
+     * whole float (150.0→150) but REJECTS a bool and a fractional value. */
     private static void intField(Map<String, Object> body, Map<String, Object> c, String name,
                                  int gt, int lt) {
         if (!body.containsKey(name)) {
@@ -178,17 +196,49 @@ public class ProfileResource {
             c.put(name, null);
             return;
         }
-        if (v instanceof Boolean || !(v instanceof Number n)) {
+        Integer i = coerceInt(v);
+        if (i == null || i <= gt || i >= lt) {
             throw new WebApplicationException(422);
         }
-        double d = n.doubleValue();
-        if (d != Math.floor(d) || Double.isInfinite(d)) {
-            throw new WebApplicationException(422);   // int field, non-integer value
+        c.put(name, i);
+    }
+
+    /** pydantic-lax float coercion: Number, bool→1.0/0.0, or a numeric string. */
+    private static Double coerceDouble(Object v) {
+        if (v instanceof Boolean b) {
+            return b ? 1.0 : 0.0;
         }
-        if (d <= gt || d >= lt) {
-            throw new WebApplicationException(422);
+        if (v instanceof Number n) {
+            return n.doubleValue();
         }
-        c.put(name, (int) d);
+        if (v instanceof String s) {
+            try {
+                return Double.parseDouble(s.strip());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /** pydantic-lax int coercion: an integer-valued Number, or an integer string.
+     * A bool and a fractional value are rejected (return null). */
+    private static Integer coerceInt(Object v) {
+        if (v instanceof Boolean) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            double d = n.doubleValue();
+            return (d == Math.floor(d) && !Double.isInfinite(d)) ? (int) d : null;
+        }
+        if (v instanceof String s) {
+            try {
+                return Integer.parseInt(s.strip());   // "160" ok; "160.5"/"160.0" → reject
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     // ── persistence ─────────────────────────────────────────────────────────

@@ -1,7 +1,6 @@
 package io.gamov.irontrainer.plan;
 
 import io.gamov.irontrainer.athlete.Athlete;
-import io.gamov.irontrainer.nutrition.Nutrition;
 import io.gamov.irontrainer.util.PyJson;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -50,15 +49,20 @@ public class PlanTargets {
                     continue;
                 }
                 Map<String, Object> week = (Map<String, Object>) wm;
-                String ws = week.get("week_start") instanceof String s ? s : null;
+                // Python does week["week_start"] — a missing/non-string key raises
+                // (KeyError/TypeError), which update_profile's try/except turns into
+                // plan_weeks_refreshed=0; mirror that by aborting the whole refresh.
+                if (!(week.get("week_start") instanceof String ws)) {
+                    throw new IllegalStateException("plan week missing week_start");
+                }
                 // ISO dates compare lexicographically = chronologically. Skip
                 // history and the in-flight week (week_start <= this Monday).
-                if (ws == null || ws.compareTo(currentWeekStart) <= 0) {
+                if (ws.compareTo(currentWeekStart) <= 0) {
                     continue;
                 }
                 List<Map<String, Object>> workouts = PlanTemplate.expandWeek(week, profile);
                 workouts = PlanValidator.capWeekWorkouts(workouts).workouts();
-                applyFueling(workouts, bw, gc, sr);
+                PlanResource.applyFueling(workouts, bw, gc, sr);
                 String weekEnd = LocalDate.parse(ws).plusDays(6).toString();
                 PlannedWorkout.replaceWeek(aid, plan.id, ws, weekEnd, workouts);
                 refreshed++;
@@ -68,24 +72,5 @@ public class PlanTargets {
             }
             return refreshed;
         });
-    }
-
-    /** _apply_fueling: append the one-line fueling note to each workout's
-     * description (mirrors PlanResource.applyFueling / service._apply_fueling). */
-    private static void applyFueling(List<Map<String, Object>> workouts,
-                                     Double bodyWeightKg, Double gelCarbG, Double sweatRateLH) {
-        for (Map<String, Object> wo : workouts) {
-            Integer durS = wo.get("duration_s") == null ? null : ((Number) wo.get("duration_s")).intValue();
-            Map<String, Object> fueling = Nutrition.computeWorkoutFueling(
-                    durS, (String) wo.get("intensity"), gelCarbG, bodyWeightKg, sweatRateLH);
-            String note = Nutrition.fuelingNote(fueling);
-            if (!note.isEmpty()) {
-                Object desc = wo.get("description");
-                String base = (desc == null ? "" : String.valueOf(desc)).stripTrailing();
-                if (!base.contains(note)) {
-                    wo.put("description", (base + "\n" + note).strip());
-                }
-            }
-        }
     }
 }

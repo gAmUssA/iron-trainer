@@ -48,3 +48,15 @@ targets. Port of athlete_router.update_profile + repo.save_profile / recompute_t
 ## Remaining for Phase 7
 
 Export ZIP bundles (plan.zip, week/{week_start}.zip) · device pairing (token minting).
+
+## Code-review fixes (applied before merge)
+
+4 CONFIRMED + 1 PLAUSIBLE + 1 cleanup fixed:
+1. **Numeric-string coercion** — pydantic lax accepts `{"ftp":"250"}` / `{"threshold_hr":"160"}`; validate() now coerces numeric strings (int strings must be whole).
+2. **bool→float** — pydantic coerces a bool to a float for FLOAT fields (`true`→1.0); float fields now accept it. Int fields still reject bool (matches pydantic).
+3. **Empty/absent body → 422** (required ProfileUpdate), not a 200 no-op.
+4. **Non-object body (array/scalar/malformed) → 422** (parse the raw body + require an object), not a Jackson 400.
+5. **refreshFuture** aborts on a missing/non-string `week_start` (Python `week["week_start"]` KeyError/TypeError → caught → `plan_weeks_refreshed:0`) instead of silently skipping.
+6. **applyFueling** de-duplicated — `PlanResource.applyFueling` is now static/package-visible and `PlanTargets` reuses it.
+
+v2 suite 183 green; validation + athlete-profile parity re-verified.

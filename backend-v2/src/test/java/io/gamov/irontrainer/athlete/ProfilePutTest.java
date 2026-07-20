@@ -70,10 +70,36 @@ class ProfilePutTest {
     void validationRejectsOutOfBoundsAndBadEnum() {
         for (String bad : new String[]{
                 "{\"ftp\":-5}", "{\"ftp\":2000}", "{\"threshold_hr\":40}",
-                "{\"max_hr\":150.5}", "{\"gi_tolerance\":\"nope\"}", "{\"sweat_rate_l_h\":9}"}) {
+                "{\"max_hr\":150.5}", "{\"gi_tolerance\":\"nope\"}", "{\"sweat_rate_l_h\":9}",
+                "{\"threshold_hr\":true}"}) {   // bool rejected for int fields (pydantic)
             given().contentType("application/json").body(bad)
                     .when().put("/api/athlete/profile")
                     .then().statusCode(422);
         }
+    }
+
+    @Test
+    void pydanticLaxCoercions() {
+        // Numeric strings coerce (pydantic lax): "255"→255, "162"→162.
+        given().contentType("application/json").body("{\"ftp\":\"255\",\"threshold_hr\":\"162\"}")
+                .when().put("/api/athlete/profile")
+                .then().statusCode(200)
+                .body("profile.ftp", is(255.0f))
+                .body("profile.threshold_hr", is(162));
+        // A bool coerces to a float for FLOAT fields (true→1.0 passes gt=0).
+        given().contentType("application/json").body("{\"weekly_hours_target\":true}")
+                .when().put("/api/athlete/profile")
+                .then().statusCode(200)
+                .body("profile.weekly_hours_target", is(1.0f));
+    }
+
+    @Test
+    void emptyAndNonObjectBodyAre422() {
+        given().contentType("application/json").body("")
+                .when().put("/api/athlete/profile").then().statusCode(422);
+        given().contentType("application/json").body("[]")
+                .when().put("/api/athlete/profile").then().statusCode(422);
+        given().contentType("application/json").body("\"x\"")
+                .when().put("/api/athlete/profile").then().statusCode(422);
     }
 }
