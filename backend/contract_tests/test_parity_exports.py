@@ -451,6 +451,22 @@ def test_strava_callback_error_redirect_parity(v1, v2):
         assert a.headers["location"] == b.headers["location"], path
 
 
+def test_strava_import_rejects_non_export_parity(v1, v2):
+    """POST /api/strava/import with a ZIP that has no activities.csv is rejected 400
+    on both backends (ValueError → 400 on FastAPI, IllegalArgumentException → 400 on
+    v2). Pure error path — no shared-DB mutation. The parse-happy path needs real
+    export files (covered by StravaArchiveTest); here we pin the multipart + 400."""
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("readme.txt", "not a strava export")
+    files = {"file": ("bad.zip", buf.getvalue(), "application/zip")}
+    a = v1.post("/api/strava/import", files=files)
+    b = v2.post("/api/strava/import", files=files)
+    assert a.status_code == b.status_code == 400, (a.status_code, b.status_code)
+
+
 # ── Races (catalog + selection) ───────────────────────────────────────────────
 # The race catalog is seeded on FastAPI startup (db._seed_races) into the shared
 # Postgres, so both backends read the same rows. set_athlete_race is a write —

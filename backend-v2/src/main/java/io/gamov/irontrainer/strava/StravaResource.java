@@ -13,6 +13,8 @@ import io.gamov.irontrainer.util.PyJson;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.ClientErrorException;
+import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.CookieParam;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
@@ -22,16 +24,22 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
+import org.jboss.resteasy.reactive.RestForm;
+import org.jboss.resteasy.reactive.multipart.FileUpload;
 
 /** Strava vertical: OAuth connect + callback (login) + disconnect (bean xtre)
  * plus de-duplication + activity sync. The GDPR archive import is a separate
@@ -206,6 +214,76 @@ public class StravaResource {
         out.putAll(summary);
         out.put("message", "Disconnected. Your Strava activities and derived data have been deleted.");
         return out;
+    }
+
+    // 2 GB — well above any real Strava export (matches FastAPI MAX_UPLOAD_BYTES).
+    private static final long MAX_UPLOAD_BYTES = 2L * 1024 * 1024 * 1024;
+
+    /** POST /api/strava/import — bulk-load history from a user's uploaded Strava
+     * GDPR export ZIP. Athlete-scoped; works without a live API connection (no
+     * rate-limit/athlete cap). Port of strava_router.import_archive.
+     *
+     * With ?async=1 the parse+import runs as a background job (kind "import"); an
+     * import already running → 409 (unlike sync/dedup, it does NOT return the older
+     * job, since a second archive would be silently discarded). */
+    @POST
+    @Path("/import")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    public Map<String, Object> importArchive(@RestForm("file") FileUpload file,
+                                             @QueryParam("async") String asyncParam) {
+        int aid = current.require();   // 401 when auth is required and nobody is logged in
+        if (file == null) {
+            throw new BadRequestException("file is required");
+        }
+        if (file.size() > MAX_UPLOAD_BYTES) {
+            throw new ClientErrorException("Archive exceeds the 2 GB upload limit.", 413);
+        }
+        if (Params.boolOr(asyncParam, false)) {
+            // The request-scoped upload is deleted when the request ends, so copy it
+            // to a job-owned temp file the background job parses and then unlinks.
+            java.nio.file.Path tmp;
+            try {
+                tmp = Files.createTempFile("strava-import-", ".zip");
+                // MOVE the already-on-disk multipart upload (avoids a second full
+                // copy → ~2x temp disk for a multi-GB export); fall back to copy
+                // only when the temp dirs are on different filesystems.
+                try {
+                    Files.move(file.uploadedFile(), tmp, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException | UnsupportedOperationException moveFailed) {
+                    Files.copy(file.uploadedFile(), tmp, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException e) {
+                throw new InternalServerErrorException("Could not stage the upload.");
+            }
+            Map<String, Object> job = jobs.submit(aid, "import", () -> {
+                try {
+                    return sync.runImport(aid, StravaArchive.parse(tmp));
+                } finally {
+                    deleteQuietly(tmp);
+                }
+            });
+            if (Boolean.TRUE.equals(job.get("already_running"))) {
+                // Our closure never ran: clean up the staged upload and say so —
+                // returning the older job would silently discard this archive.
+                deleteQuietly(tmp);
+                throw new ClientErrorException(
+                        "An import is already running — wait for it to finish, then retry.", 409);
+            }
+            return env(job);
+        }
+        try {
+            return sync.runImport(aid, StravaArchive.parse(file.uploadedFile()));
+        } catch (IllegalArgumentException e) {   // ValueError parity → 400
+            throw new BadRequestException(e.getMessage());
+        }
+    }
+
+    private static void deleteQuietly(java.nio.file.Path p) {
+        try {
+            Files.deleteIfExists(p);
+        } catch (IOException ignore) {
+            // best-effort temp cleanup
+        }
     }
 
     /** find_or_create_athlete (by Strava id) + save_tokens, in one transaction.
