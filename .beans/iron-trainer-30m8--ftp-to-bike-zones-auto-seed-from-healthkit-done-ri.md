@@ -3,9 +3,10 @@
 title: 'FTP to bike zones: auto-seed from HealthKit done right'
 status: todo
 type: feature
+priority: normal
 created_at: 2026-07-21T07:08:51Z
-updated_at: 2026-07-21T07:08:51Z
-parent: iron-trainer-udbc
+updated_at: 2026-07-21T15:41:54Z
+parent: iron-trainer-2f2c
 ---
 
 Split out of mg1n after code review. mg1n CAPTURES Apple's cycling FTP estimate per day in daily_recovery.cycling_ftp_w but does NOT auto-seed Athlete.ftp / bike zones — doing it safely needs:
