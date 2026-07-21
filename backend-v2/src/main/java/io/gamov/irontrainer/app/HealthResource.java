@@ -95,6 +95,12 @@ public class HealthResource {
             m.put("vo2max", r.vo2max);
             m.put("respiratory_rate", r.respiratoryRate);
             m.put("wrist_temp_c", r.wristTempC);
+            m.put("hr_recovery_bpm", r.hrRecoveryBpm);
+            m.put("spo2_pct", r.spo2Pct);
+            m.put("active_energy_kcal", r.activeEnergyKcal);
+            m.put("exercise_min", r.exerciseMin);
+            m.put("step_count", r.stepCount);
+            m.put("cycling_ftp_w", r.cyclingFtpW);
             out.add(m);
         }
         Map<String, Object> resp = new LinkedHashMap<>();
@@ -139,6 +145,11 @@ public class HealthResource {
                 LOG.warnf("Recovery upsert failed for %s: %s", e.getKey(), ex.toString());
             }
         }
+        // NOTE: cycling_ftp_w is captured into daily_recovery (trend), but we do
+        // NOT auto-seed Athlete.ftp / bike zones here — that needs latest-by-
+        // timestamp (not the daily mean), bounds matching the profile validator,
+        // and a delta-sync-safe source-of-truth policy. Deferred to bean mg1n's
+        // FTP→zones follow-up.
         Map<String, Object> parsedOut = new LinkedHashMap<>();
         parsedOut.put("records", r.records);
         parsedOut.put("unknown_metrics", r.unknownMetrics);
@@ -203,6 +214,24 @@ public class HealthResource {
         }
         if (f.get("wrist_temp_c") != null) {
             row.wristTempC = asD(f.get("wrist_temp_c"));
+        }
+        if (f.get("hr_recovery_bpm") != null) {
+            row.hrRecoveryBpm = asD(f.get("hr_recovery_bpm"));
+        }
+        if (f.get("spo2_pct") != null) {
+            row.spo2Pct = asD(f.get("spo2_pct"));
+        }
+        if (f.get("active_energy_kcal") != null) {
+            row.activeEnergyKcal = asD(f.get("active_energy_kcal"));
+        }
+        if (f.get("exercise_min") != null) {
+            row.exerciseMin = asD(f.get("exercise_min"));
+        }
+        if (f.get("step_count") != null) {
+            row.stepCount = asD(f.get("step_count"));
+        }
+        if (f.get("cycling_ftp_w") != null) {
+            row.cyclingFtpW = asD(f.get("cycling_ftp_w"));
         }
     }
 

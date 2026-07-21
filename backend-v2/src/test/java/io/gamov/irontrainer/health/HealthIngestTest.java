@@ -88,6 +88,40 @@ class HealthIngestTest {
         assertEquals(70.0, day.get("weight_kg"));        // naive ISO date
     }
 
+    @Test
+    void parsesExpandedHaeMetricsMaxAvgAndConversions() {
+        Map<String, Object> payload = Map.of("data", Map.of("metrics", List.of(
+                // gauge → averaged
+                metric("cardio_recovery", "bpm", List.of(
+                        rec("date", "2026-07-15 09:00:00 -0400", 30.0),
+                        rec("date", "2026-07-15 10:00:00 -0400", 40.0))),   // avg → 35
+                // SpO2 as a 0–1 fraction → percent
+                metric("blood_oxygen_saturation", "%", List.of(
+                        rec("date", "2026-07-15 03:00:00 -0400", 0.97))),   // → 97.0
+                // cumulative daily total re-sent as the day grows; kJ→kcal → MAX
+                metric("active_energy", "kJ", List.of(
+                        rec("date", "2026-07-15 08:00:00 -0400", 418.4),    // 100 kcal
+                        rec("date", "2026-07-15 12:00:00 -0400", 1046.0))), // 250 kcal → max 250
+                metric("apple_exercise_time", "min", List.of(
+                        rec("date", "2026-07-15 08:00:00 -0400", 30.0),
+                        rec("date", "2026-07-15 18:00:00 -0400", 45.0))),   // re-sent → max 45
+                metric("step_count", "count", List.of(
+                        rec("date", "2026-07-15 08:00:00 -0400", 4000.0),
+                        rec("date", "2026-07-15 18:00:00 -0400", 8452.0))), // re-sent → max 8452
+                metric("cycling_functional_threshold_power", "W", List.of(
+                        rec("date", "2026-07-15 08:00:00 -0400", 250.0))))));
+
+        HealthIngest.Result r = HealthIngest.parsePayload(payload);
+        Map<String, Object> day = r.days.get("2026-07-15");
+        assertTrue(day != null, "day keyed by offset-local date");
+        assertEquals(35.0, day.get("hr_recovery_bpm"));      // gauge → averaged
+        assertEquals(97.0, day.get("spo2_pct"));             // 0.97 fraction → percent
+        assertEquals(250.0, day.get("active_energy_kcal"));  // kJ→kcal, then max daily total
+        assertEquals(45.0, day.get("exercise_min"));         // cumulative → max
+        assertEquals(8452.0, day.get("step_count"));         // cumulative → max
+        assertEquals(250.0, day.get("cycling_ftp_w"));       // gauge (avg of one)
+    }
+
     private static Map<String, Object> metric(String name, String units, List<Object> data) {
         return Map.of("name", name, "units", units, "data", data);
     }

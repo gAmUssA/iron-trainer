@@ -63,4 +63,25 @@ public class DailyRecovery extends PanacheEntityBase {
 
     @Column(name = "wrist_temp_c")
     public Double wristTempC;
+
+    // Expanded Health Auto Export metrics (bean mg1n).
+    @Column(name = "hr_recovery_bpm")
+    public Double hrRecoveryBpm;
+
+    @Column(name = "spo2_pct")
+    public Double spo2Pct;
+
+    @Column(name = "active_energy_kcal")
+    public Double activeEnergyKcal;
+
+    @Column(name = "exercise_min")
+    public Double exerciseMin;
+
+    @Column(name = "step_count")
+    public Double stepCount;
+
+    /** Apple's cycling FTP estimate (watts), captured per day for trend. Also
+     * seeds Athlete.ftp when the athlete has none (see HealthResource.ingest). */
+    @Column(name = "cycling_ftp_w")
+    public Double cyclingFtpW;
 }

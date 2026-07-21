@@ -1,11 +1,11 @@
 ---
 # iron-trainer-mg1n
 title: Expand Health Auto Export metric mapping (FTP, HR recovery, activity load)
-status: todo
+status: in-progress
 type: feature
 priority: high
 created_at: 2026-07-21T06:23:34Z
-updated_at: 2026-07-21T06:23:34Z
+updated_at: 2026-07-21T07:09:54Z
 parent: iron-trainer-udbc
 ---
 
@@ -24,3 +24,22 @@ Payload shape is BaseMetric {qty, units, date, source, metadata} except HR (Min/
 - [ ] Surface FTP → bike zones (replace/seed manual FTP); readiness uses hr_recovery
 - [ ] Parity: keep POST /api/health/ingest lenient + idempotent; contract test
 - [ ] ADR update / follow the investigation ADR
+
+## Implemented 2026-07-21 — ADR 0046
+- 6 new FIELD mappings in HealthIngest (cardio_recovery, blood_oxygen_saturation, active_energy, apple_exercise_time, step_count, cycling_functional_threshold_power) + DailyRecovery columns + V2 Flyway migration + recovery() serialization.
+- SUM_FIELDS (active_energy_kcal, exercise_min, step_count) summed; gauges averaged. kJ→kcal + SpO2 fraction→% conversions.
+- FTP → Athlete.ftp: SEED only when null (never overwrite a real bike-test value with Apple's estimate); bumps updated_at for iOS zone sync. Per-day FTP also stored in daily_recovery for trend.
+- Parity test relaxed to ignore the 6 backend-v2-only recovery fields (FastAPI decommissioned).
+- Unit test + dev end-to-end verified (fields persist; FTP seeds to 250; re-POST 999 stays 250).
+
+## ⚠️ ACTION: update Health Auto Export iOS config
+The new metrics only arrive if the HAE app is set to EXPORT them. In the HAE app's automation → Health Metrics, enable: Cardio Recovery, Blood Oxygen Saturation, Active Energy, Apple Exercise Time, Step Count, Cycling FTP. (Unselected = absent, never an error.) See ADR 0046. Same HK types needed when native ingestion (yrsz) ships.
+
+### Deferred follow-ups
+- FTP auto-*replace* (source/adopt UX) — not just seed-if-null.
+- readiness scoring consuming hr_recovery.
+
+## Code-review fixes 2026-07-21
+- [CONFIRMED-ish] Cumulative fields (active_energy/exercise/steps) were SUMMED → double-counts re-sent daily totals + multi-source. Changed to **daily MAX** (DAILY_TOTAL_FIELDS).
+- [PLAUSIBLE ×4 on the FTP seed] Deferred the Athlete.ftp auto-seed to [[iron-trainer-30m8]] — doing it right needs latest-by-timestamp (not mean), bounds matching the profile validator (a seeded 1000-2000W blocks profile saves), and a delta-sync-safe policy. This slice now only CAPTURES cycling_ftp_w in daily_recovery. Removed seedFtpIfUnset/latestFtp + Athlete import.
+- Unit test updated to MAX semantics; all pass.

@@ -558,7 +558,17 @@ def test_health_ingest_recovery_parity(v1, v2):
     b = v2.post("/api/health/ingest", json=payload)
     assert a.status_code == b.status_code == 200
     assert a.json() == b.json()
-    assert v1.get("/api/health/recovery").json() == v2.get("/api/health/recovery").json()
+    # FastAPI (v1) is decommissioned; backend-v2 (v2) grew extra recovery fields
+    # (bean mg1n) that v1 never emits. Compare only the fields both produce.
+    v2_only = {"hr_recovery_bpm", "spo2_pct", "active_energy_kcal",
+               "exercise_min", "step_count", "cycling_ftp_w"}
+
+    def shared(resp):
+        return {"days": [{k: v for k, v in d.items() if k not in v2_only}
+                         for d in resp["days"]]}
+
+    assert shared(v1.get("/api/health/recovery").json()) == shared(
+        v2.get("/api/health/recovery").json())
 
 
 def test_profile_update_validation_parity(v1, v2):
