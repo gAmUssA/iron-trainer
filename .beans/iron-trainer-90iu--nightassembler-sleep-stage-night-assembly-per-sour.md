@@ -1,11 +1,11 @@
 ---
 # iron-trainer-90iu
 title: NightAssembler — sleep-stage night assembly (per-source, sessionize, union)
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-07-21T15:41:54Z
-updated_at: 2026-07-21T17:39:17Z
+updated_at: 2026-07-21T18:29:50Z
 parent: iron-trainer-yrsz
 ---
 

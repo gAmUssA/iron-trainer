@@ -1,11 +1,11 @@
 ---
 # iron-trainer-n1zt
 title: IngestClient + observer/background delivery + foreground catch-up + Sync-now
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-07-21T15:41:54Z
-updated_at: 2026-07-21T18:07:42Z
+updated_at: 2026-07-21T18:29:50Z
 parent: iron-trainer-yrsz
 ---
 

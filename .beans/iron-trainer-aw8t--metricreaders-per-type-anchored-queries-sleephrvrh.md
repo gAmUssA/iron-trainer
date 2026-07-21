@@ -1,11 +1,11 @@
 ---
 # iron-trainer-aw8t
 title: MetricReaders — per-type anchored queries (sleep/HRV/RHR/resp/temp/mass)
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-07-21T15:41:54Z
-updated_at: 2026-07-21T16:40:57Z
+updated_at: 2026-07-21T18:29:50Z
 parent: iron-trainer-yrsz
 ---
 

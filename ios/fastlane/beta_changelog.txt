@@ -1,11 +1,14 @@
-Added
-• Apple Health (native) — a first step toward reading your recovery data straight from Health, replacing the Health Auto Export app. Settings now has an "Apple Health" card that requests read access. (Foundation only: this build grants access; it does NOT sync data yet — that lands in the next beta.)
-• Readiness / Recovery widget (from the previous build) — add it to your Home Screen, Lock Screen, or StandBy.
+Added — Native Apple Health sync is live
+• The app now reads your recovery data (sleep stages, HRV, resting HR, respiratory rate, wrist temperature, body mass, VO₂ max) straight from Apple Health and sends it to Iron Trainer — no more Health Auto Export needed. It syncs when you open the app, hourly in the background, and on demand.
 
 Test on device
-1. Settings → "Apple Health" card → tap "Connect Apple Health" → the system permission sheet should list Sleep, HRV, Resting HR, Respiratory Rate, Wrist Temperature, Body Mass, VO₂ max. Grant them.
-2. Leave Settings and reopen it → the card should now read "Access requested… manage in Health → Sharing" (NOT a button). No crash, no dead button.
-3. Open Health → Sharing → Apps → Iron Trainer and confirm the toggles match the list above.
-4. Widget: add the Readiness widget in each size (Home small, Lock circular/rectangular/inline, StandBy) — level color, call word, HRV/RHR read correctly and don't go stale across a day.
+1. Settings → "Apple Health" → if you haven't already, tap "Connect Apple Health" and grant the 7 metrics.
+2. Tap "Sync now" → the button shows "Syncing…" then returns; "Last native sync" should update to "just now". No "Server stored no data" error (if you see that, your sign-in expired — re-pair in Settings).
+3. Give it a moment, then check the Dashboard / Recovery tab (or the web app) — your latest sleep, HRV and resting-HR should be present and match what Apple Health shows.
+4. Background: leave the app, wait, reopen later — "Last native sync" should have advanced on its own (foreground catch-up), and ideally between opens (hourly background delivery).
+5. Sanity: the numbers should match your existing Health Auto Export data (both run in parallel during migration — keep HAE set up for now).
 
-Note: recovery data still arrives via the existing "Health Auto Export (legacy)" path for now — keep that set up. HRV stays empty without an Apple Watch (Garmin doesn't write HRV to Health).
+Notes
+• HRV needs an Apple Watch — Garmin doesn't write HRV to Apple Health, so it may stay blank if you only wear a Garmin.
+• The old "Health Auto Export (legacy)" section still works and stays for now; we'll retire it once native sync is confirmed on your device.
+• Also still testable from the previous build: the Readiness widget (Home / Lock Screen / StandBy).
