@@ -149,6 +149,39 @@ struct PlanNetworkSource {
         return readiness
     }
 
+    /// Latest PMC row (CTL/ATL/TSB) — best-effort, for the readiness glance.
+    func pmcLatest() async -> PmcRow? {
+        var comps = URLComponents(url: baseURL.appending(path: "/api/metrics/pmc"),
+                                  resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "days", value: "1")]
+        guard let url = comps.url,
+              let (data, resp) = try? await session.data(for: authedRequest(url, bearer: bearer)),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let out = try? JSONDecoder().decode(PmcDays.self, from: data)
+        else { return nil }
+        return out.days.last
+    }
+
+    /// Assemble the render-ready readiness glance for the widget snapshot from
+    /// readiness/today (+ latest pmc + latest recovery). Best-effort: any missing
+    /// piece is left nil, and no readiness at all means the widget shows its
+    /// placeholder — the plan snapshot is written independently.
+    func readinessSnapshot() async -> WidgetSnapshot.Readiness? {
+        async let readinessF = readinessToday()
+        async let recoveryF = latestRecovery()
+        async let pmcF = pmcLatest()
+        let (readiness, recovery, pmc) = await (readinessF, recoveryF, pmcF)
+        guard let r = readiness else { return nil }
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: .now)
+        return WidgetSnapshot.Readiness(
+            call: r.call, level: r.level,
+            hrvMs: recovery?.hrv_ms, rhrBpm: recovery?.rhr_bpm,
+            ctl: pmc?.ctl, atl: pmc?.atl, tsb: pmc?.tsb,
+            reason: r.reasons?.first,
+            day: String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        )
+    }
+
     /// Mint a bearer token for the Health Auto Export automation (shown once).
     func mintIngestToken() async throws -> IngestToken {
         var req = authedRequest(baseURL.appending(path: "/api/device/ingest-token"),
@@ -199,6 +232,17 @@ private struct RecoveryDays: Decodable {
     let days: [RecoveryDay]
 }
 
+/// One PMC row (subset of /api/metrics/pmc) — training-load state.
+struct PmcRow: Decodable {
+    let ctl: Double?
+    let atl: Double?
+    let tsb: Double?
+}
+
+private struct PmcDays: Decodable {
+    let days: [PmcRow]
+}
+
 /// Subjective check-in inputs — 1-5, higher is better, everything optional.
 struct CheckinFeel: Encodable, Equatable {
     var energy: Int?
@@ -222,7 +266,8 @@ struct ReadinessToday: Decodable, Equatable {
     let status: String
     let call: String?
     let level: String?
-    let reasons: [String]
+    // Optional: the insufficient_data/partial shape omits `reasons` entirely.
+    let reasons: [String]?
 }
 
 /// The narrated result of a weekly check-in (subset of the API payload).

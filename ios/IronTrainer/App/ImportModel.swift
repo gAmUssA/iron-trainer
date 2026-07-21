@@ -44,8 +44,7 @@ final class ImportModel: ObservableObject {
                 state = .loadedPlan(plan)
                 // Feed the widgets: precomputed 7-day snapshot into the App
                 // Group, then ask WidgetKit to rebuild timelines.
-                SharedStore.write(WidgetSnapshot.build(from: plan))
-                WidgetCenter.shared.reloadAllTimelines()
+                writeWidgetSnapshot(plan, source: source)
                 Task { await Notifications.rescheduleMorningBriefs(from: plan) }
             }
         } catch {
@@ -60,9 +59,32 @@ final class ImportModel: ObservableObject {
         guard let plan = try? await source.loadPlan(), !plan.workouts.isEmpty else { return }
         lastPlan = plan
         state = .loadedPlan(plan)
-        SharedStore.write(WidgetSnapshot.build(from: plan))
-        WidgetCenter.shared.reloadAllTimelines()
+        writeWidgetSnapshot(plan, source: source)
         Task { await Notifications.rescheduleMorningBriefs(from: plan) }
+    }
+
+    /// Bumped on every snapshot write so a slow readiness fetch from a superseded
+    /// write can't clobber a newer snapshot (overlapping loadPlan + refresh).
+    private var writeGen = 0
+
+    /// Write the widget snapshot: the plan first (so a readiness-fetch failure
+    /// never costs us the plan data), then re-write with today's readiness glance
+    /// once fetched. The first write carries forward the last-known readiness, so a
+    /// failed fetch keeps yesterday's call rather than blanking the widget. Each
+    /// write reloads the timelines.
+    private func writeWidgetSnapshot(_ plan: TrainingPlan, source: PlanNetworkSource) {
+        writeGen += 1
+        let gen = writeGen
+        let carried = SharedStore.read()?.readiness
+        SharedStore.write(WidgetSnapshot.build(from: plan, readiness: carried))
+        WidgetCenter.shared.reloadAllTimelines()
+        Task {
+            guard let readiness = await source.readinessSnapshot() else { return }
+            // A newer write superseded us — don't clobber its snapshot.
+            guard writeGen == gen else { return }
+            SharedStore.write(WidgetSnapshot.build(from: plan, readiness: readiness))
+            WidgetCenter.shared.reloadAllTimelines()
+        }
     }
 
     /// Return to the plan list (e.g. after scheduling one workout).
