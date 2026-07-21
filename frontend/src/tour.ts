@@ -22,7 +22,7 @@ const ALL_STEPS: WalkthroughStep[] = [
   {
     element: "#tour-nav",
     title: "Your screens",
-    text: "Dashboard (today's call, race readiness, records & check-in), Training Plan, Fitness, Nutrition, Tests and Settings. Fitness holds the PMC fitness/form chart and sport trends — the same TrainingPeaks CTL/ATL/TSB model. Explore each after the tour.",
+    text: "Dashboard (today's call, race readiness, records & check-in), Training Plan, Fitness, Recovery, Nutrition, Tests and Settings. Fitness holds the PMC fitness/form chart and sport trends (the TrainingPeaks CTL/ATL/TSB model); Recovery trends your sleep, HRV, resting-HR and daily load. Explore each after the tour.",
     position: "bottom",
   },
   {

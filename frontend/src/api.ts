@@ -212,16 +212,27 @@ export interface ReadinessToday {
   reasons: string[];
 }
 
-/** One ingested day of recovery data (Health Auto Export). */
+/** One ingested day of recovery data (Health Auto Export). All metrics nullable. */
 export interface RecoveryDay {
   date: string;
   sleep_h: number | null;
   deep_h: number | null;
   rem_h: number | null;
   awake_h: number | null;
+  sleep_start?: string | null;
+  sleep_end?: string | null;
   hrv_ms: number | null;
   rhr_bpm: number | null;
   weight_kg: number | null;
+  vo2max?: number | null;
+  respiratory_rate?: number | null;
+  wrist_temp_c?: number | null;
+  hr_recovery_bpm?: number | null;
+  spo2_pct?: number | null;
+  active_energy_kcal?: number | null;
+  exercise_min?: number | null;
+  step_count?: number | null;
+  cycling_ftp_w?: number | null;
 }
 
 export interface SyncResult {

@@ -25,16 +25,18 @@ import { ConnectCard, HealthIngestCard, ProfileEditor, ZonesCard } from "./compo
 import { TestsView } from "./components/TestsView";
 import { TodayCall } from "./components/TodayCall";
 import { PrCards, TrendsView } from "./components/TrendsView";
+import { RecoveryTrendsView } from "./components/RecoveryTrendsView";
 import { useTheme } from "./theme";
 import { useUnits } from "./units";
 import { startTour } from "./tour";
 
-type Tab = "dashboard" | "plan" | "trends" | "nutrition" | "tests" | "settings";
+type Tab = "dashboard" | "plan" | "trends" | "recovery" | "nutrition" | "tests" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "plan", label: "Training Plan" },
   { id: "trends", label: "Fitness" },
+  { id: "recovery", label: "Recovery" },
   { id: "nutrition", label: "Nutrition" },
   { id: "tests", label: "Tests" },
   { id: "settings", label: "Settings" },
@@ -322,6 +324,14 @@ export default function App() {
                 onSynced={safeLoad}
               />
             )}
+          </div>
+        )}
+
+        {/* Recovery — "am I recovering?" HRV/RHR, sleep, weight, load, vitals.
+            Self-fetches recovery history (seq-guarded) via its own RangePicker. */}
+        {tab === "recovery" && (
+          <div className="tab-panel">
+            <RecoveryTrendsView />
           </div>
         )}
 

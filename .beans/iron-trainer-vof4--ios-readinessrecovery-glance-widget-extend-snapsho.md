@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-07-21T13:01:16Z
-updated_at: 2026-07-21T13:19:49Z
+updated_at: 2026-07-21T13:40:52Z
 parent: iron-trainer-03qt
 ---
 
@@ -30,7 +30,8 @@ Add a quick-glance readiness/recovery WidgetKit widget to the Iron Trainer iOS a
 
 Xcode build/test is Viktor-driven; I can write the Swift.
 
-
-
 ## Impl note (2026-07-21)
 Branch feature/ios-readiness-widget. WidgetSnapshot gained a Readiness struct (call/level/hrvMs/rhrBpm/ctl/atl/tsb/reason) + optional readiness field (tolerant decode, back-compat). ImportModel writes the plan snapshot first, then augments with readiness fetched via PlanNetworkSource.readinessSnapshot() (readiness/today + pmc?days=1 + recovery) — readiness failure never costs the plan snapshot. New ReadinessWidget (systemSmall/accessoryCircular/accessoryRectangular/accessoryInline), registered in the bundle. xcodebuild for generic iOS Simulator: BUILD SUCCEEDED. HELD for Viktor: on-device build + TestFlight (WidgetKit needs a real device).
+
+## Ready for on-device build 2026-07-21
+Implemented + code-reviewed (PR #92, feature/ios-readiness-widget, commit c8dc877). xcodebuild BUILD SUCCEEDED (simulator). 8 review findings fixed (last-known-good preserve, stale date-scoping, tolerant decode, write-race generation guard, broader gate, contrast, concurrent fetches). HELD for Viktor: on-device build + TestFlight (WidgetKit needs a real device), then merge.
