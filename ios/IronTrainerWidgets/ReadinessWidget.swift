@@ -22,11 +22,12 @@ private enum ReadinessLevel {
         case "green": return Color(red: 0.290, green: 0.871, blue: 0.502) // #4ade80
         case "amber": return Color(red: 1.0, green: 0.706, blue: 0.329)   // #ffb454
         case "red":   return Color(red: 0.937, green: 0.325, blue: 0.314) // #ef5350
-        default:      return Color(red: 0.607, green: 0.639, blue: 0.686) // neutral slate
+        default:      return Color(red: 0.294, green: 0.333, blue: 0.388) // dark slate #4b5563
         }
     }
 
-    /// Foreground that stays readable on the (bright) level background.
+    /// Foreground that stays readable on the level background: dark on the bright
+    /// green/amber fills, white on the dark red/neutral fills.
     static func onColor(_ level: String?) -> Color {
         (level == "amber" || level == "green") ? .black : .white
     }
@@ -46,10 +47,13 @@ private struct ReadinessView: View {
     @Environment(\.widgetFamily) private var family
     let entry: SnapshotEntry
 
+    /// The entry's own day (each upcoming-midnight entry shares one snapshot).
+    private var entryDay: String { SnapshotEntry.isoDay(entry.date) }
+
     var body: some View {
         Group {
-            if let r = entry.snapshot?.readiness, r.call != nil || r.hrvMs != nil {
-                content(r)
+            if let r = entry.snapshot?.readiness, hasContent(r) {
+                content(r, stale: r.isStale(on: entryDay))
             } else {
                 placeholder
             }
@@ -57,13 +61,26 @@ private struct ReadinessView: View {
         .containerBackground(for: .widget) { backgroundView }
     }
 
+    /// Show the glance if any meaningful field is present (not just call+hrv).
+    private func hasContent(_ r: WidgetSnapshot.Readiness) -> Bool {
+        r.call != nil || r.level != nil || r.hrvMs != nil || r.rhrBpm != nil || r.ctl != nil
+    }
+
     // MARK: Backgrounds
+
+    /// Level used for coloring — nil (neutral) once the call is stale, so a stale
+    /// green/amber fill never reads as today's current call.
+    private var displayLevel: String? {
+        guard let r = entry.snapshot?.readiness, hasContent(r), !r.isStale(on: entryDay)
+        else { return nil }
+        return r.level
+    }
 
     @ViewBuilder
     private var backgroundView: some View {
         switch family {
         case .systemSmall:
-            Rectangle().fill(ReadinessLevel.color(entry.snapshot?.readiness?.level).gradient)
+            Rectangle().fill(ReadinessLevel.color(displayLevel).gradient)
         case .accessoryCircular:
             AccessoryWidgetBackground()
         default:
@@ -74,25 +91,32 @@ private struct ReadinessView: View {
     // MARK: Content
 
     @ViewBuilder
-    private func content(_ r: WidgetSnapshot.Readiness) -> some View {
+    private func content(_ r: WidgetSnapshot.Readiness, stale: Bool) -> some View {
+        let level = stale ? nil : r.level  // stale → neutral coloring
         switch family {
         case .accessoryInline:
-            Text("\(callWord(r.call, caps: false)) · HRV \(intStr(r.hrvMs))")
+            Text(stale
+                 ? "\(callWord(r.call, caps: false)) · HRV \(intStr(r.hrvMs)) · stale"
+                 : "\(callWord(r.call, caps: false)) · HRV \(intStr(r.hrvMs))")
         case .accessoryCircular:
-            Gauge(value: ReadinessLevel.ringFill(r.level)) {
+            Gauge(value: ReadinessLevel.ringFill(level)) {
                 Image(systemName: callGlyph(r.call))
             } currentValueLabel: {
                 Text(shortNum(r.hrvMs))
             }
             .gaugeStyle(.accessoryCircular)
-            .tint(ReadinessLevel.color(r.level))
+            .tint(ReadinessLevel.color(level))
+            .opacity(stale ? 0.6 : 1)
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 1) {
                 Label(callWord(r.call, caps: false), systemImage: callGlyph(r.call))
                     .font(.headline)
                 Text("HRV \(intStr(r.hrvMs)) · RHR \(intStr(r.rhrBpm))")
                     .font(.caption)
-                if let reason = r.reason, !reason.isEmpty {
+                if stale {
+                    Text("as of \(shortDate(r.day)) · open to refresh")
+                        .font(.caption2).foregroundStyle(.secondary)
+                } else if let reason = r.reason, !reason.isEmpty {
                     Text(reason)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -101,18 +125,20 @@ private struct ReadinessView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(stale ? 0.7 : 1)
         default:
-            smallView(r)
+            smallView(r, stale: stale, level: level)
         }
     }
 
-    private func smallView(_ r: WidgetSnapshot.Readiness) -> some View {
-        let fg = ReadinessLevel.onColor(r.level)
+    private func smallView(_ r: WidgetSnapshot.Readiness, stale: Bool, level: String?) -> some View {
+        let fg = ReadinessLevel.onColor(level)
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("READINESS")
+                Text(stale ? "AS OF \(shortDate(r.day).uppercased())" : "READINESS")
                     .font(.caption2).fontWeight(.bold)
                     .foregroundStyle(fg.opacity(0.75))
+                    .minimumScaleFactor(0.7).lineLimit(1)
                 Spacer()
                 if let sport = todaySport {
                     Image(systemName: SportStyle.icon(for: sport)).font(.caption2)
@@ -133,6 +159,7 @@ private struct ReadinessView: View {
             }
         }
         .foregroundStyle(fg)
+        .opacity(stale ? 0.85 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
@@ -193,4 +220,23 @@ private struct ReadinessView: View {
         guard let v else { return "" }
         return String(Int(v.rounded()))
     }
+
+    /// "2026-07-20" → "Jul 20" for the stale marker.
+    private func shortDate(_ ymd: String?) -> String {
+        guard let ymd, let d = Self.ymdParser.date(from: ymd) else { return "earlier" }
+        return Self.monthDay.string(from: d)
+    }
+
+    private static let ymdParser: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private static let monthDay: DateFormatter = {
+        let f = DateFormatter()
+        f.setLocalizedDateFormatFromTemplate("MMMd")
+        return f
+    }()
 }

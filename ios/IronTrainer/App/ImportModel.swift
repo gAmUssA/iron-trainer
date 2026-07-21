@@ -63,14 +63,25 @@ final class ImportModel: ObservableObject {
         Task { await Notifications.rescheduleMorningBriefs(from: plan) }
     }
 
+    /// Bumped on every snapshot write so a slow readiness fetch from a superseded
+    /// write can't clobber a newer snapshot (overlapping loadPlan + refresh).
+    private var writeGen = 0
+
     /// Write the widget snapshot: the plan first (so a readiness-fetch failure
     /// never costs us the plan data), then re-write with today's readiness glance
-    /// once fetched. Each write reloads the timelines.
+    /// once fetched. The first write carries forward the last-known readiness, so a
+    /// failed fetch keeps yesterday's call rather than blanking the widget. Each
+    /// write reloads the timelines.
     private func writeWidgetSnapshot(_ plan: TrainingPlan, source: PlanNetworkSource) {
-        SharedStore.write(WidgetSnapshot.build(from: plan))
+        writeGen += 1
+        let gen = writeGen
+        let carried = SharedStore.read()?.readiness
+        SharedStore.write(WidgetSnapshot.build(from: plan, readiness: carried))
         WidgetCenter.shared.reloadAllTimelines()
         Task {
             guard let readiness = await source.readinessSnapshot() else { return }
+            // A newer write superseded us — don't clobber its snapshot.
+            guard writeGen == gen else { return }
             SharedStore.write(WidgetSnapshot.build(from: plan, readiness: readiness))
             WidgetCenter.shared.reloadAllTimelines()
         }

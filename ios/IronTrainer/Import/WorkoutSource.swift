@@ -167,14 +167,18 @@ struct PlanNetworkSource {
     /// piece is left nil, and no readiness at all means the widget shows its
     /// placeholder — the plan snapshot is written independently.
     func readinessSnapshot() async -> WidgetSnapshot.Readiness? {
-        guard let r = await readinessToday() else { return nil }
-        let recovery = await latestRecovery()
-        let pmc = await pmcLatest()
+        async let readinessF = readinessToday()
+        async let recoveryF = latestRecovery()
+        async let pmcF = pmcLatest()
+        let (readiness, recovery, pmc) = await (readinessF, recoveryF, pmcF)
+        guard let r = readiness else { return nil }
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: .now)
         return WidgetSnapshot.Readiness(
             call: r.call, level: r.level,
             hrvMs: recovery?.hrv_ms, rhrBpm: recovery?.rhr_bpm,
             ctl: pmc?.ctl, atl: pmc?.atl, tsb: pmc?.tsb,
-            reason: r.reasons.first
+            reason: r.reasons?.first,
+            day: String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
         )
     }
 
@@ -230,7 +234,6 @@ private struct RecoveryDays: Decodable {
 
 /// One PMC row (subset of /api/metrics/pmc) — training-load state.
 struct PmcRow: Decodable {
-    let date: String
     let ctl: Double?
     let atl: Double?
     let tsb: Double?
@@ -263,7 +266,8 @@ struct ReadinessToday: Decodable, Equatable {
     let status: String
     let call: String?
     let level: String?
-    let reasons: [String]
+    // Optional: the insufficient_data/partial shape omits `reasons` entirely.
+    let reasons: [String]?
 }
 
 /// The narrated result of a weekly check-in (subset of the API payload).

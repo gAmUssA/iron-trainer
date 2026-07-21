@@ -204,7 +204,7 @@ private struct ReadinessBanner: View {
                 .padding(.vertical, 5)
                 .background(tint.opacity(0.16), in: Capsule())
                 .foregroundStyle(tint)
-            Text(readiness.reasons.first ?? "")
+            Text(readiness.reasons?.first ?? "")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -217,7 +217,7 @@ private struct ReadinessBanner: View {
                 .strokeBorder(tint.opacity(readiness.level == "green" ? 0 : 0.35), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Today's readiness: \(label). \(readiness.reasons.first ?? "")")
+        .accessibilityLabel("Today's readiness: \(label). \(readiness.reasons?.first ?? "")")
     }
 }
 

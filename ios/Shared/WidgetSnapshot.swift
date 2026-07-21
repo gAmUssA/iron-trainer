@@ -28,6 +28,15 @@ struct WidgetSnapshot: Codable, Equatable {
         let atl: Double?
         let tsb: Double?
         let reason: String?  // reasons[0]
+        /// The day this call is for (YYYY-MM-DD) — the widget marks it stale on
+        /// any later entry (each upcoming-midnight entry shares one snapshot).
+        var day: String?
+
+        /// True for any entry whose day is past the day this call was computed for.
+        func isStale(on entryDay: String) -> Bool {
+            guard let day else { return false }  // old snapshot w/o the field: treat as current
+            return entryDay > day
+        }
     }
 
     struct WorkoutSummary: Codable, Equatable {
@@ -120,7 +129,8 @@ extension WidgetSnapshot {
                 call: "easy", level: "amber",
                 hrvMs: 49, rhrBpm: 58,
                 ctl: 62, atl: 71, tsb: -9,
-                reason: "HRV below 7-day baseline"
+                reason: "HRV below 7-day baseline",
+                day: fmt(today)
             )
         )
     }
