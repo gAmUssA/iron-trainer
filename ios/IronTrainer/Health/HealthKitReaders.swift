@@ -71,21 +71,25 @@ enum QuantityMetric: String, CaseIterable {
 
 /// One unit-normalized quantity sample. `sourceBundleID` lets the assembler pick
 /// a single winning source per night (samples are never merged across sources).
+/// `uuid` is the HealthKit sample id — the SAME key `deletedUUIDs` uses, so the
+/// downstream store can locate and remove a sample that's later edited/deleted.
 struct QuantitySample: Equatable {
     let metric: QuantityMetric
     let value: Double
     let start: Date
     let end: Date
     let sourceBundleID: String
+    let uuid: UUID
 }
 
 /// One sleep-stage interval (category sample), stage preserved raw for the
-/// assembler to sessionize + union.
+/// assembler to sessionize + union. `uuid` mirrors `deletedUUIDs` (see above).
 struct SleepSample: Equatable {
     let stage: HKCategoryValueSleepAnalysis
     let start: Date
     let end: Date
     let sourceBundleID: String
+    let uuid: UUID
 }
 
 /// The result of a delta read: what changed since the caller's anchor, plus the
@@ -103,6 +107,12 @@ final class HealthKitReader {
     private let anchors: AnchorStore
     private let sleepAnchorID = HKCategoryTypeIdentifier.sleepAnalysis.rawValue
 
+    /// How far back the FIRST read (nil anchor) reaches. Bounds the initial
+    /// result so a long-time Health user isn't loaded years of samples in one
+    /// unbounded array; readiness (chronic ≤42 d) and ~6 months of native
+    /// trend fit comfortably. Older history stays in the backend from HAE.
+    private let historyWindowDays = 180
+
     init(store: HKHealthStore = HKHealthStore(), anchors: AnchorStore = AnchorStore()) {
         self.store = store
         self.anchors = anchors
@@ -111,52 +121,64 @@ final class HealthKitReader {
     /// Read new + deleted samples for one quantity metric since its persisted
     /// anchor. Does NOT persist the returned anchor — call `commit` after ingest.
     func readQuantity(_ metric: QuantityMetric) async throws -> MetricDelta<QuantitySample> {
-        let predicate = HKSamplePredicate.quantitySample(type: metric.type, predicate: nil)
-        let descriptor = HKAnchoredObjectQueryDescriptor(
-            predicates: [predicate],
-            anchor: anchors.anchor(for: metric.rawValue)
-        )
-        let result = try await descriptor.result(for: store)
         let unit = metric.unit
-        let samples = result.addedSamples.map {
+        return try await delta(
+            predicate: .quantitySample(type: metric.type, predicate: windowPredicate),
+            anchorID: metric.rawValue
+        ) {
             QuantitySample(
                 metric: metric,
                 value: $0.quantity.doubleValue(for: unit),
                 start: $0.startDate,
                 end: $0.endDate,
-                sourceBundleID: $0.sourceRevision.source.bundleIdentifier
+                sourceBundleID: $0.sourceRevision.source.bundleIdentifier,
+                uuid: $0.uuid
             )
         }
-        return MetricDelta(
-            samples: samples,
-            deletedUUIDs: result.deletedObjects.map(\.uuid),
-            newAnchor: result.newAnchor
-        )
     }
 
     /// Read new + deleted sleep-stage samples since the persisted anchor. All
     /// stages (inBed/awake/asleep*) are returned raw; the assembler decides what
     /// counts toward total sleep.
     func readSleep() async throws -> MetricDelta<SleepSample> {
-        let predicate = HKSamplePredicate.categorySample(
-            type: HKCategoryType(.sleepAnalysis), predicate: nil
-        )
-        let descriptor = HKAnchoredObjectQueryDescriptor(
-            predicates: [predicate],
-            anchor: anchors.anchor(for: sleepAnchorID)
-        )
-        let result = try await descriptor.result(for: store)
-        let samples = result.addedSamples.compactMap { sample -> SleepSample? in
+        try await delta(
+            predicate: .categorySample(type: HKCategoryType(.sleepAnalysis), predicate: windowPredicate),
+            anchorID: sleepAnchorID
+        ) { sample in
             guard let stage = HKCategoryValueSleepAnalysis(rawValue: sample.value) else { return nil }
             return SleepSample(
                 stage: stage,
                 start: sample.startDate,
                 end: sample.endDate,
-                sourceBundleID: sample.sourceRevision.source.bundleIdentifier
+                sourceBundleID: sample.sourceRevision.source.bundleIdentifier,
+                uuid: sample.uuid
             )
         }
+    }
+
+    /// Bounds every read to the last `historyWindowDays`, capping the first
+    /// (nil-anchor) batch. Recomputed each call so the window tracks forward.
+    private var windowPredicate: NSPredicate {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -historyWindowDays, to: Date())
+        return HKQuery.predicateForSamples(withStart: cutoff, end: nil)
+    }
+
+    /// Shared anchored delta-read: build the descriptor from the persisted
+    /// anchor, map added samples via `transform` (nil drops the sample), and
+    /// surface deletions + the candidate anchor. Only the predicate + transform
+    /// differ between the quantity and sleep readers.
+    private func delta<S: HKSample, Out>(
+        predicate: HKSamplePredicate<S>,
+        anchorID: String,
+        transform: @escaping (S) -> Out?
+    ) async throws -> MetricDelta<Out> {
+        let descriptor = HKAnchoredObjectQueryDescriptor(
+            predicates: [predicate],
+            anchor: anchors.anchor(for: anchorID)
+        )
+        let result = try await descriptor.result(for: store)
         return MetricDelta(
-            samples: samples,
+            samples: result.addedSamples.compactMap(transform),
             deletedUUIDs: result.deletedObjects.map(\.uuid),
             newAnchor: result.newAnchor
         )

@@ -27,17 +27,12 @@ final class HealthKitAuthorizer: ObservableObject {
 
     /// The recovery metrics the native ingester reads. Read-only — the app
     /// writes nothing here (workout scheduling uses WorkoutKit, not HK writes).
+    /// Derived from `QuantityMetric.allCases` (+ sleep) so the authorized set and
+    /// the reader's set can't drift — an unauthorized read would silently return
+    /// zero samples with no error (read auth is opaque).
     static let readTypes: Set<HKObjectType> = {
         var types: Set<HKObjectType> = [HKCategoryType(.sleepAnalysis)]
-        let quantities: [HKQuantityTypeIdentifier] = [
-            .heartRateVariabilitySDNN,       // sleep-window mean of spot samples
-            .restingHeartRate,               // Apple delete-and-replaces estimates
-            .respiratoryRate,
-            .appleSleepingWristTemperature,  // Apple Watch only
-            .bodyMass,
-            .vo2Max,                         // Garmin does not sync this to Health
-        ]
-        for id in quantities { types.insert(HKQuantityType(id)) }
+        for metric in QuantityMetric.allCases { types.insert(metric.type) }
         return types
     }()
 
