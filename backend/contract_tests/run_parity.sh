@@ -44,6 +44,21 @@ for name in "$V1_PORT/api/health" "$V2_PORT/q/health"; do
   fi
 done
 
+# backend-v2 grew daily_recovery columns (bean mg1n) that the shared schema —
+# created here by FastAPI's Alembic — lacks. backend-v2 runs as a packaged (prod)
+# jar where Flyway is off (dev/test-only), so its reads/writes of these columns
+# would 500 against the Alembic table. Add them directly to the shared DB
+# (nullable → invisible to FastAPI). Idempotent. FastAPI is decommissioned; this
+# whole two-schema parity gate is now vestigial and should be retired (foi1).
+docker exec "$PG_ID" psql -U postgres -d iron -c \
+  "ALTER TABLE daily_recovery
+     ADD COLUMN IF NOT EXISTS hr_recovery_bpm double precision,
+     ADD COLUMN IF NOT EXISTS spo2_pct double precision,
+     ADD COLUMN IF NOT EXISTS active_energy_kcal double precision,
+     ADD COLUMN IF NOT EXISTS exercise_min double precision,
+     ADD COLUMN IF NOT EXISTS step_count double precision,
+     ADD COLUMN IF NOT EXISTS cycling_ftp_w double precision;"
+
 # Metrics + recovery for the readiness/PMC parity tests are seeded from a pytest
 # fixture (test_parity_exports.py::seeded_metrics), NOT here: the `seeded`
 # fixture's profile PUT calls rebuild_metrics() which DELETEs the athlete's
