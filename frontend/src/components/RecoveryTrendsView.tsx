@@ -3,6 +3,7 @@ import {
   Area,
   AreaChart,
   Bar,
+  BarChart,
   CartesianGrid,
   ComposedChart,
   Line,
@@ -14,6 +15,7 @@ import {
 } from "recharts";
 import { api, DEFAULT_CHART_DAYS, type RecoveryDay } from "../api";
 import { COLORS, useChart } from "../chartTheme";
+import { MiniSpark } from "./Dashboards";
 import { RangePicker } from "./RangePicker";
 
 // Recovery-specific accents (kept local, like TrendsView's IF_COLORS).
@@ -27,20 +29,34 @@ const C = {
   awake: "#5b6270",
   steps: "#38bdf8",
   exercise: "#4ade80",
-  energy: "#ffb454",
   vo2: "#4ade80",
   spo2: "#38bdf8",
   resp: "#ffb454",
 };
 
-/** Trailing N-day rolling mean over a nullable daily series (oldest→newest).
- * Averages only the non-null values in the trailing window; null if none. */
-function rollingMean(vals: (number | null | undefined)[], window: number): (number | null)[] {
-  return vals.map((_, i) => {
-    const slice = vals
-      .slice(Math.max(0, i - window + 1), i + 1)
-      .filter((v): v is number => v != null);
-    return slice.length ? slice.reduce((a, b) => a + b, 0) / slice.length : null;
+const DAY_MS = 86_400_000;
+
+/** Trailing rolling mean over the last `windowDays` CALENDAR days (keyed by each
+ * row's date, not by array index — a gap in the daily series would otherwise let a
+ * "7-day" window silently span far more than 7 days). rows are oldest→newest. */
+function rollingMean(
+  rows: RecoveryDay[],
+  valueOf: (r: RecoveryDay) => number | null | undefined,
+  windowDays: number,
+): (number | null)[] {
+  return rows.map((row, i) => {
+    const start = Date.parse(row.date) - (windowDays - 1) * DAY_MS;
+    let sum = 0;
+    let n = 0;
+    for (let j = i; j >= 0; j--) {
+      if (Date.parse(rows[j].date) < start) break;
+      const v = valueOf(rows[j]);
+      if (v != null) {
+        sum += v;
+        n += 1;
+      }
+    }
+    return n ? sum / n : null;
   });
 }
 
@@ -74,8 +90,8 @@ export function RecoveryTrendsView() {
   }, [days]);
 
   // ── panel datasets ──────────────────────────────────────────────────────────
-  const hrvRoll = rollingMean(rows.map((r) => r.hrv_ms), 7);
-  const rhrRoll = rollingMean(rows.map((r) => r.rhr_bpm), 7);
+  const hrvRoll = rollingMean(rows, (r) => r.hrv_ms, 7);
+  const rhrRoll = rollingMean(rows, (r) => r.rhr_bpm, 7);
   const hrvData = rows.map((r, i) => ({
     x: day(r.date),
     hrv: r.hrv_ms,
@@ -88,30 +104,30 @@ export function RecoveryTrendsView() {
     x: day(r.date),
     deep: r.deep_h,
     rem: r.rem_h,
-    core:
-      r.sleep_h != null
-        ? Math.max(0, r.sleep_h - (r.deep_h ?? 0) - (r.rem_h ?? 0) - (r.awake_h ?? 0))
-        : null,
+    // deep + core + rem = sleep_h (the asleep total). awake is time awake in bed,
+    // NOT part of sleep_h, so it's a separate segment on top — the sleep portion
+    // stays exactly sleep_h and the bar never overstates sleep.
+    core: r.sleep_h != null ? Math.max(0, r.sleep_h - (r.deep_h ?? 0) - (r.rem_h ?? 0)) : null,
     awake: r.awake_h,
   }));
 
-  const wRoll = rollingMean(rows.map((r) => r.weight_kg), 7);
+  const wRoll = rollingMean(rows, (r) => r.weight_kg, 7);
   const weight = rows.map((r, i) => ({ x: day(r.date), weight: r.weight_kg, trend: wRoll[i] }));
 
   const load = rows.map((r) => ({
     x: day(r.date),
     steps: r.step_count ?? null,
     exercise: r.exercise_min ?? null,
-    energy: r.active_energy_kcal ?? null,
   }));
 
-  const vitals = rows.map((r) => ({
-    x: day(r.date),
-    vo2max: r.vo2max ?? null,
-    spo2: r.spo2_pct ?? null,
-    resp: r.respiratory_rate ?? null,
-  }));
-  const has = (k: "vo2max" | "spo2" | "resp") => vitals.some((v) => v[k] != null);
+  // Vitals → the shared MiniSpark ({x,v}[], own auto-scaled axis each).
+  const spark = (k: keyof RecoveryDay) =>
+    rows
+      .map((r) => ({ x: day(r.date), v: r[k] as number | null }))
+      .filter((p): p is { x: string; v: number } => p.v != null);
+  const vo2 = spark("vo2max");
+  const spo2 = spark("spo2_pct");
+  const resp = spark("respiratory_rate");
 
   const empty = !loading && rows.length === 0;
 
@@ -123,7 +139,11 @@ export function RecoveryTrendsView() {
         </span>
       </div>
 
-      {empty ? (
+      {loading && rows.length === 0 ? (
+        <div className="card">
+          <p className="muted">Loading recovery data…</p>
+        </div>
+      ) : empty ? (
         <div className="card">
           <p className="muted">
             No recovery data yet. Ingest sleep, HRV and resting-HR via Health Auto Export
@@ -157,9 +177,9 @@ export function RecoveryTrendsView() {
             {/* 2 — Sleep stages */}
             <div className="card">
               <div className="card-title">Sleep Stages</div>
-              <div className="card-sub">Hours per night by stage — last {sleep.length} nights</div>
+              <div className="card-sub">Hours asleep by stage — last {sleep.length} nights (awake time shown separately)</div>
               <ResponsiveContainer width="100%" height={220}>
-                <ComposedChart data={sleep} margin={{ top: 12, right: 8, left: -22, bottom: 0 }}>
+                <BarChart data={sleep} margin={{ top: 12, right: 8, left: -22, bottom: 0 }}>
                   <CartesianGrid stroke={ch.grid} vertical={false} />
                   <XAxis dataKey="x" tick={ch.tick} stroke={ch.grid} minTickGap={16} />
                   <YAxis tick={ch.tick} stroke={ch.grid} />
@@ -168,7 +188,7 @@ export function RecoveryTrendsView() {
                   <Bar dataKey="core" stackId="s" name="Core" fill={C.core} />
                   <Bar dataKey="rem" stackId="s" name="REM" fill={C.rem} />
                   <Bar dataKey="awake" stackId="s" name="Awake" fill={C.awake} fillOpacity={0.35} radius={[2, 2, 0, 0]} />
-                </ComposedChart>
+                </BarChart>
               </ResponsiveContainer>
               <div className="chart-legend">
                 <span><span className="sw" style={{ background: C.deep }} />Deep</span>
@@ -203,7 +223,7 @@ export function RecoveryTrendsView() {
             {/* 4 — Daily load */}
             <div className="card">
               <div className="card-title">Daily Load</div>
-              <div className="card-sub">Steps (bars) with Apple-exercise minutes &amp; active energy (lines)</div>
+              <div className="card-sub">Steps (bars, left) and Apple-exercise minutes (line, right)</div>
               <ResponsiveContainer width="100%" height={220}>
                 <ComposedChart data={load} margin={{ top: 12, right: 4, left: -18, bottom: 0 }}>
                   <CartesianGrid stroke={ch.grid} vertical={false} />
@@ -213,57 +233,25 @@ export function RecoveryTrendsView() {
                   <Tooltip contentStyle={ch.tooltip} cursor={{ fill: "rgba(128,128,128,0.12)" }} />
                   <Bar yAxisId="steps" dataKey="steps" name="Steps" fill={C.steps} fillOpacity={0.55} radius={[2, 2, 0, 0]} />
                   <Line yAxisId="min" dataKey="exercise" name="Exercise (min)" stroke={C.exercise} strokeWidth={1.8} dot={false} connectNulls />
-                  <Line yAxisId="min" dataKey="energy" name="Active (kcal)" stroke={C.energy} strokeWidth={1.4} strokeDasharray="4 3" dot={false} connectNulls />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
 
           {/* 5 — Vitals */}
-          {(has("vo2max") || has("spo2") || has("resp")) && (
+          {vo2.length + spo2.length + resp.length > 0 && (
             <div className="card">
               <div className="card-title">Vitals</div>
               <div className="card-sub">VO₂max, blood-oxygen and respiratory rate</div>
               <div className="grid-2">
-                {has("vo2max") && (
-                  <VitalSpark data={vitals} k="vo2max" label="VO₂max (ml/kg/min)" color={C.vo2} />
-                )}
-                {has("spo2") && (
-                  <VitalSpark data={vitals} k="spo2" label="SpO₂ (%)" color={C.spo2} />
-                )}
-                {has("resp") && (
-                  <VitalSpark data={vitals} k="resp" label="Respiratory (br/min)" color={C.resp} />
-                )}
+                {vo2.length > 0 && <MiniSpark title="VO₂max" unit="ml/kg/min" color={C.vo2} data={vo2} />}
+                {spo2.length > 0 && <MiniSpark title="SpO₂" unit="%" color={C.spo2} data={spo2} />}
+                {resp.length > 0 && <MiniSpark title="Respiratory" unit="br/min" color={C.resp} data={resp} />}
               </div>
             </div>
           )}
         </>
       )}
     </>
-  );
-}
-
-function VitalSpark({
-  data, k, label, color,
-}: {
-  data: Record<string, unknown>[];
-  k: string; label: string; color: string;
-}) {
-  const ch = useChart();
-  return (
-    <div className="mini">
-      <div className="mini-head">
-        <div className="mini-title"><span className="dot" style={{ background: color }} />{label}</div>
-      </div>
-      <ResponsiveContainer width="100%" height={120}>
-        <LineChart data={data} margin={{ top: 8, right: 4, left: -20, bottom: 0 }}>
-          <CartesianGrid stroke={ch.grid} />
-          <XAxis dataKey="x" tick={ch.tick} stroke={ch.grid} minTickGap={40} />
-          <YAxis tick={ch.tick} stroke={ch.grid} domain={["auto", "auto"]} width={34} />
-          <Tooltip contentStyle={ch.tooltip} />
-          <Line dataKey={k} name={label} stroke={color} strokeWidth={1.8} dot={false} connectNulls />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
   );
 }
