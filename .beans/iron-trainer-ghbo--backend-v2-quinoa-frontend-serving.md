@@ -1,11 +1,11 @@
 ---
 # iron-trainer-ghbo
 title: 'backend-v2: build SPA in Docker (stop committing dist)'
-status: todo
+status: completed
 type: task
 priority: deferred
 created_at: 2026-07-17T04:45:21Z
-updated_at: 2026-07-21T00:32:03Z
+updated_at: 2026-07-21T05:17:45Z
 parent: iron-trainer-eom4
 blocked_by:
     - iron-trainer-foi1
@@ -42,3 +42,6 @@ Viktor: 'why not the same approach as the Python backend?' — right, the FastAP
 - .dockerignore (new) keeps the repo-root context lean; committed dist removed + gitignored; build-frontend.sh now local-dev-only.
 - Needs Railway service setting: Root Directory → repo root, Config File → backend-v2/railway.toml (via MCP after `railway login`).
 - Local docker unreliable this session; COPY paths verified by inspection; native SPA bundling already proven in the deployed image; Railway deploy-check is the real verification (failed deploy keeps old image → front door safe).
+
+## Summary of Changes 2026-07-21
+Done — SPA is built in the Docker build (repo-root context), dist no longer committed. PR #88 merged. Railway backend-v2 Root Directory → / and Config File → backend-v2/railway.toml (via MCP update_service). Build log confirms the node stage ran: frontend 1-6/6 (node:22-alpine, npm ci, npm run build) → build 7/8 COPY --from=frontend dist → META-INF/resources → build 8/8 native → BUILD SUCCESS. Deployment 3d1bf6e6 active; live front door verified (SPA deep links, immutable assets, API, Strava connect 307). Future git pushes deploy normally (watchPatterns backend-v2/** + frontend/**).

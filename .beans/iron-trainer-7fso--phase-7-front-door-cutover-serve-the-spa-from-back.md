@@ -1,11 +1,11 @@
 ---
 # iron-trainer-7fso
 title: 'Phase 7 front-door cutover: serve the SPA from backend-v2 (Quarkus) + domain swap, decommission FastAPI'
-status: in-progress
+status: completed
 type: feature
 priority: critical
 created_at: 2026-07-20T18:32:37Z
-updated_at: 2026-07-20T19:06:33Z
+updated_at: 2026-07-21T06:13:06Z
 ---
 
 Make backend-v2 the true front door: bundle/serve the React SPA (with client-side routing fallback) from Quarkus so it serves the whole app (SPA + all API + login), then swap the public domain from the FastAPI service to backend-v2, verify end-to-end, and decommission FastAPI. Child of foi1.
@@ -27,3 +27,6 @@ Make backend-v2 the true front door: bundle/serve the React SPA (with client-sid
 - **[CONFIRMED #2 + efficiency #7]** Added `StaticCacheHeaders` (core vertx-http Filters hook): index.html/`/` → no-cache (always fresh after redeploy), /assets/* hashed files → immutable 1yr. API paths untouched.
 - Accepted by design: unmatched non-api GET → SPA shell (#4, inherent to a SPA front door); dotted client routes → 404 (#5, no such routes in this app); q/ guard kept as harmless defensive net (#6).
 - Verified locally: POST/DELETE→404, /today→index, /api 404s pass through, cache headers correct.
+
+## Summary of Changes 2026-07-21
+Front-door cutover shipped: PR #85 (Quarkus serves the SPA), domain iron-trainer.up.railway.app swapped to backend-v2, verified live (SPA deep links, API, Strava login). FastAPI decommissioned (safe-stop). Full FastAPI delete tracked separately in [[iron-trainer-foi1]]. (Checkboxes were unticked only because a git checkout discarded earlier edits; work is done.)

@@ -1,11 +1,11 @@
 ---
 # iron-trainer-vqbi
 title: Config-driven proxy routing (replace per-endpoint _maybe_proxy)
-status: in-progress
+status: scrapped
 type: task
 priority: normal
 created_at: 2026-07-15T23:56:54Z
-updated_at: 2026-07-16T02:11:15Z
+updated_at: 2026-07-21T06:13:06Z
 parent: iron-trainer-eom4
 ---
 
@@ -39,3 +39,6 @@ Addressed all in-scope findings:
 Out-of-scope readiness findings filed as follow-ups: [[iron-trainer-umwz]] (TZ, blocks the readiness flip), [[iron-trainer-t4md]] (f0signed -0).
 
 206 unit + 19 parity tests green.
+
+## Reasons for Scrapping 2026-07-21
+Obsolete: this targeted the FastAPI strangler proxy (config-driven routing to replace per-endpoint _maybe_proxy). The strangler proxy is gone — backend-v2 is now the direct front door and FastAPI is decommissioned, so there is no proxy layer left to make config-driven.

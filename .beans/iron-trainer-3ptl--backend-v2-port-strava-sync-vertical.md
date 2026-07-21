@@ -1,11 +1,11 @@
 ---
 # iron-trainer-3ptl
 title: 'backend-v2: port Strava sync vertical'
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-07-16T21:59:25Z
-updated_at: 2026-07-17T00:02:07Z
+updated_at: 2026-07-21T06:13:06Z
 ---
 
 Port the Strava sync flow to Quarkus (after the metrics-write vertical [[iron-trainer-adix]], which it reuses for recompute_tss + rebuild_metrics). Sync pulls activities from the Strava API, normalizes/dedupes, computes TSS, rebuilds the PMC. 
@@ -26,3 +26,6 @@ Reference from user 2026-07-16.
 
 ## PR1 SHIPPED: dedup core
 Dedup.java (cluster_duplicates + primary_of, sport-aware source preference), normalized_power, _map_activity — all pure/unit-tested (mirror test_dedup.py + test_metrics NP). POST /api/strava/dedup (fetch=false: cluster→mark→rebuild_metrics via adix; fetch=true: 409 when not connected). Byte-parity verified (dedup stats + rebuilt /pmc). Remaining phases: [[iron-trainer-wc60]] (API client+sync), [[iron-trainer-xtre]] (OAuth), [[iron-trainer-f6ui]] (archive).
+
+## Summary of Changes 2026-07-21
+Strava sync vertical ported to backend-v2 (part of the completed endpoint port — zero FastAPI-only endpoints remain). Live on the Quarkus front door.
