@@ -4,6 +4,10 @@
 <dict>
 	<key>com.apple.developer.healthkit</key>
 	<true/>
+	<!-- HKObserverQuery.enableBackgroundDelivery — native recovery sync wakes the
+	     app hourly to read new HealthKit samples (see epic iron-trainer-2f2c). -->
+	<key>com.apple.developer.healthkit.background-delivery</key>
+	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.io.gamov.irontrainer</string>
