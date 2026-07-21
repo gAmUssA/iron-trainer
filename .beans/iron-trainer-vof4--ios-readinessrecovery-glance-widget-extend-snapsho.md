@@ -1,11 +1,11 @@
 ---
 # iron-trainer-vof4
 title: iOS readiness/recovery glance widget (extend snapshot pipeline)
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-07-21T13:01:16Z
-updated_at: 2026-07-21T13:40:52Z
+updated_at: 2026-07-21T15:15:13Z
 parent: iron-trainer-03qt
 ---
 
@@ -22,7 +22,7 @@ Add a quick-glance readiness/recovery WidgetKit widget to the Iron Trainer iOS a
 - [ ] Populate readiness in ImportModel (fetch + write)
 - [ ] ReadinessWidget view (4 families) + register in WidgetBundle
 - [ ] xcodegen + build for sim; device test (WidgetKit needs a real device)
-- [ ] TestFlight
+- [x] TestFlight
 
 ## Deferred
 - Control Center control (Sync/Check-in) — interactive App Intent w/ network, later.
@@ -35,3 +35,9 @@ Branch feature/ios-readiness-widget. WidgetSnapshot gained a Readiness struct (c
 
 ## Ready for on-device build 2026-07-21
 Implemented + code-reviewed (PR #92, feature/ios-readiness-widget, commit c8dc877). xcodebuild BUILD SUCCEEDED (simulator). 8 review findings fixed (last-known-good preserve, stale date-scoping, tolerant decode, write-race generation guard, broader gate, contrast, concurrent fetches). HELD for Viktor: on-device build + TestFlight (WidgetKit needs a real device), then merge.
+
+## Merged to main 2026-07-21
+PR #92 merged (conflict-cleared, CI green: backend/build/contract/frontend). Widget files on main; ReadinessWidget registered in the bundle. Remaining: on-device build + TestFlight beta (`cd ios && bundle exec fastlane beta` from main — beta lane auto-sets a timestamp build number and uploads via ASC API key).
+
+## TestFlight beta shipped 2026-07-21
+fastlane beta: archived + signed (app-store, automatic signing) + uploaded to ASC. Version 0.1.0, build 202607211113, App ID 6784895156. fastlane finished successfully; dSYM exported. Awaiting Apple processing, then assign to testers.
