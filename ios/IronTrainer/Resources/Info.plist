@@ -58,7 +58,7 @@
 
     <!-- WorkoutKit / HealthKit usage strings (required for review). -->
     <key>NSHealthShareUsageDescription</key>
-    <string>Iron Trainer needs access to Health to build and schedule structured workouts.</string>
+    <string>Iron Trainer reads your sleep, heart-rate variability, resting and workout heart rate, respiratory rate, wrist temperature, body mass and VO₂ max from Health to compute your daily readiness and build structured workouts.</string>
     <key>NSHealthUpdateUsageDescription</key>
     <string>Iron Trainer schedules workouts so they appear on your Apple Watch.</string>
 

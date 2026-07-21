@@ -14,6 +14,10 @@ struct SettingsView: View {
     @State private var ingestError: String?
     @State private var lastRecovery: RecoveryDay?
 
+    @StateObject private var health = HealthKitAuthorizer()
+    @State private var healthBusy = false
+    @State private var healthError: String?
+
     @State private var serverText = ""
     @State private var code = ""
     @State private var scanning = false
@@ -109,6 +113,23 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    if health.isAvailable {
+                        Button(healthButtonLabel) { requestHealth() }
+                            .disabled(healthBusy)
+                    } else {
+                        Text("Apple Health isn’t available on this device.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    if let healthError {
+                        Text(healthError).foregroundStyle(.red).font(.footnote)
+                    }
+                } header: {
+                    Text("Apple Health")
+                } footer: {
+                    Text("Reads Sleep, HRV, resting heart rate, respiratory rate, wrist temperature, body mass and VO₂ max straight from Health to compute your daily readiness — replacing Health Auto Export. If a metric stays empty, turn it on in Health → Sharing → Iron Trainer. HRV needs an Apple Watch (Garmin doesn’t write HRV to Health).")
+                }
+
+                Section {
                     if let t = ingestToken {
                         Text("Token created — shown once, copy it now.")
                             .font(.footnote)
@@ -137,9 +158,9 @@ struct SettingsView: View {
                         Text(ingestError).foregroundStyle(.red).font(.footnote)
                     }
                 } header: {
-                    Text("Health data (Apple Health)")
+                    Text("Health Auto Export (legacy)")
                 } footer: {
-                    Text("Push sleep, HRV and resting heart rate from the Health Auto Export app: Automations → REST API, paste the URL and header, select the three metrics, JSON, aggregate by days, Summarize ON. Feeds your readiness call.")
+                    Text("The old path, kept during migration to native Apple Health above. Push sleep, HRV and resting heart rate from the Health Auto Export app: Automations → REST API, paste the URL and header, select the three metrics, JSON, aggregate by days, Summarize ON. Feeds your readiness call.")
                 }
 
                 if let error {
@@ -192,6 +213,24 @@ struct SettingsView: View {
             self.error = error.localizedDescription
         }
         busy = false
+    }
+
+    private var healthButtonLabel: String {
+        if healthBusy { return "Requesting…" }
+        return health.hasRequested ? "Review Apple Health access" : "Connect Apple Health"
+    }
+
+    private func requestHealth() {
+        healthBusy = true
+        healthError = nil
+        Task { @MainActor in
+            defer { healthBusy = false }
+            do {
+                try await health.requestAuthorization()
+            } catch {
+                healthError = error.localizedDescription
+            }
+        }
     }
 
     private func mintIngestToken() {
