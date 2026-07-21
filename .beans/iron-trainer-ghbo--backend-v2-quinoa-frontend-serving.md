@@ -5,7 +5,7 @@ status: todo
 type: task
 priority: deferred
 created_at: 2026-07-17T04:45:21Z
-updated_at: 2026-07-20T18:48:38Z
+updated_at: 2026-07-21T00:32:03Z
 parent: iron-trainer-eom4
 blocked_by:
     - iron-trainer-foi1
@@ -34,3 +34,11 @@ index.html + SPA fallback post-deploy.
 
 ## Update 2026-07-20: Quinoa infeasible on Quarkus 3.37
 No released quarkus-quinoa supports Quarkus 3.37 (it references the removed `HttpBuildTimeConfig`, renamed to `VertxHttpBuildTimeConfig`). Front door instead serves the SPA via static `META-INF/resources` + `SpaFallback` NotFoundException mapper (bean 7fso). This bean is now the follow-up: **stop committing the built dist** by moving the Railway backend-v2 root dir to repo-root and building the SPA in a Docker stage (frontend/ becomes reachable in the build context). Requires a Railway dashboard root-directory change + Dockerfile COPY-path rewrite + watchPatterns incl frontend/**.
+
+## Implementation 2026-07-20 — Python-approach (repo-root context)
+Viktor: 'why not the same approach as the Python backend?' — right, the FastAPI image built the SPA because its context was the repo root. frontend/ stays at root (no move).
+- backend-v2/Dockerfile → repo-root context: node stage builds frontend/ → dist, injected into src/main/resources/META-INF/resources before the native build.
+- backend-v2/railway.toml → dockerfilePath=backend-v2/Dockerfile, watchPatterns=[backend-v2/**, frontend/**].
+- .dockerignore (new) keeps the repo-root context lean; committed dist removed + gitignored; build-frontend.sh now local-dev-only.
+- Needs Railway service setting: Root Directory → repo root, Config File → backend-v2/railway.toml (via MCP after `railway login`).
+- Local docker unreliable this session; COPY paths verified by inspection; native SPA bundling already proven in the deployed image; Railway deploy-check is the real verification (failed deploy keeps old image → front door safe).
