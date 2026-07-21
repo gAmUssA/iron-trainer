@@ -229,11 +229,16 @@ public final class PlanTemplate {
         Map<String, Object> easy = rangeTarget("pace", SWIM_PACE_FACTOR.get("endurance"), css, "sec_per_100m");
         int mainRest = (int) (main * SWIM_REST_FRACTION);
         int mainWork = main - mainRest;
-        List<Map<String, Object>> swimSteps = List.of(
-                step("warmup", warm, easy),
-                step("steady", mainWork, target),
-                step("rest", mainRest, openTarget()),
-                step("cooldown", cool, easy));
+        // Guard: a 0-second rest step would export as an OPEN (never-ending) FIT
+        // step. mainRest is only 0 for an implausibly short swim (<~9 s), but the
+        // failure mode is bad enough to fall back to the plain 3-step structure.
+        List<Map<String, Object>> swimSteps = mainRest > 0
+                ? List.of(
+                        step("warmup", warm, easy),
+                        step("steady", mainWork, target),
+                        step("rest", mainRest, openTarget()),
+                        step("cooldown", cool, easy))
+                : steps(warm, mainWork, cool, easy, target);
         return new StepsResult(swimSteps, estDistanceSwim(warm, mainWork, cool, css, intensity));
     }
 
@@ -256,14 +261,10 @@ public final class PlanTemplate {
     private static Map<String, Object> hrTarget(String intensity, Map<String, Object> profile) {
         int[] hr = HrZones.hrRangeForIntensity(intensity, intFromProfile(profile, "threshold_hr"),
                 intFromProfile(profile, "max_hr"));
-        Map<String, Object> t = new LinkedHashMap<>();
         if (hr == null) {
-            t.put("type", "open");
-            t.put("unit", "");
-            t.put("low", null);
-            t.put("high", null);
-            return t;
+            return openTarget();
         }
+        Map<String, Object> t = new LinkedHashMap<>();
         t.put("type", "hr");
         t.put("unit", "bpm");
         t.put("low", hr[0]);
