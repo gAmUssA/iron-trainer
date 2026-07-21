@@ -1,12 +1,15 @@
-# Config-as-code for the backend-v2 Railway service (root directory =
-# backend-v2/, so this file is picked up from here — isolated-monorepo
-# pattern). Dashboard settings should stay empty; this file is the truth.
+# Config-as-code for the backend-v2 Railway service. The service Root Directory is
+# the REPO ROOT (so the Docker build context includes the sibling frontend/ and the
+# Dockerfile can build the SPA — same pattern the retired FastAPI service used), and
+# the service's Railway Config File is set to this path (backend-v2/railway.toml) so
+# it doesn't pick up the root railway.toml (the decommissioned FastAPI one). Paths
+# below are therefore relative to the repo root.
 
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
-# Relative to repo root: only Java changes redeploy this service.
-watchPatterns = ["backend-v2/**"]
+dockerfilePath = "backend-v2/Dockerfile"
+# Redeploy on Java OR frontend changes (both are baked into the image now).
+watchPatterns = ["backend-v2/**", "frontend/**"]
 
 [deploy]
 # Re-enabled after the PORT + IPv6 (::) binding fixes landed — if the probe

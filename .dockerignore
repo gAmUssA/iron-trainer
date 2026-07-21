@@ -1,0 +1,15 @@
+# Build context = repo root (backend-v2 service). Keep it lean + reproducible:
+# exclude VCS, deps, and build outputs (the Docker build produces its own).
+.git
+.github
+**/node_modules
+**/target
+**/.venv
+**/__pycache__
+**/*.pyc
+**/dist
+backend-v2/src/main/resources/META-INF/resources
+.beans
+docs
+ios
+*.log

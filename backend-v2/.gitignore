@@ -43,3 +43,8 @@ nb-configuration.xml
 /.quarkus/cli/plugins/
 # TLS Certificates
 .certs/
+
+# The React SPA is built into the native image by backend-v2/Dockerfile (repo-root
+# context) and populated locally by scripts/build-frontend.sh for quarkus:dev.
+# It is generated, not committed.
+src/main/resources/META-INF/resources/
