@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-07-17T04:45:21Z
-updated_at: 2026-07-20T22:09:20Z
+updated_at: 2026-07-21T21:46:22Z
 parent: iron-trainer-eom4
 ---
 
@@ -46,3 +46,6 @@ Viktor confirmed the app works on the Quarkus front door + chose **safe stop (re
 ### Deferred (needs relinquishing rollback)
 - [ ] Full delete of the FastAPI Railway service (requires migrating SESSION_SECRET off it first — MCP was unauthorized this session)
 - [ ] Remove FastAPI code (backend/) from the repo
+
+## Parity gate retired (2026-07-21)
+FastAPI↔backend-v2 'parity' CI job removed from .github/workflows/backend-v2.yml (Viktor: not running FastAPI in parallel → backend-v2 is source of truth, stop maintaining FastAPI parity). backend/contract_tests/ + run_parity.sh remain as DEAD reference code — foi1 should delete them along with the FastAPI app. First intentional divergence: gy48 (swim rest intervals).
