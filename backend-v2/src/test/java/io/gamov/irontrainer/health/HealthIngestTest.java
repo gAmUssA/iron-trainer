@@ -100,7 +100,18 @@ class HealthIngestTest {
                         rec("date", "2026-07-14T00:15:00-04:00", 55.0)))))));
         assertEquals(50.0, r.days.get("2026-07-13").get("rhr_bpm"));
         assertEquals(55.0, r.days.get("2026-07-14").get("vo2max"));
-        assertTrue(r.days.get("2026-07-14") != null && r.days.get("2026-07-14").containsKey("vo2max"));
+    }
+
+    @Test
+    void rejectsValidDateWithGarbageTime() {
+        // A valid date prefix but impossible time must NOT be fast-pathed into a
+        // day bucket — the strict parse rejects it as a bad date (so it never skews
+        // the day's average, and bad_dates counts it), same as before the speedup.
+        HealthIngest.Result r = HealthIngest.parsePayload(Map.of("data", Map.of("metrics", List.of(
+                metric("resting_heart_rate", "bpm", List.of(
+                        rec("date", "2026-07-13 25:99:99 -0400", 50.0)))))));
+        assertEquals(1, r.badDates);
+        assertTrue(r.days.get("2026-07-13") == null, "garbage-time record must not create a day");
     }
 
     @Test
