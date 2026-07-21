@@ -1,5 +1,6 @@
 package io.gamov.irontrainer.app;
 
+import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.auth.CurrentAthlete;
 import io.gamov.irontrainer.health.HealthIngest;
 import io.gamov.irontrainer.readiness.DailyRecovery;
@@ -95,6 +96,12 @@ public class HealthResource {
             m.put("vo2max", r.vo2max);
             m.put("respiratory_rate", r.respiratoryRate);
             m.put("wrist_temp_c", r.wristTempC);
+            m.put("hr_recovery_bpm", r.hrRecoveryBpm);
+            m.put("spo2_pct", r.spo2Pct);
+            m.put("active_energy_kcal", r.activeEnergyKcal);
+            m.put("exercise_min", r.exerciseMin);
+            m.put("step_count", r.stepCount);
+            m.put("cycling_ftp_w", r.cyclingFtpW);
             out.add(m);
         }
         Map<String, Object> resp = new LinkedHashMap<>();
@@ -137,6 +144,20 @@ public class HealthResource {
                 stored++;
             } catch (Exception ex) {   // one bad day (or a 401) must not 500 the batch
                 LOG.warnf("Recovery upsert failed for %s: %s", e.getKey(), ex.toString());
+            }
+        }
+        // Seed bike FTP from HealthKit's cycling-FTP estimate when the athlete has
+        // none yet, so power zones work out of the box. Never OVERWRITE a set FTP —
+        // a real bike-test value must not be clobbered by Apple's estimate. stored>0
+        // means auth already succeeded, so current.require() here won't 401.
+        if (stored > 0) {
+            Double ftp = latestFtp(r.days);
+            if (ftp != null && ftp > 0 && ftp < 2000) {
+                try {
+                    seedFtpIfUnset(current.require(), ftp);
+                } catch (Exception ex) {
+                    LOG.warnf("FTP seed skipped: %s", ex.toString());
+                }
             }
         }
         Map<String, Object> parsedOut = new LinkedHashMap<>();
@@ -204,9 +225,53 @@ public class HealthResource {
         if (f.get("wrist_temp_c") != null) {
             row.wristTempC = asD(f.get("wrist_temp_c"));
         }
+        if (f.get("hr_recovery_bpm") != null) {
+            row.hrRecoveryBpm = asD(f.get("hr_recovery_bpm"));
+        }
+        if (f.get("spo2_pct") != null) {
+            row.spo2Pct = asD(f.get("spo2_pct"));
+        }
+        if (f.get("active_energy_kcal") != null) {
+            row.activeEnergyKcal = asD(f.get("active_energy_kcal"));
+        }
+        if (f.get("exercise_min") != null) {
+            row.exerciseMin = asD(f.get("exercise_min"));
+        }
+        if (f.get("step_count") != null) {
+            row.stepCount = asD(f.get("step_count"));
+        }
+        if (f.get("cycling_ftp_w") != null) {
+            row.cyclingFtpW = asD(f.get("cycling_ftp_w"));
+        }
     }
 
     private static Double asD(Object v) {
         return v instanceof Number n ? n.doubleValue() : null;
+    }
+
+    /** The cycling FTP from the most recent day in the parsed batch, if any. */
+    private static Double latestFtp(Map<String, Map<String, Object>> days) {
+        String bestDay = null;
+        Object ftp = null;
+        for (Map.Entry<String, Map<String, Object>> e : days.entrySet()) {
+            Object v = e.getValue().get("cycling_ftp_w");
+            if (v != null && (bestDay == null || e.getKey().compareTo(bestDay) > 0)) {
+                bestDay = e.getKey();
+                ftp = v;
+            }
+        }
+        return ftp instanceof Number n ? n.doubleValue() : null;
+    }
+
+    /** Set Athlete.ftp only when currently null (seed, never overwrite); bump
+     * updated_at so the iOS delta-sync picks up the new power zones. Own txn. */
+    private static void seedFtpIfUnset(int aid, double ftp) {
+        QuarkusTransaction.requiringNew().run(() -> {
+            Athlete a = Athlete.findById(aid);
+            if (a != null && a.ftp == null) {
+                a.ftp = ftp;
+                a.updatedAt = PyJson.utcNowIso();
+            }
+        });
     }
 }
