@@ -42,7 +42,10 @@ class PlanGenerateResourceTest {
                 .statusCode(200)
                 .body("plan.status", equalTo("active"))
                 .body("workouts[0].steps[0].type", equalTo("warmup"))
-                .body("workouts[0].steps.size()", equalTo(3));
+                // workouts[0] is the week's Swim slot, now warmup+steady+rest+cooldown
+                // (bean gy48 models a rest interval); other sports stay 3 steps.
+                .body("workouts[0].steps.size()", equalTo(4))
+                .body("workouts[0].steps[2].type", equalTo("rest"));
     }
 
     @Test

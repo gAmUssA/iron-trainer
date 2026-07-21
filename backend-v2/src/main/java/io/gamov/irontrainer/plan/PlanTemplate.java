@@ -34,6 +34,15 @@ public final class PlanTemplate {
             "tempo", new double[] {1.02, 1.05}, "threshold", new double[] {0.98, 1.02},
             "vo2", new double[] {0.94, 0.97});
 
+    // Pool sets are swum with rest between reps, so a swim's main set is NOT one
+    // continuous block — pricing the whole main-set duration as swimming
+    // overstates prescribed metres (bean gy48). We reserve this fraction of the
+    // main set as rest (emitted as a rest step) and exclude it from the distance
+    // estimate. ~15% ≈ a typical threshold pool set (e.g. 8×100 with 15–20 s
+    // rest). Tunable — a single average is fine until per-intensity data warrants
+    // splitting it.
+    static final double SWIM_REST_FRACTION = 0.15;
+
     static LocalDate mondayOf(LocalDate d) {
         return d.minusDays(d.getDayOfWeek().getValue() - 1L);
     }
@@ -211,11 +220,26 @@ public final class PlanTemplate {
             return new StepsResult(steps(warm, main, cool, easy, target), estDistanceRun(durS, thr, intensity));
         }
 
-        // Swim
+        // Swim — model rest so prescribed distance reflects metres actually swum
+        // (bean gy48). The main set is split into work + a rest interval; the
+        // distance estimate counts warmup/cooldown at easy pace, the work at
+        // target pace, and excludes the rest.
         Double css = dblFromProfile(profile, "css_swim");
         Map<String, Object> target = rangeTarget("pace", SWIM_PACE_FACTOR.get(intensity), css, "sec_per_100m");
         Map<String, Object> easy = rangeTarget("pace", SWIM_PACE_FACTOR.get("endurance"), css, "sec_per_100m");
-        return new StepsResult(steps(warm, main, cool, easy, target), estDistanceSwim(durS, css, intensity));
+        int mainRest = (int) (main * SWIM_REST_FRACTION);
+        int mainWork = main - mainRest;
+        // Guard: a 0-second rest step would export as an OPEN (never-ending) FIT
+        // step. mainRest is only 0 for an implausibly short swim (<~9 s), but the
+        // failure mode is bad enough to fall back to the plain 3-step structure.
+        List<Map<String, Object>> swimSteps = mainRest > 0
+                ? List.of(
+                        step("warmup", warm, easy),
+                        step("steady", mainWork, target),
+                        step("rest", mainRest, openTarget()),
+                        step("cooldown", cool, easy))
+                : steps(warm, mainWork, cool, easy, target);
+        return new StepsResult(swimSteps, estDistanceSwim(warm, mainWork, cool, css, intensity));
     }
 
     private static List<Map<String, Object>> steps(int warm, int main, int cool,
@@ -237,14 +261,10 @@ public final class PlanTemplate {
     private static Map<String, Object> hrTarget(String intensity, Map<String, Object> profile) {
         int[] hr = HrZones.hrRangeForIntensity(intensity, intFromProfile(profile, "threshold_hr"),
                 intFromProfile(profile, "max_hr"));
-        Map<String, Object> t = new LinkedHashMap<>();
         if (hr == null) {
-            t.put("type", "open");
-            t.put("unit", "");
-            t.put("low", null);
-            t.put("high", null);
-            return t;
+            return openTarget();
         }
+        Map<String, Object> t = new LinkedHashMap<>();
         t.put("type", "hr");
         t.put("unit", "bpm");
         t.put("low", hr[0]);
@@ -277,20 +297,35 @@ public final class PlanTemplate {
         if (thrPace == null || thrPace == 0.0) {
             return null;
         }
-        double[] f = RUN_PACE_FACTOR.get(intensity);
-        double mid = (f[0] + f[1]) / 2;
-        double pace = thrPace * mid;
+        double pace = thrPace * mid(RUN_PACE_FACTOR.get(intensity));
         return (double) Py.roundInt(durS / pace * 1000);
     }
 
-    private static Double estDistanceSwim(int durS, Double css, String intensity) {
+    /** Metres actually swum: warmup/cooldown at easy (endurance) pace, the work
+     * set at the target pace, rest excluded. Pace is sec/100m, so metres =
+     * seconds / pace * 100. */
+    private static Double estDistanceSwim(int warmS, int workS, int coolS, Double css, String intensity) {
         if (css == null || css == 0.0) {
             return null;
         }
-        double[] f = SWIM_PACE_FACTOR.get(intensity);
-        double mid = (f[0] + f[1]) / 2;
-        double pace = css * mid;
-        return (double) Py.roundInt(durS / pace * 100);
+        double easyPace = css * mid(SWIM_PACE_FACTOR.get("endurance"));
+        double workPace = css * mid(SWIM_PACE_FACTOR.get(intensity));
+        double metres = (warmS + coolS) / easyPace * 100 + workS / workPace * 100;
+        return (double) Py.roundInt(metres);
+    }
+
+    private static double mid(double[] f) {
+        return (f[0] + f[1]) / 2;
+    }
+
+    /** An "open" target (no pace/HR/power band) — used for rest intervals. */
+    private static Map<String, Object> openTarget() {
+        Map<String, Object> t = new LinkedHashMap<>();
+        t.put("type", "open");
+        t.put("unit", "");
+        t.put("low", null);
+        t.put("high", null);
+        return t;
     }
 
     private static Double dblFromProfile(Map<String, Object> profile, String key) {
