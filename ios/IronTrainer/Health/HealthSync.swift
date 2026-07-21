@@ -54,17 +54,25 @@ struct HealthIngestClient {
     let baseURL: URL
     let bearer: String
 
-    func post(_ records: [DailyRecovery]) async throws {
+    /// POST the payload; returns the number of days the server actually stored.
+    /// The backend answers HTTP 200 `{ok:true, days:0}` when it persists nothing
+    /// (e.g. a stale/revoked bearer is swallowed per-day), so callers must check
+    /// the count — a 2xx alone does not mean the data landed.
+    @discardableResult
+    func post(_ records: [DailyRecovery]) async throws -> Int {
         var req = URLRequest(url: baseURL.appending(path: "/api/health/ingest"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         req.httpBody = try JSONSerialization.data(withJSONObject: Self.payload(records))
-        let (_, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NetworkError.http((resp as? HTTPURLResponse)?.statusCode ?? -1)
         }
+        return (try? JSONDecoder().decode(IngestAck.self, from: data))?.days ?? 0
     }
+
+    private struct IngestAck: Decodable { let days: Int? }
 
     /// `{data:{metrics:[{name, units, data:[{date, qty}]}]}}`. Only non-nil fields
     /// are emitted, so a partial sync never overwrites a fuller value (per-field
@@ -121,30 +129,36 @@ struct HealthIngestClient {
 final class NativeHealthSync: ObservableObject {
     static let shared = NativeHealthSync()
 
+    /// How many recent days each sync re-reads and re-sends. Overlapping re-sends
+    /// (like HAE's) make the sync self-healing: a failed/no-op POST, an edit, or a
+    /// deletion within the window is corrected on the next sync. The backend upsert
+    /// dedupes. Bounds cost — a week of samples is tiny.
+    private let syncWindowDays = 7
+
     private let store = HKHealthStore()
     private let reader = HealthKitReader()
     private var observers: [HKObserverQuery] = []
-    private var syncing = false
 
+    @Published private(set) var isSyncing = false
     @Published private(set) var lastSync: Date?
     @Published private(set) var lastError: String?
 
     private init() {}
 
     private var baseURL: URL? {
-        UserDefaults.standard.string(forKey: "iron.serverURL").flatMap(URL.init(string:))
+        UserDefaults.standard.string(forKey: AuthModel.serverKey).flatMap(URL.init(string:))
     }
-    private var bearer: String? { Keychain.get("bearer") }
+    private var bearer: String? { Keychain.get(AuthModel.tokenAccount) }
 
-    /// Register one observer + hourly background delivery per read type. Idempotent
-    /// (guarded), safe to call before auth — the handler no-ops until signed in and
-    /// delivery activates once HealthKit access is granted. Call at app launch and
-    /// again right after the user grants access.
+    /// Register ONE observer + hourly background delivery PER read type. Observers
+    /// are created once (guarded on the whole set, not per iteration); background
+    /// delivery is re-enabled on every call so it activates once the user grants
+    /// access. Safe to call before auth — the handler no-ops until signed in.
     func registerBackgroundDelivery() {
         guard HKHealthStore.isHealthDataAvailable() else { return }
-        for type in HealthKitAuthorizer.readTypes {
-            guard let sampleType = type as? HKSampleType else { continue }
-            if observers.isEmpty {  // register observers once
+        let sampleTypes = HealthKitAuthorizer.readTypes.compactMap { $0 as? HKSampleType }
+        if observers.isEmpty {
+            for sampleType in sampleTypes {
                 let observer = HKObserverQuery(sampleType: sampleType, predicate: nil) { [weak self] _, completion, _ in
                     Task { @MainActor in
                         defer { completion() }   // ALWAYS — 3 misses disables delivery
@@ -154,41 +168,37 @@ final class NativeHealthSync: ObservableObject {
                 store.execute(observer)
                 observers.append(observer)
             }
-            // (Re)enable delivery — cheap and needed once access is granted.
-            store.enableBackgroundDelivery(for: type, frequency: .hourly) { _, _ in }
+        }
+        for sampleType in sampleTypes {
+            store.enableBackgroundDelivery(for: sampleType, frequency: .hourly) { _, _ in }
         }
     }
 
-    /// Delta-read all recovery types → assemble → POST → commit anchors on success.
-    /// A failed POST leaves anchors un-advanced, so the same delta re-sends next
-    /// time (at-least-once; the backend upsert dedupes).
+    /// Read the recent window fully → assemble → POST. Idempotent and self-healing:
+    /// no anchors are advanced, so nothing is ever consumed-past-unsent. A 2xx that
+    /// stored 0 days (revoked bearer) is treated as a failure, not success, and the
+    /// next sync retries the same window.
     func sync() async {
-        guard !syncing, let baseURL, let bearer else { return }
-        syncing = true
-        defer { syncing = false }
+        guard !isSyncing, let baseURL, let bearer else { return }
+        isSyncing = true
+        defer { isSyncing = false }
         do {
-            var quantitySamples: [QuantitySample] = []
-            var anchors: [(QuantityMetric, HKQueryAnchor)] = []
-            for metric in QuantityMetric.allCases {
-                let delta = try await reader.readQuantity(metric)
-                quantitySamples += delta.samples
-                anchors.append((metric, delta.newAnchor))
+            let (quantities, sleep) = try await reader.recentSamples(days: syncWindowDays)
+            let records = NightAssembler.assemble(sleep: sleep, quantities: quantities)
+            guard !records.isEmpty else {   // nothing to send — not an error
+                lastSync = Date()
+                lastError = nil
+                return
             }
-            let sleepDelta = try await reader.readSleep()
-
-            let records = NightAssembler.assemble(sleep: sleepDelta.samples, quantities: quantitySamples)
-            if !records.isEmpty {
-                try await HealthIngestClient(baseURL: baseURL, bearer: bearer).post(records)
+            let stored = try await HealthIngestClient(baseURL: baseURL, bearer: bearer).post(records)
+            if stored == 0 {
+                lastError = "Server stored no data — your sign-in may have expired."
+            } else {
+                lastSync = Date()
+                lastError = nil
             }
-
-            // Success (or nothing new) → advance anchors past what we've handled.
-            for (metric, anchor) in anchors { reader.commit(anchor: anchor, for: metric) }
-            reader.commitSleep(anchor: sleepDelta.newAnchor)
-
-            lastSync = Date()
-            lastError = nil
         } catch {
-            lastError = error.localizedDescription   // anchors untouched → retry next trigger
+            lastError = error.localizedDescription
         }
     }
 }

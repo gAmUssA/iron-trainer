@@ -18,7 +18,6 @@ struct SettingsView: View {
     @State private var healthBusy = false
     @State private var healthError: String?
     @ObservedObject private var nativeSync = NativeHealthSync.shared
-    @State private var nativeSyncBusy = false
 
     @State private var serverText = ""
     @State private var code = ""
@@ -131,8 +130,10 @@ struct SettingsView: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     if health.isAvailable && !health.needsRequest && auth.isSignedIn {
-                        Button(nativeSyncBusy ? "Syncing…" : "Sync now") { syncNow() }
-                            .disabled(nativeSyncBusy)
+                        Button(nativeSync.isSyncing ? "Syncing…" : "Sync now") {
+                            Task { await nativeSync.sync() }
+                        }
+                        .disabled(nativeSync.isSyncing)
                         if let last = nativeSync.lastSync {
                             Text("Last native sync: \(last.formatted(.relative(presentation: .named)))")
                                 .font(.footnote).foregroundStyle(.secondary)
@@ -253,13 +254,6 @@ struct SettingsView: View {
         }
     }
 
-    private func syncNow() {
-        nativeSyncBusy = true
-        Task { @MainActor in
-            defer { nativeSyncBusy = false }
-            await nativeSync.sync()
-        }
-    }
 
     private func mintIngestToken() {
         guard let server = auth.serverURL, let bearer = auth.bearer else { return }
