@@ -31,7 +31,19 @@ targets:
       - sdk: HealthKit.framework
       - target: IronTrainerWidgets   # embeds the widget extension
     scheme:  # generate a *shared* scheme so fastlane/gym can find it
-      testTargets: []
+      testTargets:
+        - IronTrainerTests
+  IronTrainerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: IronTrainerTests
+    dependencies:
+      - target: IronTrainer   # host app — enables @testable import IronTrainer
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.gamov.irontrainer.helper.tests
   IronTrainerWidgets:
     type: app-extension    # WidgetKit extension (NSExtensionPointIdentifier in its Info.plist)
     platform: iOS
