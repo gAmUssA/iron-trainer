@@ -44,8 +44,7 @@ final class ImportModel: ObservableObject {
                 state = .loadedPlan(plan)
                 // Feed the widgets: precomputed 7-day snapshot into the App
                 // Group, then ask WidgetKit to rebuild timelines.
-                SharedStore.write(WidgetSnapshot.build(from: plan))
-                WidgetCenter.shared.reloadAllTimelines()
+                writeWidgetSnapshot(plan, source: source)
                 Task { await Notifications.rescheduleMorningBriefs(from: plan) }
             }
         } catch {
@@ -60,9 +59,21 @@ final class ImportModel: ObservableObject {
         guard let plan = try? await source.loadPlan(), !plan.workouts.isEmpty else { return }
         lastPlan = plan
         state = .loadedPlan(plan)
+        writeWidgetSnapshot(plan, source: source)
+        Task { await Notifications.rescheduleMorningBriefs(from: plan) }
+    }
+
+    /// Write the widget snapshot: the plan first (so a readiness-fetch failure
+    /// never costs us the plan data), then re-write with today's readiness glance
+    /// once fetched. Each write reloads the timelines.
+    private func writeWidgetSnapshot(_ plan: TrainingPlan, source: PlanNetworkSource) {
         SharedStore.write(WidgetSnapshot.build(from: plan))
         WidgetCenter.shared.reloadAllTimelines()
-        Task { await Notifications.rescheduleMorningBriefs(from: plan) }
+        Task {
+            guard let readiness = await source.readinessSnapshot() else { return }
+            SharedStore.write(WidgetSnapshot.build(from: plan, readiness: readiness))
+            WidgetCenter.shared.reloadAllTimelines()
+        }
     }
 
     /// Return to the plan list (e.g. after scheduling one workout).

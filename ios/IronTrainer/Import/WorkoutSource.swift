@@ -149,6 +149,35 @@ struct PlanNetworkSource {
         return readiness
     }
 
+    /// Latest PMC row (CTL/ATL/TSB) — best-effort, for the readiness glance.
+    func pmcLatest() async -> PmcRow? {
+        var comps = URLComponents(url: baseURL.appending(path: "/api/metrics/pmc"),
+                                  resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "days", value: "1")]
+        guard let url = comps.url,
+              let (data, resp) = try? await session.data(for: authedRequest(url, bearer: bearer)),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let out = try? JSONDecoder().decode(PmcDays.self, from: data)
+        else { return nil }
+        return out.days.last
+    }
+
+    /// Assemble the render-ready readiness glance for the widget snapshot from
+    /// readiness/today (+ latest pmc + latest recovery). Best-effort: any missing
+    /// piece is left nil, and no readiness at all means the widget shows its
+    /// placeholder — the plan snapshot is written independently.
+    func readinessSnapshot() async -> WidgetSnapshot.Readiness? {
+        guard let r = await readinessToday() else { return nil }
+        let recovery = await latestRecovery()
+        let pmc = await pmcLatest()
+        return WidgetSnapshot.Readiness(
+            call: r.call, level: r.level,
+            hrvMs: recovery?.hrv_ms, rhrBpm: recovery?.rhr_bpm,
+            ctl: pmc?.ctl, atl: pmc?.atl, tsb: pmc?.tsb,
+            reason: r.reasons.first
+        )
+    }
+
     /// Mint a bearer token for the Health Auto Export automation (shown once).
     func mintIngestToken() async throws -> IngestToken {
         var req = authedRequest(baseURL.appending(path: "/api/device/ingest-token"),
@@ -197,6 +226,18 @@ struct RecoveryDay: Decodable {
 
 private struct RecoveryDays: Decodable {
     let days: [RecoveryDay]
+}
+
+/// One PMC row (subset of /api/metrics/pmc) — training-load state.
+struct PmcRow: Decodable {
+    let date: String
+    let ctl: Double?
+    let atl: Double?
+    let tsb: Double?
+}
+
+private struct PmcDays: Decodable {
+    let days: [PmcRow]
 }
 
 /// Subjective check-in inputs — 1-5, higher is better, everything optional.

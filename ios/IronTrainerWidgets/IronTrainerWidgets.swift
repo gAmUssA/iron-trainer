@@ -6,5 +6,6 @@ struct IronTrainerWidgetBundle: WidgetBundle {
     var body: some Widget {
         RaceCountdownWidget()
         TodayWorkoutWidget()
+        ReadinessWidget()
     }
 }

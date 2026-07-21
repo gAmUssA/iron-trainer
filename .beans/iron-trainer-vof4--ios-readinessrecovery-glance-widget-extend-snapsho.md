@@ -1,11 +1,11 @@
 ---
 # iron-trainer-vof4
 title: iOS readiness/recovery glance widget (extend snapshot pipeline)
-status: todo
+status: in-progress
 type: feature
 priority: normal
 created_at: 2026-07-21T13:01:16Z
-updated_at: 2026-07-21T13:01:16Z
+updated_at: 2026-07-21T13:19:49Z
 parent: iron-trainer-03qt
 ---
 
@@ -29,3 +29,8 @@ Add a quick-glance readiness/recovery WidgetKit widget to the Iron Trainer iOS a
 - iOS 26-only widget features — @available-gated if added.
 
 Xcode build/test is Viktor-driven; I can write the Swift.
+
+
+
+## Impl note (2026-07-21)
+Branch feature/ios-readiness-widget. WidgetSnapshot gained a Readiness struct (call/level/hrvMs/rhrBpm/ctl/atl/tsb/reason) + optional readiness field (tolerant decode, back-compat). ImportModel writes the plan snapshot first, then augments with readiness fetched via PlanNetworkSource.readinessSnapshot() (readiness/today + pmc?days=1 + recovery) — readiness failure never costs the plan snapshot. New ReadinessWidget (systemSmall/accessoryCircular/accessoryRectangular/accessoryInline), registered in the bundle. xcodebuild for generic iOS Simulator: BUILD SUCCEEDED. HELD for Viktor: on-device build + TestFlight (WidgetKit needs a real device).

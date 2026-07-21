@@ -8,10 +8,26 @@ struct WidgetSnapshot: Codable, Equatable {
     let raceName: String?
     let raceDate: String?  // ISO YYYY-MM-DD
     let days: [Day]        // today + next 6, chronological
+    /// Today's readiness/recovery glance (nil until the app fetches it). Optional
+    /// so older snapshots without the field still decode.
+    var readiness: Readiness?
 
     struct Day: Codable, Equatable {
         let date: String   // YYYY-MM-DD
         let workouts: [WorkoutSummary]
+    }
+
+    /// Render-ready readiness snapshot the app fetches (readiness/today + latest
+    /// pmc row + latest recovery row) and the widget only reads.
+    struct Readiness: Codable, Equatable {
+        let call: String?    // hard / easy / rest
+        let level: String?   // green / amber / red
+        let hrvMs: Double?
+        let rhrBpm: Double?
+        let ctl: Double?
+        let atl: Double?
+        let tsb: Double?
+        let reason: String?  // reasons[0]
     }
 
     struct WorkoutSummary: Codable, Equatable {
@@ -26,7 +42,8 @@ struct WidgetSnapshot: Codable, Equatable {
 extension WidgetSnapshot {
     /// Build the render-ready snapshot from a fetched plan: today + the next 6
     /// days, with fueling lines parsed and intensity profiles precomputed.
-    static func build(from plan: TrainingPlan, today: Date = .now) -> WidgetSnapshot {
+    static func build(from plan: TrainingPlan, today: Date = .now,
+                      readiness: Readiness? = nil) -> WidgetSnapshot {
         let cal = Calendar.current
         let start = cal.startOfDay(for: today)
         let iso = { (d: Date) -> String in
@@ -52,7 +69,8 @@ extension WidgetSnapshot {
             generatedAt: today,
             raceName: plan.meta?.raceName,
             raceDate: plan.meta?.raceDate,
-            days: days
+            days: days,
+            readiness: readiness
         )
     }
 }
@@ -97,7 +115,13 @@ extension WidgetSnapshot {
                                            durationS: 3000, fuel: nil, profile: runProfile)]
                 }
                 return Day(date: fmt(d), workouts: workouts)
-            }
+            },
+            readiness: Readiness(
+                call: "easy", level: "amber",
+                hrvMs: 49, rhrBpm: 58,
+                ctl: 62, atl: 71, tsb: -9,
+                reason: "HRV below 7-day baseline"
+            )
         )
     }
 }
