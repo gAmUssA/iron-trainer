@@ -1,0 +1,11 @@
+Added
+• Apple Health (native) — a first step toward reading your recovery data straight from Health, replacing the Health Auto Export app. Settings now has an "Apple Health" card that requests read access. (Foundation only: this build grants access; it does NOT sync data yet — that lands in the next beta.)
+• Readiness / Recovery widget (from the previous build) — add it to your Home Screen, Lock Screen, or StandBy.
+
+Test on device
+1. Settings → "Apple Health" card → tap "Connect Apple Health" → the system permission sheet should list Sleep, HRV, Resting HR, Respiratory Rate, Wrist Temperature, Body Mass, VO₂ max. Grant them.
+2. Leave Settings and reopen it → the card should now read "Access requested… manage in Health → Sharing" (NOT a button). No crash, no dead button.
+3. Open Health → Sharing → Apps → Iron Trainer and confirm the toggles match the list above.
+4. Widget: add the Readiness widget in each size (Home small, Lock circular/rectangular/inline, StandBy) — level color, call word, HRV/RHR read correctly and don't go stale across a day.
+
+Note: recovery data still arrives via the existing "Health Auto Export (legacy)" path for now — keep that set up. HRV stays empty without an Apple Watch (Garmin doesn't write HRV to Health).

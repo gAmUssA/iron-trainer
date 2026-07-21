@@ -111,9 +111,25 @@ platform :ios do
     # (which requires inline `key`); we pass the resolved api_key object instead.
     ENV.delete("APP_STORE_CONNECT_API_KEY_PATH")
     UI.user_error!("Couldn't resolve an ASC API key from #{key_path.empty? ? '(APP_STORE_CONNECT_API_KEY_PATH unset)' : key_path}") if api_key.nil?
-    upload_to_testflight(
-      api_key: api_key,
-      skip_waiting_for_build_processing: true
-    )
+
+    # "What to Test" changeover note. Every beta ships one (what's new + what to
+    # verify on device) from fastlane/beta_changelog.txt (or BETA_CHANGELOG env).
+    # Setting What to Test requires the build to finish processing, so when a
+    # changelog is present we wait; otherwise we skip the wait for a fast upload.
+    changelog = (ENV["BETA_CHANGELOG"] || "").strip
+    if changelog.empty?
+      cl_path = File.join(WORKSPACE_DIR, "fastlane", "beta_changelog.txt")
+      changelog = File.read(cl_path).strip if File.exist?(cl_path)
+    end
+
+    tf = { api_key: api_key }
+    if changelog.to_s.strip.empty?
+      tf[:skip_waiting_for_build_processing] = true
+    else
+      tf[:changelog] = changelog
+      tf[:skip_waiting_for_build_processing] = false  # required to set What to Test
+      tf[:distribute_external] = false                # internal testers only
+    end
+    upload_to_testflight(**tf)
   end
 end
