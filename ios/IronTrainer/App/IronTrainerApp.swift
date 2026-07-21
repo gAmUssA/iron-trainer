@@ -11,14 +11,28 @@ struct PendingPairing: Identifiable {
 struct IronTrainerApp: App {
     @StateObject private var model = ImportModel()
     @StateObject private var auth = AuthModel()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var pendingPairing: PendingPairing?
     @State private var pairingError: String?
+
+    init() {
+        // Register HealthKit observers + hourly background delivery once at
+        // launch (Apple's guidance: app init, not a view's onAppear). No-ops
+        // until the user grants access; the foreground catch-up below is the
+        // reliable path regardless.
+        NativeHealthSync.shared.registerBackgroundDelivery()
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(auth)
+                // Foreground catch-up: native HealthKit sync every time the app
+                // becomes active (beats HAE's practical reliability on its own).
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { Task { await NativeHealthSync.shared.sync() } }
+                }
                 // A pairing link (irontrainer://pair?…) signs in and loads the plan;
                 // anything else is a .itw file from Files / Mail / AirDrop.
                 .onOpenURL { url in
