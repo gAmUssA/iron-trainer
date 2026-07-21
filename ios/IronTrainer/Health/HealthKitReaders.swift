@@ -118,6 +118,54 @@ final class HealthKitReader {
         self.anchors = anchors
     }
 
+    /// Full (non-anchored) read of the last `days` for every recovery type — the
+    /// basis for idempotent, self-healing ingest (task n1zt). Re-reading the whole
+    /// recent window each sync (rather than advancing anchors past deltas) means
+    /// the assembler always has sleep + gauges together to correlate, a failed or
+    /// no-op POST is simply retried next time, and edits/deletions are reflected
+    /// because the window is rebuilt from scratch. The backend upsert dedupes the
+    /// re-sends. (The anchored `readQuantity`/`readSleep` below are retained as a
+    /// future incremental-sync optimization; v1 ingest uses this.)
+    func recentSamples(days: Int) async throws -> (quantities: [QuantitySample], sleep: [SleepSample]) {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
+        let predicate = HKQuery.predicateForSamples(withStart: cutoff, end: nil)
+
+        var quantities: [QuantitySample] = []
+        for metric in QuantityMetric.allCases {
+            let unit = metric.unit
+            let descriptor = HKSampleQueryDescriptor(
+                predicates: [.quantitySample(type: metric.type, predicate: predicate)],
+                sortDescriptors: []
+            )
+            quantities += try await descriptor.result(for: store).map {
+                QuantitySample(
+                    metric: metric,
+                    value: $0.quantity.doubleValue(for: unit),
+                    start: $0.startDate,
+                    end: $0.endDate,
+                    sourceBundleID: $0.sourceRevision.source.bundleIdentifier,
+                    uuid: $0.uuid
+                )
+            }
+        }
+
+        let sleepDescriptor = HKSampleQueryDescriptor(
+            predicates: [.categorySample(type: HKCategoryType(.sleepAnalysis), predicate: predicate)],
+            sortDescriptors: []
+        )
+        let sleep = try await sleepDescriptor.result(for: store).compactMap { sample -> SleepSample? in
+            guard let stage = HKCategoryValueSleepAnalysis(rawValue: sample.value) else { return nil }
+            return SleepSample(
+                stage: stage,
+                start: sample.startDate,
+                end: sample.endDate,
+                sourceBundleID: sample.sourceRevision.source.bundleIdentifier,
+                uuid: sample.uuid
+            )
+        }
+        return (quantities, sleep)
+    }
+
     /// Read new + deleted samples for one quantity metric since its persisted
     /// anchor. Does NOT persist the returned anchor — call `commit` after ingest.
     func readQuantity(_ metric: QuantityMetric) async throws -> MetricDelta<QuantitySample> {

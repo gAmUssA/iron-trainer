@@ -9,18 +9,20 @@ final class AuthModel: ObservableObject {
     @Published private(set) var isSignedIn: Bool
     @Published private(set) var athleteName: String?
 
-    private let tokenAccount = "bearer"
-    private let serverKey = "iron.serverURL"
+    // Shared with NativeHealthSync so a background sync reads the same locations
+    // (single source of truth for the storage keys).
+    static let tokenAccount = "bearer"
+    static let serverKey = "iron.serverURL"
     private let nameKey = "iron.athleteName"
 
     init() {
-        let s = UserDefaults.standard.string(forKey: serverKey)
+        let s = UserDefaults.standard.string(forKey: Self.serverKey)
         serverURL = s.flatMap(URL.init(string:))
         athleteName = UserDefaults.standard.string(forKey: nameKey)
-        isSignedIn = Keychain.get("bearer") != nil
+        isSignedIn = Keychain.get(Self.tokenAccount) != nil
     }
 
-    var bearer: String? { Keychain.get(tokenAccount) }
+    var bearer: String? { Keychain.get(Self.tokenAccount) }
 
     /// Exchange a pairing code (and server URL) for a bearer token.
     func signIn(server: URL, code: String) async throws {
@@ -36,8 +38,8 @@ final class AuthModel: ObservableObject {
             throw NetworkError.http((resp as? HTTPURLResponse)?.statusCode ?? -1)
         }
         let claim = try JSONDecoder().decode(ClaimResponse.self, from: data)
-        Keychain.set(claim.token, account: tokenAccount)
-        UserDefaults.standard.set(server.absoluteString, forKey: serverKey)
+        Keychain.set(claim.token, account: Self.tokenAccount)
+        UserDefaults.standard.set(server.absoluteString, forKey: Self.serverKey)
         let name = claim.athlete?.name
         UserDefaults.standard.set(name, forKey: nameKey)
         serverURL = server
@@ -54,8 +56,8 @@ final class AuthModel: ObservableObject {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             Task { _ = try? await URLSession.shared.data(for: req) }
         }
-        Keychain.delete(tokenAccount)
-        UserDefaults.standard.removeObject(forKey: serverKey)
+        Keychain.delete(Self.tokenAccount)
+        UserDefaults.standard.removeObject(forKey: Self.serverKey)
         UserDefaults.standard.removeObject(forKey: nameKey)
         serverURL = nil
         athleteName = nil

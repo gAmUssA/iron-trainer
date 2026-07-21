@@ -17,6 +17,7 @@ struct SettingsView: View {
     @StateObject private var health = HealthKitAuthorizer()
     @State private var healthBusy = false
     @State private var healthError: String?
+    @ObservedObject private var nativeSync = NativeHealthSync.shared
 
     @State private var serverText = ""
     @State private var code = ""
@@ -128,6 +129,19 @@ struct SettingsView: View {
                         Text("Access requested. To change what Iron Trainer can read, open Health → Sharing → Apps → Iron Trainer.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
+                    if health.isAvailable && !health.needsRequest && auth.isSignedIn {
+                        Button(nativeSync.isSyncing ? "Syncing…" : "Sync now") {
+                            Task { await nativeSync.sync() }
+                        }
+                        .disabled(nativeSync.isSyncing)
+                        if let last = nativeSync.lastSync {
+                            Text("Last native sync: \(last.formatted(.relative(presentation: .named)))")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let e = nativeSync.lastError {
+                        Text("Sync error: \(e)").foregroundStyle(.red).font(.footnote)
+                    }
                     if let healthError {
                         Text(healthError).foregroundStyle(.red).font(.footnote)
                     }
@@ -231,11 +245,15 @@ struct SettingsView: View {
             defer { healthBusy = false }
             do {
                 try await health.requestAuthorization()
+                // Access just granted → activate background delivery and pull now.
+                nativeSync.registerBackgroundDelivery()
+                await nativeSync.sync()
             } catch {
                 healthError = error.localizedDescription
             }
         }
     }
+
 
     private func mintIngestToken() {
         guard let server = auth.serverURL, let bearer = auth.bearer else { return }
