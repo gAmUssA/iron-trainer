@@ -113,11 +113,19 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    if health.isAvailable {
-                        Button(healthButtonLabel) { requestHealth() }
-                            .disabled(healthBusy)
-                    } else {
+                    if !health.isAvailable {
                         Text("Apple Health isn’t available on this device.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } else if health.needsRequest {
+                        Button(healthBusy ? "Requesting…" : "Connect Apple Health") {
+                            requestHealth()
+                        }
+                        .disabled(healthBusy)
+                    } else {
+                        // Re-requesting won't re-present the sheet (iOS asks once
+                        // per type), so guide the user to Health instead of a
+                        // button that would silently do nothing.
+                        Text("Access requested. To change what Iron Trainer can read, open Health → Sharing → Apps → Iron Trainer.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     if let healthError {
@@ -172,6 +180,7 @@ struct SettingsView: View {
                 ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
             }
             .task { await loadRecoveryStatus() }
+            .task { await health.refreshStatus() }
             .sheet(isPresented: $scanning) {
                 NavigationStack {
                     QRScannerView { payload in
@@ -213,11 +222,6 @@ struct SettingsView: View {
             self.error = error.localizedDescription
         }
         busy = false
-    }
-
-    private var healthButtonLabel: String {
-        if healthBusy { return "Requesting…" }
-        return health.hasRequested ? "Review Apple Health access" : "Connect Apple Health"
     }
 
     private func requestHealth() {

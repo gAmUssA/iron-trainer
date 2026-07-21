@@ -13,14 +13,14 @@ import HealthKit
 @MainActor
 final class HealthKitAuthorizer: ObservableObject {
     private let store = HKHealthStore()
-    private let askedKey = "health.nativeAuthRequested"
 
-    /// Have we presented the system read-permission sheet at least once?
-    @Published private(set) var hasRequested: Bool
-
-    init() {
-        hasRequested = UserDefaults.standard.bool(forKey: askedKey)
-    }
+    /// Whether the system permission sheet would still appear — i.e. at least
+    /// one type is still undecided. Once every type has been requested (granted
+    /// OR denied) re-requesting is a silent no-op, so the UI must switch from a
+    /// "Connect" button to "manage in Health" guidance. Sourced from
+    /// `statusForAuthorizationRequest` (HealthKit's own sheet-gate), not a
+    /// cached flag — so adding new read types later correctly re-arms the sheet.
+    @Published private(set) var needsRequest = true
 
     /// HealthKit is unavailable on iPad and in some review environments.
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
@@ -41,15 +41,24 @@ final class HealthKitAuthorizer: ObservableObject {
         return types
     }()
 
+    /// Refresh `needsRequest` from HealthKit — the source of truth. Swallows
+    /// errors (defaults to "still needs request" so the button stays available).
+    func refreshStatus() async {
+        guard isAvailable else { return }
+        let status = try? await store.statusForAuthorizationRequest(
+            toShare: [], read: Self.readTypes
+        )
+        needsRequest = (status != .unnecessary)
+    }
+
     /// Present the system read-permission sheet. Resolves once the user
-    /// responds (or immediately, if already granted). Does NOT throw on
+    /// responds (or immediately, if already asked). Does NOT throw on
     /// denial — a denied read is invisible by design; only a genuinely
     /// unavailable store or a request error throws.
     func requestAuthorization() async throws {
         guard isAvailable else { throw HealthKitError.unavailable }
         try await store.requestAuthorization(toShare: [], read: Self.readTypes)
-        hasRequested = true
-        UserDefaults.standard.set(true, forKey: askedKey)
+        await refreshStatus()
     }
 }
 
