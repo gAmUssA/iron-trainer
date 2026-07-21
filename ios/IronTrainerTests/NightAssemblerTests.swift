@@ -112,4 +112,56 @@ final class NightAssemblerTests: XCTestCase {
         XCTAssertEqual(rec.rhrBpm!, 52, accuracy: 0.01)
         XCTAssertEqual(rec.bodyMassKg!, 79.5, accuracy: 0.01)
     }
+
+    // MARK: multi-night bucketing (cross-night bleed)
+
+    func testMultipleNightsBucketedSeparately() {
+        let s = [
+            sleep(.asleepCore, date(2026, 7, 20, 23, 0), date(2026, 7, 21, 5, 0)),  // night 21
+            sleep(.asleepCore, date(2026, 7, 21, 23, 0), date(2026, 7, 22, 5, 0)),  // night 22
+        ]
+        let out = NightAssembler.assemble(sleep: s, quantities: [], calendar: utc)
+        XCTAssertEqual(out.map(\.day), [date(2026, 7, 21, 0), date(2026, 7, 22, 0)])  // sorted
+        XCTAssertEqual(out[0].coreH!, 6, accuracy: 0.01)
+        XCTAssertEqual(out[1].coreH!, 6, accuracy: 0.01)
+    }
+
+    // MARK: winner tie resolves deterministically (no per-launch flapping)
+
+    func testWinnerTieIsDeterministic() {
+        // two sources, equal 2h asleep, different stages → (asleep,src) max picks "zzz".
+        let s = [
+            sleep(.asleepDeep, date(2026, 7, 20, 23, 0), date(2026, 7, 21, 1, 0), "aaa"),
+            sleep(.asleepREM,  date(2026, 7, 20, 23, 0), date(2026, 7, 21, 1, 0), "zzz"),
+        ]
+        for _ in 0..<5 {
+            let out = NightAssembler.assemble(sleep: s, quantities: [], calendar: utc)
+            XCTAssertEqual(out.count, 1)
+            XCTAssertEqual(out[0].remH!, 2, accuracy: 0.01)   // "zzz" won
+            XCTAssertNil(out[0].deepH)                        // "aaa" dropped, not merged
+        }
+    }
+
+    func testEmptyInput() {
+        XCTAssertTrue(NightAssembler.assemble(sleep: [], quantities: [], calendar: utc).isEmpty)
+    }
+
+    // MARK: overnight gauge keeps a straddling interval + single dominant source
+
+    func testWindowGaugeStraddleAndSingleSource() {
+        let s = [sleep(.asleepCore, date(2026, 7, 20, 23, 0), date(2026, 7, 21, 5, 0))]  // window 23:00–05:00
+        let q = [
+            // respiratory interval starts 22:59 (before window) but overlaps → kept
+            QuantitySample(metric: .respiratoryRate, value: 14,
+                           start: date(2026, 7, 20, 22, 59), end: date(2026, 7, 20, 23, 10),
+                           sourceBundleID: "watch", uuid: UUID()),
+            // HRV: "watch" (2 in-window) dominates "thirdparty" (1) → watch-only mean
+            qty(.hrv, 60, date(2026, 7, 21, 0, 0), "watch"),
+            qty(.hrv, 40, date(2026, 7, 21, 2, 0), "watch"),
+            qty(.hrv, 999, date(2026, 7, 21, 1, 0), "thirdparty"),
+        ]
+        let out = NightAssembler.assemble(sleep: s, quantities: q, calendar: utc)
+        XCTAssertEqual(out[0].respiratoryRate!, 14, accuracy: 0.01)   // straddling sample kept
+        XCTAssertEqual(out[0].hrvMs!, 50, accuracy: 0.01)             // watch mean, thirdparty excluded
+    }
 }

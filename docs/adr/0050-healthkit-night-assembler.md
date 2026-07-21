@@ -51,10 +51,30 @@ Pure transform + tests only. No HealthKit calls (reader's job), no POST/observer
 
 - **Testable without a device** — the assembler is pure, so its correctness is CI-
   gateable (unlike the reader/ingest, which need real HealthKit).
-- **Naps not yet excluded.** v1 unions everything in the night window; a long
-  afternoon nap (before 15:00) would fold into that night. The research's `<2h`-gap
-  sessionization is deferred — noted here as the known ceiling; add if it matters.
 - HRV needs an Apple Watch (Garmin doesn't write HRV) — empty is a valid result.
+
+## Accepted ceilings (from code review — deliberately not fixed in v1)
+
+- **Naps / sessions straddling 15:00.** v1 buckets each sleep sample by its start and
+  unions everything in the night window; a long afternoon nap before 15:00, or a
+  session split across the 15:00 boundary, folds into that night. Nocturnal sleep
+  doesn't straddle 15:00, so this only affects unusual nap patterns. The research's
+  `<2h`-gap sessionization is the fix and is deferred.
+- **Gauge day-key vs sleep wake-date.** Calendar-day gauges (RHR, body mass, VO₂) key
+  by `startOfDay(measurement)`; sleep keys by wake-date (`start+9h`). For a
+  morning-centric routine both resolve to the same calendar date D, giving a coherent
+  "day D" record — this is the intended daily model, matching the backend's
+  date-keyed rows, not a misalignment.
+- **Gauge-only days are emitted.** A weigh-in on a day with no sleep tracking produces
+  a record with only that gauge — valid data we intentionally keep, not a phantom.
+
+## Review fixes applied
+
+Deterministic winner tie-break (score each source once, break ties by bundle id);
+overnight gauge means restricted to a single dominant source (no cross-calibration
+blend) and use interval-overlap window membership (respiratory/wrist-temp are
+intervals); added multi-night, tie-determinism, empty-input, and straddle tests
+(10 total).
 
 ## Alternatives considered
 

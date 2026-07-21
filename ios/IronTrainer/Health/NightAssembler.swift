@@ -77,11 +77,15 @@ enum NightAssembler {
         var windowByNight: [Date: (start: Date, end: Date)] = [:]
 
         for (night, samples) in sleepByNight {
-            // Winning source = the one with the most unioned asleep time.
-            let bySource = Dictionary(grouping: samples, by: \.sourceBundleID)
-            guard let winner = bySource.max(by: { a, b in
-                asleepSeconds(a.value) < asleepSeconds(b.value)
-            })?.value, asleepSeconds(winner) > 0 else { continue }
+            // Winning source = the one with the most unioned asleep time. Score
+            // each source ONCE (not inside the comparator), and break ties by
+            // bundle id so the winner is deterministic across launches (Swift
+            // dictionary order is randomized per process). Sources are never merged.
+            guard let winner = Dictionary(grouping: samples, by: \.sourceBundleID)
+                .map({ (samples: $0.value, asleep: asleepSeconds($0.value), src: $0.key) })
+                .filter({ $0.asleep > 0 })
+                .max(by: { ($0.asleep, $0.src) < ($1.asleep, $1.src) })?.samples
+            else { continue }
 
             var rec = record(night)
             rec.deepH = hours(winner, stage: .asleepDeep)
@@ -101,9 +105,9 @@ enum NightAssembler {
         // ── Overnight gauges: mean within the night's sleep window ────────────
         for (night, window) in windowByNight {
             var rec = record(night)
-            rec.hrvMs = mean(quantities, .hrv, within: window)
-            rec.respiratoryRate = mean(quantities, .respiratoryRate, within: window)
-            rec.wristTempC = mean(quantities, .wristTemperature, within: window)
+            rec.hrvMs = windowMean(quantities, .hrv, window: window)
+            rec.respiratoryRate = windowMean(quantities, .respiratoryRate, window: window)
+            rec.wristTempC = windowMean(quantities, .wristTemperature, window: window)
             byDay[night] = rec
         }
 
@@ -130,14 +134,23 @@ enum NightAssembler {
         return unionSeconds(intervals) / secondsPerHour
     }
 
-    private static func mean(
+    /// Mean of one overnight gauge inside the sleep window. Two corrections over a
+    /// naive filter: (1) an interval sample is kept when it OVERLAPS the window
+    /// (respiratory rate / wrist temp are multi-minute intervals that can straddle
+    /// the window edge), not only when its start falls inside; (2) values are taken
+    /// from a single dominant source (most in-window samples, deterministic
+    /// tie-break) rather than blended across sources with different calibrations.
+    private static func windowMean(
         _ samples: [QuantitySample], _ metric: QuantityMetric,
-        within window: (start: Date, end: Date)
+        window: (start: Date, end: Date)
     ) -> Double? {
-        let vals = samples
-            .filter { $0.metric == metric && $0.start >= window.start && $0.start <= window.end }
-            .map(\.value)
-        return vals.isEmpty ? nil : vals.reduce(0, +) / Double(vals.count)
+        let inWindow = samples.filter {
+            $0.metric == metric && $0.end >= window.start && $0.start <= window.end
+        }
+        guard let best = Dictionary(grouping: inWindow, by: \.sourceBundleID)
+            .max(by: { ($0.value.count, $0.key) < ($1.value.count, $1.key) })?.value
+        else { return nil }
+        return best.map(\.value).reduce(0, +) / Double(best.count)
     }
 
     private static func average(_ v: [Double]) -> Double { v.reduce(0, +) / Double(v.count) }
