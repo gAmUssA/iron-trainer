@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: high
 created_at: 2026-07-21T06:23:34Z
-updated_at: 2026-07-21T06:53:06Z
+updated_at: 2026-07-21T07:09:54Z
 parent: iron-trainer-udbc
 ---
 
@@ -38,3 +38,8 @@ The new metrics only arrive if the HAE app is set to EXPORT them. In the HAE app
 ### Deferred follow-ups
 - FTP auto-*replace* (source/adopt UX) — not just seed-if-null.
 - readiness scoring consuming hr_recovery.
+
+## Code-review fixes 2026-07-21
+- [CONFIRMED-ish] Cumulative fields (active_energy/exercise/steps) were SUMMED → double-counts re-sent daily totals + multi-source. Changed to **daily MAX** (DAILY_TOTAL_FIELDS).
+- [PLAUSIBLE ×4 on the FTP seed] Deferred the Athlete.ftp auto-seed to [[iron-trainer-30m8]] — doing it right needs latest-by-timestamp (not mean), bounds matching the profile validator (a seeded 1000-2000W blocks profile saves), and a delta-sync-safe policy. This slice now only CAPTURES cycling_ftp_w in daily_recovery. Removed seedFtpIfUnset/latestFtp + Athlete import.
+- Unit test updated to MAX semantics; all pass.

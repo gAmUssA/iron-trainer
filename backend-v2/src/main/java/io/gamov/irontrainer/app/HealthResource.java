@@ -1,6 +1,5 @@
 package io.gamov.irontrainer.app;
 
-import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.auth.CurrentAthlete;
 import io.gamov.irontrainer.health.HealthIngest;
 import io.gamov.irontrainer.readiness.DailyRecovery;
@@ -146,20 +145,11 @@ public class HealthResource {
                 LOG.warnf("Recovery upsert failed for %s: %s", e.getKey(), ex.toString());
             }
         }
-        // Seed bike FTP from HealthKit's cycling-FTP estimate when the athlete has
-        // none yet, so power zones work out of the box. Never OVERWRITE a set FTP —
-        // a real bike-test value must not be clobbered by Apple's estimate. stored>0
-        // means auth already succeeded, so current.require() here won't 401.
-        if (stored > 0) {
-            Double ftp = latestFtp(r.days);
-            if (ftp != null && ftp > 0 && ftp < 2000) {
-                try {
-                    seedFtpIfUnset(current.require(), ftp);
-                } catch (Exception ex) {
-                    LOG.warnf("FTP seed skipped: %s", ex.toString());
-                }
-            }
-        }
+        // NOTE: cycling_ftp_w is captured into daily_recovery (trend), but we do
+        // NOT auto-seed Athlete.ftp / bike zones here — that needs latest-by-
+        // timestamp (not the daily mean), bounds matching the profile validator,
+        // and a delta-sync-safe source-of-truth policy. Deferred to bean mg1n's
+        // FTP→zones follow-up.
         Map<String, Object> parsedOut = new LinkedHashMap<>();
         parsedOut.put("records", r.records);
         parsedOut.put("unknown_metrics", r.unknownMetrics);
@@ -247,31 +237,5 @@ public class HealthResource {
 
     private static Double asD(Object v) {
         return v instanceof Number n ? n.doubleValue() : null;
-    }
-
-    /** The cycling FTP from the most recent day in the parsed batch, if any. */
-    private static Double latestFtp(Map<String, Map<String, Object>> days) {
-        String bestDay = null;
-        Object ftp = null;
-        for (Map.Entry<String, Map<String, Object>> e : days.entrySet()) {
-            Object v = e.getValue().get("cycling_ftp_w");
-            if (v != null && (bestDay == null || e.getKey().compareTo(bestDay) > 0)) {
-                bestDay = e.getKey();
-                ftp = v;
-            }
-        }
-        return ftp instanceof Number n ? n.doubleValue() : null;
-    }
-
-    /** Set Athlete.ftp only when currently null (seed, never overwrite); bump
-     * updated_at so the iOS delta-sync picks up the new power zones. Own txn. */
-    private static void seedFtpIfUnset(int aid, double ftp) {
-        QuarkusTransaction.requiringNew().run(() -> {
-            Athlete a = Athlete.findById(aid);
-            if (a != null && a.ftp == null) {
-                a.ftp = ftp;
-                a.updatedAt = PyJson.utcNowIso();
-            }
-        });
     }
 }

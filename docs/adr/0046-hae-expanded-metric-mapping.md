@@ -17,27 +17,28 @@ decommissioned, so this is a backend-v2-only change (no FastAPI parity to hold).
   `blood_oxygen_saturation`→`spo2_pct`, `active_energy`→`active_energy_kcal`,
   `apple_exercise_time`→`exercise_min`, `step_count`→`step_count`,
   `cycling_functional_threshold_power`→`cycling_ftp_w`.
-  - **Sum vs average**: cumulative daily totals (active energy, exercise minutes,
-    steps) are **summed** within a day; gauges (HR recovery, SpO2, FTP) are
-    averaged — a new `SUM_FIELDS` set. (HAE daily-aggregates, so usually one
-    sample/day, but summing stays correct at finer intervals.)
+  - **Max vs average**: cumulative daily totals (active energy, exercise minutes,
+    steps) take the **daily max** (`DAILY_TOTAL_FIELDS`) — the phone re-sends a
+    growing daily total as the day progresses and multiple devices each report the
+    day's total, so a sum double-counts and an average under-counts; the max is
+    the most complete total. Gauges (HR recovery, SpO2, FTP) are averaged.
   - **Unit normalization**: `active_energy` kJ→kcal; SpO2 0–1 fraction→percent
     (mirrors the existing lb→kg / °F→°C conversions).
 - **`DailyRecovery`** + **`V2__hae_expanded_metrics.sql`** — 6 nullable
   `double precision` columns; **`HealthResource.recovery`** serializes them.
-- **FTP → bike zones**: `HealthResource.ingest` seeds `Athlete.ftp` from the
-  latest day's `cycling_ftp_w` **only when it is currently null** (so power zones
-  work out of the box), bumping `athlete.updated_at` for the iOS delta-sync. It
-  **never overwrites** a set FTP — a real bike-test value must not be clobbered
-  by Apple's estimate. The per-day FTP is still stored in `daily_recovery` for
-  trend regardless. (Auto-*replace* with a source/adopt UX is a deliberate
-  follow-up, not this slice.)
+- **FTP captured, zone-seeding deferred**: `cycling_ftp_w` is stored per day in
+  `daily_recovery` (trend/visibility), but this slice does NOT auto-seed
+  `Athlete.ftp` / bike zones. Code review flagged that doing it right needs
+  latest-by-timestamp (not the daily mean), a guard matching the profile
+  validator's FTP bounds (a seeded 1000–2000 W would block profile saves), and a
+  delta-sync-safe source-of-truth policy. Split to a focused follow-up
+  (`iron-trainer-30m8`), keeping this PR to clean metric capture.
 
-Verified end-to-end (dev): a payload with all six metrics stores
-`hr_recovery_bpm=32, spo2_pct=97 (from 0.97), active_energy_kcal=200 (from
-2×418.4 kJ), exercise_min=45, step_count=8452, cycling_ftp_w=250`; `profile.ftp`
-seeds to 250 and stays 250 after a re-POST of 999 (never-overwrite). Unit test
-`HealthIngestTest.parsesExpandedHaeMetricsSumAvgAndConversions`.
+Verified (dev + unit test
+`HealthIngestTest.parsesExpandedHaeMetricsMaxAvgAndConversions`): a payload with
+all six metrics stores `hr_recovery_bpm=32`, `spo2_pct=97` (from 0.97),
+`active_energy_kcal`/`exercise_min`/`step_count` = the re-sent daily max, and
+`cycling_ftp_w=250`.
 
 ## ⚠️ Health Auto Export iOS config MUST be updated
 
@@ -69,8 +70,7 @@ code is a separate future cleanup.)
 
 ## Consequences
 
-- Bike power zones auto-populate for athletes who never set an FTP; existing
-  manual FTPs are untouched.
-- HR recovery + activity load + SpO2 are now captured per day, feeding readiness
-  and the future custom dashboards (bean `rp3t`).
+- Cycling FTP, HR recovery, activity load, and SpO2 are now captured per day,
+  feeding readiness and the future custom dashboards (bean `rp3t`). Auto-seeding
+  bike zones from the captured FTP is the deferred follow-up (`iron-trainer-30m8`).
 - The ingest contract stays backwards-compatible; the change is additive.
