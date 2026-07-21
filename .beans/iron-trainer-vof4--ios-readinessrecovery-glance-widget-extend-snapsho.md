@@ -5,7 +5,7 @@ status: todo
 type: feature
 priority: normal
 created_at: 2026-07-21T13:01:16Z
-updated_at: 2026-07-21T13:01:16Z
+updated_at: 2026-07-21T13:40:52Z
 parent: iron-trainer-03qt
 ---
 
@@ -29,3 +29,6 @@ Add a quick-glance readiness/recovery WidgetKit widget to the Iron Trainer iOS a
 - iOS 26-only widget features — @available-gated if added.
 
 Xcode build/test is Viktor-driven; I can write the Swift.
+
+## Ready for on-device build 2026-07-21
+Implemented + code-reviewed (PR #92, feature/ios-readiness-widget, commit c8dc877). xcodebuild BUILD SUCCEEDED (simulator). 8 review findings fixed (last-known-good preserve, stale date-scoping, tolerant decode, write-race generation guard, broader gate, contrast, concurrent fetches). HELD for Viktor: on-device build + TestFlight (WidgetKit needs a real device), then merge.
