@@ -71,18 +71,21 @@ depend on Strava** — directly enabling `k5d0` (decouple the planner) and `yrsz
 (native ingestion). Requires a workout model, dedup vs Strava `Activity`
 (id / start-time overlap), and a policy for which wins when both exist.
 
-### 3. Grafana for health + training trends (bean `rp3t`, low) — observability
+### 3. Custom in-app dashboards replicating the Grafana views (bean `rp3t`, low)
 
-Adopt the dashboards' **ideas** against **our Postgres** (Grafana Postgres
-datasource, read-only user), not their Mongo/Infinity stack: recovery trends
-(HRV/RHR/VO2max), sleep-stage stacked bar, weight, training load (TSS/CTL/ATL/TSB),
-workout-route geomap, recent-workouts table. Internal-only (never expose athlete
-data). Complements the BootUI dev console.
+**We do NOT adopt Grafana** (Viktor's call). Instead, replicate the dashboards'
+**ideas** as **custom dashboards in the app's own React frontend**, fed by the
+backend-v2 API — no Grafana, no second datastore, no Infinity plugin. Panels:
+recovery trends (HRV/RHR/VO2max), sleep-stage stacked bar, weight, training load
+(TSS/CTL/ATL/TSB), workout-route map, recent-workouts table. Athlete-facing
+(part of the app UI), reading `daily_recovery` / `Activity` / `MetricDaily` via
+existing/new read endpoints. (See the `dataviz` skill for chart design.)
 
 ## What we deliberately skip
 
-- **MongoDB / Node server / Infinity plugin** — we own the ingest path and use
-  Postgres; no second datastore.
+- **MongoDB / Node server / Infinity plugin / Grafana itself** — we own the
+  ingest path and use Postgres; no second datastore, and the dashboards are built
+  into the app's React UI (bean `rp3t`), not a separate Grafana instance.
 - **The full ~100-metric catalog** — the nutrition/medical/mobility long tail
   (dietary vitamins, insulin, handwashing, toothbrushing, …) isn't relevant to
   triathlon readiness. Dietary macros (protein/carbs/water/energy) are a
@@ -97,4 +100,5 @@ data). Complements the BootUI dev console.
 - FTP auto-update removes a manual-entry footgun and keeps bike zones honest.
 - Workout ingestion is the concrete lever for reducing the Strava dependency —
   worth deciding alongside `k5d0`.
-- Grafana is additive ops tooling, isolated from the app, read-only on Postgres.
+- Trend dashboards are custom React views in the app (bean `rp3t`) reading the
+  existing API — no Grafana, no second datastore to run or secure.
