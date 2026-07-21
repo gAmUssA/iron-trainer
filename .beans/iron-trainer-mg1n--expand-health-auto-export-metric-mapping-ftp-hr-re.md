@@ -1,11 +1,11 @@
 ---
 # iron-trainer-mg1n
 title: Expand Health Auto Export metric mapping (FTP, HR recovery, activity load)
-status: in-progress
+status: completed
 type: feature
 priority: high
 created_at: 2026-07-21T06:23:34Z
-updated_at: 2026-07-21T07:09:54Z
+updated_at: 2026-07-21T07:38:39Z
 parent: iron-trainer-udbc
 ---
 
@@ -43,3 +43,7 @@ The new metrics only arrive if the HAE app is set to EXPORT them. In the HAE app
 - [CONFIRMED-ish] Cumulative fields (active_energy/exercise/steps) were SUMMED → double-counts re-sent daily totals + multi-source. Changed to **daily MAX** (DAILY_TOTAL_FIELDS).
 - [PLAUSIBLE ×4 on the FTP seed] Deferred the Athlete.ftp auto-seed to [[iron-trainer-30m8]] — doing it right needs latest-by-timestamp (not mean), bounds matching the profile validator (a seeded 1000-2000W blocks profile saves), and a delta-sync-safe policy. This slice now only CAPTURES cycling_ftp_w in daily_recovery. Removed seedFtpIfUnset/latestFtp + Athlete import.
 - Unit test updated to MAX semantics; all pass.
+
+## Summary of Changes 2026-07-21
+Shipped (PR #89, ADR 0046). backend-v2 now maps 6 more HAE metrics into daily_recovery: hr_recovery_bpm, spo2_pct, active_energy_kcal, exercise_min, step_count, cycling_ftp_w. Cumulative metrics take the daily MAX (not sum — avoids double-counting re-sends/multi-source); kJ→kcal + SpO2 fraction→% conversions. FTP→bike-zones auto-seed DEFERRED to [[iron-trainer-30m8]] after review (bounds/latest/sync subtleties). Parity harness patched to add the columns to the shared DB (Flyway off in the prod jar). PROD Supabase DB manually ALTERed before cutover (Flyway off in prod — see memory). Deploy verified: recovery endpoint 401 not 500.
+ACTION for Viktor: enable the metrics in the Health Auto Export iOS app (Cardio Recovery, Blood Oxygen, Active Energy, Apple Exercise Time, Step Count, Cycling FTP).

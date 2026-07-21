@@ -1,11 +1,11 @@
 ---
 # iron-trainer-tzex
 title: FTP → bike zones auto-seed from HealthKit (done right)
-status: todo
+status: scrapped
 type: feature
 priority: normal
 created_at: 2026-07-21T07:08:08Z
-updated_at: 2026-07-21T07:08:08Z
+updated_at: 2026-07-21T07:38:59Z
 parent: iron-trainer-udbc
 ---
 
@@ -22,3 +22,5 @@ Split out of mg1n after code review. mg1n now CAPTURES Apple's cycling FTP estim
 - [ ] Source-of-truth + delta-sync policy (avoid clobbering device-entered FTP)
 - [ ] Wire into PlanTargets bike zones + an accept/adopt UX
 - [ ] Test
+
+## Scrapped 2026-07-21: duplicate of [[iron-trainer-30m8]] (created twice when the id didn't print). 30m8 is canonical (referenced in ADR 0046 + PR #89).
