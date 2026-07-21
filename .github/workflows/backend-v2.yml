@@ -7,12 +7,10 @@ on:
   push:
     paths:
       - "backend-v2/**"
-      - "backend/contract_tests/**"
       - ".github/workflows/backend-v2.yml"
   pull_request:
     paths:
       - "backend-v2/**"
-      - "backend/contract_tests/**"
       - ".github/workflows/backend-v2.yml"
 
 jobs:
@@ -75,23 +73,10 @@ jobs:
           # (including a clean instant exit) is a startup failure.
           test "$code" -eq 124
 
-  parity:
-    # The strangler gate: FastAPI and backend-v2 against ONE Postgres must
-    # agree on the export contract (parity module runs when V2_BASE_URL set).
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-          cache: maven
-      - uses: astral-sh/setup-uv@v5
-      - run: uv venv --python 3.12
-      - run: uv pip install -e ".[dev]"
-      - name: Parity run (both backends, one Postgres)
-        run: ./contract_tests/run_parity.sh
+  # The FastAPI↔backend-v2 strangler parity gate was retired 2026-07-21: FastAPI
+  # is decommissioned and no longer runs in parallel, so backend-v2 is the source
+  # of truth and is free to diverge from (and fix bugs in) the old FastAPI
+  # behavior. The `test` job above is the JVM gate; UI/iOS have their own. The
+  # parity harness (backend/contract_tests, run_parity.sh) is left in place for
+  # reference until bean foi1 removes it. See also gy48 (the first intentional
+  # divergence: swim rest intervals).
