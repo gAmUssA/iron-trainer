@@ -69,6 +69,36 @@ class PlanTemplateTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void expandWeekSwimModelsRestAndDiscountsDistance() {
+        // bean gy48: a swim's main set is swum with rest, so prescribed distance
+        // must reflect metres actually swum, not the whole session priced as one
+        // continuous swim.
+        Map<String, Object> week = Map.of(
+                "week_start", "2026-03-02", "target_hours", 8.0, "is_recovery", false, "phase", "build");
+        Map<String, Object> profile = Map.of("css_swim", 95.0);
+        List<Map<String, Object>> wos = PlanTemplate.expandWeek(week, profile);
+
+        Map<String, Object> swim = wos.stream()
+                .filter(w -> "Swim".equals(w.get("sport")))
+                .findFirst().orElseThrow();
+
+        // A rest interval is modelled: warmup, steady, rest, cooldown.
+        List<Map<String, Object>> steps = (List<Map<String, Object>>) swim.get("steps");
+        assertEquals(4, steps.size());
+        assertEquals("rest", steps.get(2).get("type"));
+        assertEquals("open", ((Map<String, Object>) steps.get(2).get("target")).get("type"));
+
+        // Distance is present and strictly under the continuous-at-CSS ceiling
+        // (durS / css * 100) — rest is excluded and warm/cool are priced easy.
+        double dist = ((Number) swim.get("distance_m")).doubleValue();
+        int durS = ((Number) swim.get("duration_s")).intValue();
+        assertTrue(dist > 0);
+        assertTrue(dist < durS / 95.0 * 100,
+                "swim distance " + dist + " should be under the continuous-swim ceiling");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void expandWeekRunNoThresholdFallsBackToHr() {
         // No threshold_pace_run → run prescribed by HR zones; distance null.
         Map<String, Object> week = Map.of(
