@@ -1,11 +1,11 @@
 ---
 # iron-trainer-foi1
 title: 'Phase 7 cutover: decommission FastAPI, freeze Alembic'
-status: in-progress
+status: completed
 type: task
 priority: normal
 created_at: 2026-07-17T04:45:21Z
-updated_at: 2026-07-21T21:46:22Z
+updated_at: 2026-07-21T23:00:26Z
 parent: iron-trainer-eom4
 ---
 
@@ -49,3 +49,6 @@ Viktor confirmed the app works on the Quarkus front door + chose **safe stop (re
 
 ## Parity gate retired (2026-07-21)
 FastAPI↔backend-v2 'parity' CI job removed from .github/workflows/backend-v2.yml (Viktor: not running FastAPI in parallel → backend-v2 is source of truth, stop maintaining FastAPI parity). backend/contract_tests/ + run_parity.sh remain as DEAD reference code — foi1 should delete them along with the FastAPI app. First intentional divergence: gy48 (swim rest intervals).
+
+## Full decommission done (2026-07-21)
+Deleted the entire FastAPI footprint: backend/ tree (app/alembic/contract_tests/tests/scripts, pyproject.toml, uv.lock, alembic.ini — 99 files), root FastAPI Dockerfile + railway.toml (rollback config). Removed the FastAPI-based CI jobs (ci.yml 'backend' pytest + 'contract' HTTP suite); ci.yml now builds only the frontend. Updated README (backend = Quarkus/backend-v2) + backend-v2.yml parity comment. 101 files / 14,705 lines removed. KEPT: backend-v2 (incl. Py.java/PyJson — the live output contract for web/iOS, used by 32 files), the stopped FastAPI Railway service + its SESSION_SECRET vars (Railway-side, untouched — backend-v2 still references them). Viktor: full decommission (backend-v2 is source of truth; rollback recoverable from git).

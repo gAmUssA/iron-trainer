@@ -73,10 +73,7 @@ jobs:
           # (including a clean instant exit) is a startup failure.
           test "$code" -eq 124
 
-  # The FastAPI↔backend-v2 strangler parity gate was retired 2026-07-21: FastAPI
-  # is decommissioned and no longer runs in parallel, so backend-v2 is the source
-  # of truth and is free to diverge from (and fix bugs in) the old FastAPI
-  # behavior. The `test` job above is the JVM gate; UI/iOS have their own. The
-  # parity harness (backend/contract_tests, run_parity.sh) is left in place for
-  # reference until bean foi1 removes it. See also gy48 (the first intentional
-  # divergence: swim rest intervals).
+  # The FastAPI↔backend-v2 strangler parity gate was retired 2026-07-21, and the
+  # whole FastAPI app + parity harness were deleted with the full decommission
+  # (bean foi1). backend-v2 (Quarkus) is the source of truth; the `test` job above
+  # is the JVM gate and the web/iOS have their own.
