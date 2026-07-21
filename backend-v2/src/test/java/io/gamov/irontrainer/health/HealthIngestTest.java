@@ -89,6 +89,21 @@ class HealthIngestTest {
     }
 
     @Test
+    void localDayUsesTimestampOwnOffsetNotUtc() {
+        // The fast-path day extraction must key by the LOCAL day (the string's date
+        // part in its own offset), never a UTC-shifted day. 23:30 -0400 is 03:30 UTC
+        // the next day, but the local day is still the 13th.
+        HealthIngest.Result r = HealthIngest.parsePayload(Map.of("data", Map.of("metrics", List.of(
+                metric("resting_heart_rate", "bpm", List.of(
+                        rec("date", "2026-07-13 23:30:00 -0400", 50.0))),
+                metric("vo2max", "x", List.of(                 // ISO 'T' + colon offset
+                        rec("date", "2026-07-14T00:15:00-04:00", 55.0)))))));
+        assertEquals(50.0, r.days.get("2026-07-13").get("rhr_bpm"));
+        assertEquals(55.0, r.days.get("2026-07-14").get("vo2max"));
+        assertTrue(r.days.get("2026-07-14") != null && r.days.get("2026-07-14").containsKey("vo2max"));
+    }
+
+    @Test
     void parsesExpandedHaeMetricsMaxAvgAndConversions() {
         Map<String, Object> payload = Map.of("data", Map.of("metrics", List.of(
                 // gauge → averaged
