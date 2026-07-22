@@ -4,39 +4,11 @@ on:
   push:
   pull_request:
 
+# The FastAPI `backend` (pytest) and `contract` (cross-impl HTTP suite) jobs were
+# removed 2026-07-21 with the full FastAPI decommission (bean foi1) — backend-v2
+# (Quarkus) is the source of truth and has its own gate in backend-v2.yml. This
+# workflow now builds the web frontend.
 jobs:
-  backend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: iron
-          POSTGRES_DB: iron
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv venv --python 3.12
-      - run: uv pip install -e ".[dev]"
-      - name: Lint
-        run: uv run ruff check app
-      - name: Tests (SQLite)
-        run: uv run pytest -q
-      - name: Tests (Postgres — dialect parity)
-        run: uv run pytest -q
-        env:
-          TEST_DATABASE_URL: postgresql+psycopg://postgres:iron@localhost:5432/iron
-
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -49,19 +21,3 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run build
-
-  contract:
-    # Black-box HTTP suite — the cross-implementation harness for the Quarkus
-    # migration. Runs against the FastAPI app here; the Quarkus side runs the
-    # SAME suite per migrated vertical.
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv venv --python 3.12
-      - run: uv pip install -e ".[dev]"
-      - name: Contract suite over HTTP
-        run: ./contract_tests/run_local.sh

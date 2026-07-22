@@ -10,9 +10,10 @@ in SQLite.
 
 ## Stack
 
-- **Backend:** Python / FastAPI + SQLModel/SQLAlchemy + Alembic (`backend/`) —
-  swappable DB: **SQLite** local-first by default, **Postgres/Supabase** via
-  `DATABASE_URL`
+- **Backend:** Java / Quarkus (GraalVM native) + Hibernate ORM with Panache +
+  Flyway (`backend-v2/`), on **Postgres/Supabase**. Also serves the built web SPA
+  (single front door). *(The original Python/FastAPI backend was decommissioned
+  2026-07-21 — bean foi1.)*
 - **Frontend:** React (Vite) + Recharts (`frontend/`), tabbed UI (Dashboard /
   Training Plan / Trends / Thresholds), responsive/mobile-friendly with light &
   dark themes (header toggle, persisted) — Space Grotesk + IBM Plex Mono
@@ -32,13 +33,11 @@ in SQLite.
 
    When creating the Strava app, set **Authorization Callback Domain** to `localhost`.
 
-2. **Backend**
+2. **Backend** (Quarkus — see [`backend-v2/README.md`](backend-v2/README.md) for details)
 
    ```bash
-   cd backend
-   uv venv --python 3.12
-   uv pip install -e ".[dev]"
-   uv run uvicorn app.main:app --reload --port 8000
+   cd backend-v2
+   ./mvnw quarkus:dev          # live-reload dev mode on :8080 (Dev UI at /q/dev/)
    ```
 
 3. **Frontend** (separate terminal)
@@ -117,25 +116,14 @@ export, device-pairing live sync).
 | GET      | `/api/export/workout/{id}.fit` · `.zwo` · `.itw`             | single workout file                         |
 | GET      | `/api/export/week/{week_start}.zip` · `/api/export/plan.zip` | bundles                                     |
 
-## Tasks (all via `uv`)
+## Tasks (Quarkus / Maven)
 
-Run from the `backend/` directory. `DATA_DIR` selects the database (defaults to `./data`).
+Run from the `backend-v2/` directory. Flyway migrations apply automatically at
+startup in dev/test. See [`backend-v2/README.md`](backend-v2/README.md) for more.
 
 ```bash
-uv run uvicorn app.main:app --reload --port 8000   # dev API (with frontend proxy on :5173)
-uv run iron-serve                                  # production-style serve (API + built UI)
-uv run pytest                                      # test suite (SQLite, fast)
-uv run pytest --pg                                 # same suite on a throwaway Postgres (testcontainers)
-TEST_DATABASE_URL=postgresql+psycopg://… uv run pytest   # …or point at an existing Postgres
-uv run ruff check app                              # lint
-uv run alembic upgrade head                        # apply DB migrations (auto on startup too)
-
-# Re-run activity de-duplication on the existing DB (no full re-sync):
-uv run iron-dedup                                  # full: fetch device names (bike→Edge, swim/run→Watch)
-uv run iron-dedup --no-fetch                       # offline: cluster by data only (no Strava calls)
-uv run iron-dedup --throttle 0.5 --limit 100       # gentler on Strava rate limits
-
-# Explore the UI without Strava (demo data):
-DATA_DIR=./data/demo uv run python scripts/seed_demo.py
-DATA_DIR=./data/demo uv run uvicorn app.main:app --port 8000
+./mvnw quarkus:dev                                 # live-reload dev API on :8080 (Dev UI at /q/dev/)
+./mvnw test                                        # JVM test suite (Dev Services spins up Postgres)
+./mvnw package                                     # build the runnable JAR
+./mvnw package -Dnative -Dquarkus.native.container-build=true   # GraalVM native image
 ```
