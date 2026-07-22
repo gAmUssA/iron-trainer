@@ -3,9 +3,9 @@
 title: Sign in with Apple — Strava-free auth (iOS + backend)
 status: todo
 type: feature
-priority: high
+priority: critical
 created_at: 2026-07-21T23:54:20Z
-updated_at: 2026-07-21T23:54:45Z
+updated_at: 2026-07-22T21:48:30Z
 blocking:
     - iron-trainer-k5d0
 ---
@@ -26,3 +26,5 @@ Difficulty: MODERATE (~1 focused session, iOS-first). Slots into the existing au
 - Account linking (attach Apple id to an existing Strava-created account, and vice-versa).
 
 Verify on device via TestFlight (SIWA needs a real device/Apple ID). Follows the worktree → build → PR → review flow.
+
+## Prioritized 2026-07-22 (Viktor) — implement next.
