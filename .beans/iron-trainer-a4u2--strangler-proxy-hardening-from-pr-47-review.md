@@ -1,11 +1,11 @@
 ---
 # iron-trainer-a4u2
 title: 'strangler proxy hardening (from PR #47 review)'
-status: todo
+status: scrapped
 type: task
 priority: normal
 created_at: 2026-07-16T03:01:14Z
-updated_at: 2026-07-16T03:01:14Z
+updated_at: 2026-07-22T17:05:07Z
 ---
 
 Cleanups on the already-merged strangler proxy (app/strangler.py, config.py) surfaced by code-review; none block current traffic (exports only), but the seam is now shared by every future vertical:
@@ -16,3 +16,5 @@ Cleanups on the already-merged strangler proxy (app/strangler.py, config.py) sur
 4. Proxy forwards only the Authorization header, dropping If-None-Match/If-Modified-Since/Range → no 304/206 (full re-download). Low severity for tiny .fit/.itw bodies; revisit if a larger-payload vertical is proxied.
 
 Source: code-review of feature/readiness-tz (strangler.py:76/85, config.py:52/111).
+
+## Scrapped (2026-07-22): FastAPI strangler proxy no longer exists (foi1 decommission).

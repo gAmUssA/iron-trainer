@@ -5,8 +5,8 @@ AI-adaptive triathlon training for **IRONMAN 70.3 New York — Sat Sep 26, 2026*
 Pulls your Strava history, computes training load (TSS / CTL / ATL / TSB), generates
 an LLM-adaptive 70.3 plan (bounded by a safety validator), exports structured `.fit` /
 `.zwo` / `.itw` workouts you import into **TrainingPeaks** / **Garmin** / **Apple
-Workouts**, and tracks progress in a local web dashboard. All data is stored locally
-in SQLite.
+Workouts**, ingests recovery (sleep / HRV / resting-HR) natively from **Apple Health**,
+and tracks progress in a web dashboard.
 
 ## Stack
 
@@ -14,12 +14,13 @@ in SQLite.
   Flyway (`backend-v2/`), on **Postgres/Supabase**. Also serves the built web SPA
   (single front door). *(The original Python/FastAPI backend was decommissioned
   2026-07-21 — bean foi1.)*
-- **Frontend:** React (Vite) + Recharts (`frontend/`), tabbed UI (Dashboard /
-  Training Plan / Trends / Thresholds), responsive/mobile-friendly with light &
-  dark themes (header toggle, persisted) — Space Grotesk + IBM Plex Mono
-- **AI:** Claude API for plan generation
+- **Frontend:** React (Vite) + Recharts (`frontend/`), tabbed UI (Today / Training
+  Plan / Fitness / Recovery / Nutrition / Tests / Settings), responsive/mobile-friendly
+  with light & dark themes (header toggle, persisted) — Space Grotesk + IBM Plex Mono
+- **AI:** Claude API for plan generation (via LangChain4j)
 - **Integrations:** Strava API (read), TrainingPeaks / Garmin (file export),
-  Apple Workouts via the `.itw` file + iOS 18 helper app (`ios/`)
+  Apple Workouts via the `.itw` file + native Apple Health ingestion in the
+  iOS 18 helper app (`ios/`)
 
 ## Quick start (local dev)
 
@@ -45,16 +46,18 @@ in SQLite.
    ```bash
    cd frontend
    npm install
-   npm run dev          # http://localhost:5173 (proxies /api to :8000)
+   npm run dev          # http://localhost:5173 (proxies /api to Quarkus on :8080)
    ```
 
-## Run as a single container
+Quarkus dev mode uses **Dev Services** to start a throwaway Postgres automatically —
+no local DB setup needed.
 
-```bash
-docker compose up --build       # http://localhost:8000
-```
+## Production image
 
-SQLite + generated workout files persist in the `iron_data` volume (`/data`).
+The production container is `backend-v2/Dockerfile` (built from the repo root: it
+compiles the SPA, injects it into the Quarkus resources, and builds a GraalVM native
+image that serves both the API and the web app on `:8080`). Deploy details in
+[`docs/deploy.md`](docs/deploy.md).
 
 ## How it works
 

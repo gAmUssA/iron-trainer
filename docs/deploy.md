@@ -1,188 +1,103 @@
 # Deploying Iron Trainer
 
-The app is a single container: FastAPI serves both the API and the built React
-app. It runs identically on your laptop (SQLite, no login) and in production
-(Postgres + Login with Strava) — switched entirely by environment variables, no
-code changes. The recommended production target is **Railway + Supabase** (below).
+The app is a single container built from **`backend-v2/Dockerfile`** (repo-root build
+context): Quarkus (GraalVM native) serves both the API and the built React SPA on
+`:8080`. Production runs on **Railway + Supabase (Postgres)**.
 
-## Local (Docker)
+> The original Python/FastAPI backend was decommissioned 2026-07-21 (bean `foi1`).
+> backend-v2 (Quarkus) is the source of truth.
 
-```bash
-cp .env.example .env   # fill in STRAVA_* and ANTHROPIC_API_KEY
-docker compose up --build
-# open http://localhost:8000
-```
+## Local dev
 
-Data persists in the `iron_data` Docker volume. Back it up by copying
-`/data/iron_trainer.db` out of the volume.
-
-## Fly.io (≈ free for personal use)
+No container needed — Quarkus dev mode starts a throwaway Postgres via **Dev Services**:
 
 ```bash
-fly launch --no-deploy            # generates fly.toml; pick a name/region
-fly volumes create iron_data --size 1 --region <your-region>
+cd backend-v2
+./mvnw quarkus:dev          # :8080, Dev UI at /q/dev/
 ```
 
-Add to `fly.toml`:
+Run the SPA against it in a second terminal (`cd frontend && npm run dev`, proxies
+`/api` → `:8080`). See [`backend-v2/README.md`](../backend-v2/README.md) for more.
 
-```toml
-[mounts]
-  source = "iron_data"
-  destination = "/data"
+## Production — Railway + Supabase
 
-[env]
-  DATA_DIR = "/data"
-  CORS_ORIGINS = "https://<your-app>.fly.dev"
-  STRAVA_REDIRECT_URI = "https://<your-app>.fly.dev/api/strava/callback"
-```
-
-Set secrets (never bake them into the image):
-
-```bash
-fly secrets set STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... ANTHROPIC_API_KEY=...
-fly deploy
-```
-
-Then update your **Strava API app** "Authorization Callback Domain" to
-`<your-app>.fly.dev`.
-
-## Railway + Supabase (recommended production)
-
-The container is **stateless** (data lives in Postgres; workout files are
-generated in-memory and streamed), so no volume is needed — just point it at a
-Supabase database.
+The container is **stateless** (all data lives in Postgres; workout files are generated
+in-memory and streamed), so no volume is needed.
 
 ### 1. Supabase (database)
 
-1. Create a Supabase project; wait for it to provision.
-2. **Connect → Session pooler** connection string. Use the *session pooler*
-   (port 5432, host `…pooler.supabase.com`, user `postgres.<project-ref>`): it's
-   **IPv4** (Railway egress is IPv4; the direct connection is IPv6-only) and
-   supports the prepared statements + DDL that the app and Alembic use.
-3. Set it as `DATABASE_URL`, keeping `?sslmode=require`. You can paste Supabase's
-   raw `postgresql://…` string as-is — the app normalizes it to the psycopg-v3
-   driver automatically:
+1. Create a Supabase project.
+2. Use the **Session pooler** connection (port 5432, host `…pooler.supabase.com`, user
+   `postgres.<project-ref>`) — it's **IPv4** (Railway egress is IPv4; the direct
+   connection is IPv6-only) and supports the prepared statements + DDL the app uses.
+3. backend-v2 reads the database as three separate variables (not one URL):
 
    ```
-   DATABASE_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
-   # (equivalently postgresql+psycopg://…)
+   DATABASE_JDBC_URL=jdbc:postgresql://<host>.pooler.supabase.com:5432/postgres?sslmode=require
+   DATABASE_USERNAME=postgres.<project-ref>
+   DATABASE_PASSWORD=<password>
    ```
 
-No manual migration step — the app runs `alembic upgrade head` on startup.
+### 2. ⚠️ Migrations are NOT auto-applied in production
 
-### 2. Railway (app)
+Flyway `migrate-at-start` is enabled only under `%dev`/`%test`. **In production the app
+does not run migrations at startup** (bean `backend-v2-railway-deploy`). Any new
+column/table must be applied to Supabase **manually, before** the image that expects
+it cuts over — otherwise the new deploy 500s on the changed schema:
 
-1. **New Project → Deploy from GitHub repo.** Railway uses `railway.toml` +
-   the `Dockerfile`; it auto-redeploys on every push to the linked branch.
-2. Set service **Variables** (no `/data` volume needed):
+```bash
+psql "<supabase-connection-string>" -c "ALTER TABLE … ADD COLUMN IF NOT EXISTS …;"
+```
+
+### 3. Railway (app service)
+
+1. **New Project → Deploy from GitHub repo.**
+2. Service settings:
+   - **Root Directory:** `/` (repo root — the Docker build needs `frontend/` in context
+     to compile the SPA into the image).
+   - **Config File:** `backend-v2/railway.toml` (so the service does **not** read the
+     root `railway.toml`, which is only the retired FastAPI service's never-build
+     sentinel). It builds via `backend-v2/Dockerfile` and redeploys on pushes touching
+     `backend-v2/**` or `frontend/**`.
+3. **Variables:**
 
    ```
-   DATABASE_URL=postgresql+psycopg://…pooler.supabase.com:5432/postgres?sslmode=require
-   STRAVA_CLIENT_ID=…
-   STRAVA_CLIENT_SECRET=…
-   ANTHROPIC_API_KEY=…
-   AUTH_REQUIRED=true
+   DATABASE_JDBC_URL=…   DATABASE_USERNAME=…   DATABASE_PASSWORD=…
    SESSION_SECRET=<long random string>
-   ALLOWED_STRAVA_IDS=33050502           # your athletes' Strava ids
-   COOKIE_SECURE=true
-   CORS_ORIGINS=https://<app>.up.railway.app
+   STRAVA_CLIENT_ID=…    STRAVA_CLIENT_SECRET=…
    STRAVA_REDIRECT_URI=https://<app>.up.railway.app/api/strava/callback
+   ANTHROPIC_API_KEY=…
+   ALLOWED_STRAVA_IDS=<comma-separated Strava athlete ids>   # login allowlist
+   CORS_ORIGINS=https://<app>.up.railway.app
    ```
 
-3. Generate the Railway domain, then set `CORS_ORIGINS` + `STRAVA_REDIRECT_URI`
-   to it and update the **Strava API app** "Authorization Callback Domain" to
+4. Health check path: `/q/health` (also `/api/health`).
+5. Point your **Strava API app** "Authorization Callback Domain" at
    `<app>.up.railway.app`.
-4. Railway health-checks `/api/health` (liveness, from `railway.toml`). For a
-   readiness check that also verifies the database, hit `/api/health?deep=1`
-   (returns 503 if Postgres is unreachable) — useful to confirm `DATABASE_URL`.
 
-### What's automated vs one-time
+### After every backend-v2 (or frontend) merge — verify the deploy
 
-| Automated                                                                                 | One-time setup                                            |
-|-------------------------------------------------------------------------------------------|-----------------------------------------------------------|
-| **DB migrations** — `alembic upgrade head` on every startup                               | Create the Supabase project + copy its connection string  |
-| **Continuous deploy** — Railway redeploys on `git push`                                   | Set Railway env vars (above)                              |
-| **CI** — GitHub Actions runs tests (SQLite + Postgres) + lint + frontend build on push/PR | Point the Strava app's callback domain at the Railway URL |
-| **Strava token refresh** — handled at runtime                                             | Add each athlete's Strava id to `ALLOWED_STRAVA_IDS`      |
-
-Possible future automation: Railway **PR preview environments**, a scheduled
-**race-catalog refresh**, and Dependabot for dependency bumps.
-
-## Database: SQLite (default) or Postgres/Supabase
-
-The backend is swappable by connection URL (SQLAlchemy/SQLModel + Alembic).
-
-- **Local/dev (default):** leave `DATABASE_URL` empty → SQLite file under
-  `DATA_DIR`. Nothing to set up.
-- **Postgres / Supabase:** set `DATABASE_URL` to a SQLAlchemy URL. Schema is
-  created/upgraded by Alembic; the app runs `alembic upgrade head` automatically
-  on startup (`init_db()`), so a fresh Postgres comes up empty-then-migrated with
-  no manual step. You can also run it by hand: `cd backend && uv run alembic
-  upgrade head`.
+Railway deploys can **fail silently**: a bad build leaves the previous image serving,
+so CI-green ≠ deploy-healthy (bean `backend-v2-railway-deploy`). Confirm the front door
+after each merge:
 
 ```bash
-# Supabase: use the POOLED connection (pgBouncer, port 6543) + SSL.
-DATABASE_URL=postgresql+psycopg://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres?sslmode=require
+curl -s -o /dev/null -w "%{http_code}\n" https://<app>.up.railway.app/api/health   # expect 200
+# For a frontend change, also confirm the served SPA bundle hash actually changed:
+curl -s https://<app>.up.railway.app/ | grep -oE 'assets/index-[A-Za-z0-9_]+\.js'
 ```
 
-Notes:
-- Deploys **start fresh** on Postgres — connect Strava and run a full backfill on
-  the new DB (no SQLite→Postgres data copy). The de-dup/device-name work done
-  locally re-runs there.
-- Supabase's auth/realtime/storage aren't used — it's just managed Postgres here.
-- Strava ids are stored as `BIGINT` (they exceed 32-bit `int`); dates/JSON stay
-  as text for cross-DB parity. Schema changes go through Alembic
-  (`uv run alembic revision --autogenerate -m "…"` → review → `upgrade head`).
-- An existing **local SQLite** DB created before this change is `stamp`ed to the
-  initial revision on first startup (data preserved, not rebuilt).
+## Auth & multi-user
 
-## Notes
+Login is **Sign in with Strava** (OAuth). The callback resolves the user by their Strava
+athlete id (find-or-create), stores tokens on that athlete row, and sets a signed-cookie
+session (`SESSION_SECRET`). Each user's activities / plan / metrics are isolated by
+`athlete_id`; the race catalog is shared.
 
-- The single Anthropic call per plan generation keeps cost negligible; weekly
-  `replan-week` calls are likewise cheap.
-- Keep the box private to you — it holds your Strava tokens and training data.
-- Run the test suite against Postgres anytime with
-  `TEST_DATABASE_URL=postgresql+psycopg://… uv run pytest` (proves dialect parity).
-
-## Race selection
-
-Each athlete picks their race in **Thresholds → Race** from a bundled IRONMAN
-catalog (70.3 + full, H2 2026, `app/data/races_h2_2026.json`) or enters a custom
-race. The selection lives on the athlete row; the countdown, cut-offs (derived
-from distance: 70.3 = 1:10/5:30/8:30, full = 2:20/10:30/17:00) and the finish
-projection (leg distances 70.3 vs 140.6) all follow it. Env `RACE_*`/`CUTOFF_*`
-remain the fallback until a race is picked. **Refresh the catalog** by editing the
-JSON (dates are best-effort — verify each official athlete guide) and restarting;
-`seed_races` upserts by slug.
-
-## Multi-user (Login with Strava)
-
-The app is **multi-tenant**. Locally it stays single-user with no login
-(`AUTH_REQUIRED=false`, the default) — the existing behaviour. To run it as a
-hosted multi-user app:
-
-```bash
-AUTH_REQUIRED=true
-SESSION_SECRET=<a long random string>          # signs the session cookie
-ALLOWED_STRAVA_IDS=33050502,12345678           # who may log in (empty = anyone)
-```
-
-- **Auth = Login with Strava.** The OAuth callback resolves the user by their
-  Strava athlete id (find-or-create), stores tokens on that athlete row, and sets
-  a signed-cookie session. Each user's activities / plan / metrics are isolated by
-  `athlete_id`; the `race` catalog is shared.
-- **Allowlist** (`ALLOWED_STRAVA_IDS`) gates who can register — keep it set for a
-  private deployment. Empty allows anyone (logged with a startup warning). Note this
-  is *in addition to* Strava's own per-app connected-athlete cap (new apps = 1
-  athlete; request more via the Developer Program form). See
-  [Strava API compliance](strava-compliance.md).
-- **Cookies:** the frontend sends `credentials: include`; CORS already allows
-  credentials for the configured origin. Behind TLS, set `COOKIE_SECURE=true`
-  (marks the session cookie `Secure`) and serve same-origin so the cookie flows.
-- **Strava API rate limits are per app** (shared across all users) — another
-  reason to keep the allowlist tight.
-- **Existing single-user data** is owned by `athlete_id=1`; that row already holds
-  your Strava id, so your first login attaches to it (no data migration needed).
-
-Local development is unchanged: leave `AUTH_REQUIRED=false` and the app runs as
-athlete 1 with no login.
+- **`ALLOWED_STRAVA_IDS`** gates who may register (comma-separated; empty = anyone).
+  Keep it set for a private deployment. This is *in addition to* Strava's own per-app
+  connected-athlete cap — see [Strava API compliance](strava-compliance.md).
+- **Strava API rate limits are per app** (shared across users) — another reason to keep
+  the allowlist tight.
+- A native **Sign in with Apple** path (Strava-free accounts) is planned — bean
+  `iron-trainer-3e6w`.

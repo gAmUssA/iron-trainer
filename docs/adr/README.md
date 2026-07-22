@@ -44,3 +44,33 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0019](0019-health-auto-export-ingestion.md) | Recovery-data ingestion via Health Auto Export (sleep/HRV/RHR → readiness) | Accepted |
 | [0020](0020-backend-v2-quarkus-strangler.md) | Backend v2: Quarkus strangler migration decisions | Accepted |
 | [0021](0021-web-ui-information-architecture.md) | Web UI information architecture: tabs map to questions (Settings/Fitness moves) | Accepted |
+| [0022](0022-backend-v2-session-cookie-verification.md) | Backend v2: session-cookie verification (Phase 7 keystone, 2026-07-17) | Accepted |
+| [0023](0023-strangler-write-forwarding.md) | Strangler write forwarding (POST/cookies) with asymmetric fallback | Accepted |
+| [0024](0024-backend-v2-races-vertical.md) | Backend v2: races vertical | Accepted |
+| [0025](0025-backend-v2-analytics-reads.md) | Backend v2: analytics reads (weekly volume + activities feed) | Accepted |
+| [0026](0026-backend-v2-trends-vertical.md) | Backend v2: trends vertical (insights engine) | Accepted |
+| [0027](0027-backend-v2-race-readiness.md) | Backend v2: race-readiness projection | Accepted |
+| [0028](0028-backend-v2-nutrition-llm.md) | Backend v2: nutrition race-day LLM regenerate | Accepted |
+| [0029](0029-backend-v2-async-job-envelope.md) | Backend v2: async job envelope for write endpoints | Accepted |
+| [0030](0030-backend-v2-idempotency-keys.md) | Backend v2: idempotency keys for proxied writes | Accepted |
+| [0031](0031-backend-v2-plan-read.md) | Backend v2: plan read (GET /api/plan) | Accepted |
+| [0032](0032-backend-v2-plan-compliance.md) | Backend v2: plan compliance (GET /api/plan/compliance) | Accepted |
+| [0033](0033-backend-v2-plan-generate.md) | Backend v2: plan generation (POST /api/plan/generate) | Accepted |
+| [0034](0034-backend-v2-plan-replan-week.md) | Backend v2: replan one week (POST /api/plan/replan-week) | Accepted |
+| [0035](0035-backend-v2-plan-reconcile.md) | Backend v2: reconcile (POST /api/plan/reconcile) | Accepted |
+| [0036](0036-backend-v2-plan-checkin.md) | Backend v2: weekly check-in (POST /api/plan/checkin) | Accepted |
+| [0037](0037-backend-v2-strava-oauth-connect.md) | Backend v2: Strava OAuth part 1 — session minting + connect | Accepted |
+| [0038](0038-backend-v2-strava-oauth-callback-disconnect.md) | Backend v2: Strava OAuth part 2 — callback (login) + disconnect | Accepted |
+| [0039](0039-backend-v2-strava-gdpr-archive-import.md) | Backend v2: Strava GDPR archive import | Accepted |
+| [0040](0040-backend-v2-app-tail-status-health-profile.md) | Backend v2: app tail — health, status, me, logout, profile read | Accepted |
+| [0041](0041-backend-v2-health-recovery-vertical.md) | Backend v2: health vertical — recovery read + Health-Auto-Export ingest | Accepted |
+| [0042](0042-backend-v2-profile-update.md) | Backend v2: PUT /api/athlete/profile (edit thresholds) | Accepted |
+| [0043](0043-backend-v2-export-zip-bundles.md) | Backend v2: export ZIP bundles (plan.zip + week.zip) | Accepted |
+| [0044](0044-backend-v2-device-pairing.md) | Backend v2: device pairing (native-app token minting) | Accepted |
+| [0045](0045-health-auto-export-server-adoption.md) | Adopt Health Auto Export payload breadth + Grafana (investigation) | Accepted |
+| [0046](0046-hae-expanded-metric-mapping.md) | Expanded Health Auto Export metric mapping (FTP, HR recovery, load) | Accepted |
+| [0047](0047-recovery-trends-and-ios-glance-widget.md) | Recovery trends (web) + readiness glance widget (iOS) | Accepted |
+| [0048](0048-native-healthkit-ingestion-auth-foundation.md) | Native HealthKit ingestion: authorization & entitlements foundation | Accepted |
+| [0049](0049-healthkit-reader-layer-delta-sync.md) | HealthKit reader layer: anchored delta-sync contract | Accepted |
+| [0050](0050-healthkit-night-assembler.md) | HealthKit night assembler + first unit-test target | Accepted |
+| [0051](0051-native-healthkit-ingest-and-delivery.md) | Native HealthKit ingest client + delivery | Accepted |
