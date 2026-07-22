@@ -10,13 +10,7 @@ import {
   type WeekCompliance,
   type WorkoutFueling,
 } from "../api";
-
-function fmtDur(s: number | null): string {
-  if (!s) return "—";
-  const h = Math.floor(s / 3600);
-  const m = Math.round((s % 3600) / 60);
-  return h ? `${h}h${m.toString().padStart(2, "0")}` : `${m}min`;
-}
+import { SPORT, fmtDur } from "../sport";
 
 function phaseColor(phase: string): string {
   if (phase === "base") return "#4ade80";
@@ -30,13 +24,6 @@ function glow(hex: string): string {
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-const SPORT: Record<string, { color: string; label: string }> = {
-  Swim: { color: "#38bdf8", label: "SWIM" },
-  Bike: { color: "#ffb454", label: "BIKE" },
-  Run: { color: "#4ade80", label: "RUN" },
-  Brick: { color: "#9aa0ac", label: "BRICK" },
-  Strength: { color: "#9aa0ac", label: "STR" },
-};
 const STATUS: Record<string, { mark: string; cls: string }> = {
   completed: { mark: "✓", cls: "done" },
   skipped: { mark: "✗", cls: "skip" },

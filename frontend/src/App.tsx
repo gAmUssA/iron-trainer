@@ -24,6 +24,7 @@ import { CheckinCard } from "./components/CheckinCard";
 import { ConnectCard, HealthIngestCard, ProfileEditor, ZonesCard } from "./components/Setup";
 import { TestsView } from "./components/TestsView";
 import { TodayCall } from "./components/TodayCall";
+import { TodaySessionCard } from "./components/TodaySessionCard";
 import { PrCards, TrendsView } from "./components/TrendsView";
 import { RecoveryTrendsView } from "./components/RecoveryTrendsView";
 import { useTheme } from "./theme";
@@ -33,7 +34,9 @@ import { startTour } from "./tour";
 type Tab = "dashboard" | "plan" | "trends" | "recovery" | "nutrition" | "tests" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "dashboard", label: "Dashboard" },
+  // id stays "dashboard" (state/deep-link stability); label is the IA-overhaul
+  // rename to "Today" (bean 6xpm / uywr).
+  { id: "dashboard", label: "Today" },
   { id: "plan", label: "Training Plan" },
   { id: "trends", label: "Fitness" },
   { id: "recovery", label: "Recovery" },
@@ -271,6 +274,9 @@ export default function App() {
         {tab === "dashboard" && (
           <div className="tab-panel">
             {todayCall && <TodayCall readiness={todayCall} />}
+            {plan?.plan && (
+              <TodaySessionCard workouts={plan.workouts} onOpenPlan={() => setTab("plan")} />
+            )}
             {athlete && (
               // Thin sync-status line replacing the ConnectCard (moved to Settings).
               // Uses athlete.connected — already in hand, no extra API call.
@@ -303,7 +309,7 @@ export default function App() {
         )}
 
         {/* Fitness — "am I getting fitter?" PMC + sport trends. (Race readiness
-            and personal records live on the Dashboard; tests have their own tab.) */}
+            and personal records live on the Today tab; tests have their own tab.) */}
         {tab === "trends" && (
           <div className="tab-panel">
             {pmcTotal > 0 ? (

@@ -7,10 +7,10 @@
 
 import Walkthrough, { type WalkthroughStep } from "@ronanarm/walkthroughjs";
 
-// The app is tabbed; the tour runs on the Dashboard tab and points at the nav
+// The app is tabbed; the tour runs on the Today tab and points at the nav
 // to introduce the other screens (Training Plan / Fitness / Nutrition / Tests /
 // Settings). The PMC fitness/form chart lives on the Fitness tab, so it's
-// introduced via the nav step; race readiness is on the Dashboard and anchored
+// introduced via the nav step; race readiness is on the Today tab and anchored
 // directly.
 const ALL_STEPS: WalkthroughStep[] = [
   {
@@ -22,7 +22,7 @@ const ALL_STEPS: WalkthroughStep[] = [
   {
     element: "#tour-nav",
     title: "Your screens",
-    text: "Dashboard (today's call, race readiness, records & check-in), Training Plan, Fitness, Recovery, Nutrition, Tests and Settings. Fitness holds the PMC fitness/form chart and sport trends (the TrainingPeaks CTL/ATL/TSB model); Recovery trends your sleep, HRV, resting-HR and daily load. Explore each after the tour.",
+    text: "Today (today's session, your readiness call, race readiness, records & check-in), Training Plan, Fitness, Recovery, Nutrition, Tests and Settings. Fitness holds the PMC fitness/form chart and sport trends (the TrainingPeaks CTL/ATL/TSB model); Recovery trends your sleep, HRV, resting-HR and daily load. Explore each after the tour.",
     position: "bottom",
   },
   {
