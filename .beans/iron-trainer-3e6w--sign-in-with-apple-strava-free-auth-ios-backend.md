@@ -5,7 +5,7 @@ status: todo
 type: feature
 priority: critical
 created_at: 2026-07-21T23:54:20Z
-updated_at: 2026-07-22T21:48:30Z
+updated_at: 2026-07-22T21:55:44Z
 blocking:
     - iron-trainer-k5d0
 ---
@@ -16,9 +16,9 @@ Difficulty: MODERATE (~1 focused session, iOS-first). Slots into the existing au
 
 ## Scope (iOS-native first)
 - [ ] iOS: AuthenticationServices — SignInWithAppleButton → identity token; POST to a new backend endpoint for a device bearer. Apple provides the whole UI/flow (~1-2h).
-- [ ] Backend: new endpoint (e.g. POST /api/auth/apple). Verify Apple's JWT — fetch Apple's JWKS (https://appleid.apple.com/auth/keys), validate iss=https://appleid.apple.com, aud=our bundle id, exp; read stable `sub`. No JWT infra exists yet → add a lightweight JWKS verify (or quarkus-oidc).
-- [ ] Account: find-or-create Athlete by a new nullable `apple_user_id` column; handle Apple's private-relay email. Mint a bearer (reuse Devices) / session.
-- [ ] DB: add apple_user_id column + Flyway migration. NOTE the prod gotcha — migrate-at-start is OFF in prod, so manual ALTER on Supabase BEFORE the image cuts over ([[backend-v2-railway-deploy]]).
+- [x] Backend: POST /api/auth/apple — AppleAuth verifies the JWT via Apple's JWKS (nimbus-jose-jwt), checks iss/aud/exp, reads sub; AppleResource find-or-creates by appleUserId + mints a bearer (device/claim shape). 2 smoke tests pass.
+- [x] Account: find-or-create Athlete by apple_user_id; mint bearer via Devices.createBearerToken.
+- [x] DB: apple_user_id column + V3 migration (partial unique index). Prod: manual Supabase ALTER before deploy still required.
 - [ ] Apple Developer: enable the Sign in with Apple capability on App ID io.gamov.irontrainer.helper (native needs no Service ID/key — verify against Apple's public keys).
 
 ## Deferred
