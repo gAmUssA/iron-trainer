@@ -5,7 +5,7 @@ status: completed
 type: task
 priority: normal
 created_at: 2026-07-17T04:45:21Z
-updated_at: 2026-07-21T23:00:26Z
+updated_at: 2026-07-22T04:31:05Z
 parent: iron-trainer-eom4
 ---
 
@@ -52,3 +52,6 @@ FastAPI↔backend-v2 'parity' CI job removed from .github/workflows/backend-v2.y
 
 ## Full decommission done (2026-07-21)
 Deleted the entire FastAPI footprint: backend/ tree (app/alembic/contract_tests/tests/scripts, pyproject.toml, uv.lock, alembic.ini — 99 files), root FastAPI Dockerfile + railway.toml (rollback config). Removed the FastAPI-based CI jobs (ci.yml 'backend' pytest + 'contract' HTTP suite); ci.yml now builds only the frontend. Updated README (backend = Quarkus/backend-v2) + backend-v2.yml parity comment. 101 files / 14,705 lines removed. KEPT: backend-v2 (incl. Py.java/PyJson — the live output contract for web/iOS, used by 32 files), the stopped FastAPI Railway service + its SESSION_SECRET vars (Railway-side, untouched — backend-v2 still references them). Viktor: full decommission (backend-v2 is source of truth; rollback recoverable from git).
+
+## Railway sentinel (2026-07-22)
+Deleting root railway.toml in the decommission removed the never-match watchPatterns sentinel that kept the STOPPED FastAPI service (b9a5a044) from auto-building on pushes → 3 FAILED railpack builds (cosmetic; it serves nothing, backend-v2 is the front door). Restored a minimal root railway.toml with ONLY the sentinel — FastAPI deploys now SKIP. PERMANENT FIX: disconnect the FastAPI service's GitHub source in the Railway UI, after which root railway.toml can be deleted. Keep the sentinel until then.
