@@ -11,16 +11,23 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
- * Sign in with Apple → mint a device bearer for a Strava-free account (bean 3e6w).
- * The iOS app presents Apple's identity token here; we verify it, find-or-create
- * the athlete by the stable Apple id, and return a bearer in the same shape as
- * /api/device/claim so the app's existing session handling is unchanged.
+ * Sign in with Apple (bean 3e6w). Two entry points share the same verify +
+ * find-or-create/link logic:
+ *   POST /api/auth/apple      — NATIVE (iOS): identity token → device bearer.
+ *   POST /api/auth/apple/web  — WEB (Sign in with Apple JS): id_token → session
+ *                               cookie (mirrors the Strava web login).
+ * The response athlete shape matches /api/device/claim so existing clients are
+ * unchanged. Account linking (Strava + Apple = one account) is gated on a genuine
+ * credential — never the no-auth default-athlete fallback (see linkTarget/*).
  */
 @Path("/api/auth/apple")
 public class AppleResource {
@@ -33,69 +40,87 @@ public class AppleResource {
     @Inject
     CurrentAthlete current;
 
+    @ConfigProperty(name = "irontrainer.session-secret")
+    Optional<String> sessionSecret;
+    @ConfigProperty(name = "irontrainer.cookie-secure")
+    boolean cookieSecure;
+
     public record AppleSignInRequest(String identityToken, String deviceName) {}
 
+    // ── Native (iOS): identity token → device bearer ──────────────────────────
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Transactional
     public Map<String, Object> signIn(AppleSignInRequest req,
                                       @HeaderParam("Authorization") String authorization) {
-        if (req == null || req.identityToken() == null || req.identityToken().isBlank()) {
-            throw new WebApplicationException("Missing identityToken.", 400);
-        }
-        AppleAuth.AppleId apple = appleAuth.verify(req.identityToken());
-        Athlete athlete = resolveAthlete(apple, authorization);
+        AppleAuth.AppleId apple = verify(req);
+        Athlete athlete = resolveAthlete(apple, bearerLinkTarget(authorization));
         String name = (req.deviceName() == null || req.deviceName().isBlank())
                 ? "apple-signin" : req.deviceName();
-        String token = devices.createBearerToken(name, athlete.id);
-
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("token", token);
-        Map<String, Object> ath = new LinkedHashMap<>();
-        ath.put("name", athlete.name);
-        ath.put("strava_athlete_id", athlete.stravaAthleteId);
-        out.put("athlete", ath);
+        out.put("token", devices.createBearerToken(name, athlete.id));
+        out.put("athlete", athleteBody(athlete));
         return out;
     }
 
+    // ── Web (Sign in with Apple JS): id_token → session cookie ────────────────
+    @POST
+    @Path("/web")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Transactional
+    public Response signInWeb(AppleSignInRequest req, @HeaderParam("Cookie") String cookieHeader) {
+        AppleAuth.AppleId apple = verify(req);
+        Athlete athlete = resolveAthlete(apple, sessionLinkTarget(cookieHeader));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("athlete", athleteBody(athlete));
+        return Response.ok(body).header("Set-Cookie", sessionCookie(athlete.id)).build();
+    }
+
+    // ── shared ────────────────────────────────────────────────────────────────
+
+    private AppleAuth.AppleId verify(AppleSignInRequest req) {
+        if (req == null || req.identityToken() == null || req.identityToken().isBlank()) {
+            throw new WebApplicationException("Missing identityToken.", 400);
+        }
+        return appleAuth.verify(req.identityToken());
+    }
+
+    private Map<String, Object> athleteBody(Athlete a) {
+        Map<String, Object> ath = new LinkedHashMap<>();
+        ath.put("name", a.name);
+        ath.put("strava_athlete_id", a.stravaAthleteId);
+        return ath;
+    }
+
     /**
-     * Resolve the athlete for an Apple sign-in, with account **linking**:
-     * 1. Already bound to this Apple id → that athlete (returning user).
-     * 2. Else if the request carries a genuine LOGIN bearer (see linkTarget) whose
-     *    athlete has no Apple id → LINK the Apple id to it, so Strava + Apple are
-     *    one account.
-     * 3. Else → a fresh Strava-free account.
-     *
-     * Linking is deliberately gated on a real login bearer, NOT current.idOrNull():
-     * with auth-required off, BearerAuthFilter falls the current athlete back to the
-     * default (id 1), which would otherwise let an anonymous sign-in hijack the owner
-     * account. (Merging two pre-existing accounts is out of scope — case 1 wins. The
-     * reverse link, adding Strava to an Apple-first account, is bean 4uj1.)
+     * 1. Already bound to this Apple id → that athlete. 2. Else if `linkTarget` is a
+     * genuinely-authenticated athlete with no Apple id → LINK (Strava + Apple = one
+     * account). 3. Else → a fresh Strava-free account. `linkTarget` is null unless a
+     * real credential was presented (see bearerLinkTarget/sessionLinkTarget), so the
+     * no-auth default-athlete fallback can never be hijacked. Merging two pre-existing
+     * accounts is out of scope; the reverse link (Strava onto an Apple account) is 4uj1.
      */
-    private Athlete resolveAthlete(AppleAuth.AppleId apple, String authorization) {
+    private Athlete resolveAthlete(AppleAuth.AppleId apple, Athlete linkTarget) {
         Athlete linked = Athlete.find("appleUserId", apple.sub()).firstResult();
         if (linked != null) {
             return linked;
         }
-        Athlete target = linkTarget(authorization);
-        if (target != null && target.appleUserId == null) {
-            target.appleUserId = apple.sub();
-            target.persist();
-            LOG.infof("Linked Apple id to existing athlete %d.", target.id);
-            return target;
+        if (linkTarget != null && linkTarget.appleUserId == null) {
+            linkTarget.appleUserId = apple.sub();
+            linkTarget.persist();
+            LOG.infof("Linked Apple id to existing athlete %d.", linkTarget.id);
+            return linkTarget;
         }
         return create(apple);
     }
 
-    /**
-     * The athlete an Apple sign-in may link to — only when the request presents a
-     * genuine, login-capable bearer: an actual `Authorization: Bearer` header (so the
-     * no-auth default-athlete fallback never links), a token that resolves to a real
-     * name (not a revoked/unknown token), and NOT a scoped ingest token (which, like
-     * device minting, must not escalate). Returns null → treat as a fresh sign-in.
-     */
-    private Athlete linkTarget(String authorization) {
+    /** Link target for the NATIVE flow: only when a real, login-capable bearer is
+     * present — an actual `Authorization: Bearer` header (so the default-athlete
+     * fallback never links), resolving to a known token that is NOT a scoped ingest
+     * token (which must not escalate). Null → fresh sign-in. */
+    private Athlete bearerLinkTarget(String authorization) {
         if (authorization == null || !authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
             return null;
         }
@@ -103,15 +128,42 @@ public class AppleResource {
         if (tokenName == null || Devices.INGEST_TOKEN_NAME.equals(tokenName)) {
             return null;
         }
-        Integer cur = current.idOrNull();   // the athlete this same bearer resolved to
+        Integer cur = current.idOrNull();
         return cur == null ? null : Athlete.findById(cur);
     }
 
+    /** Link target for the WEB flow: only when a valid, signed session cookie is
+     * present (a genuinely logged-in web user, e.g. via Strava). Resolving the athlete
+     * straight from the cookie signature avoids the default-athlete fallback. */
+    private Athlete sessionLinkTarget(String cookieHeader) {
+        String secret = sessionSecret.filter(s -> !s.isBlank()).orElse(null);
+        if (cookieHeader == null || secret == null) {
+            return null;
+        }
+        for (String part : cookieHeader.split(";")) {
+            String p = part.trim();
+            if (p.startsWith("session=")) {
+                Integer aid = SessionCookie.athleteId(p.substring("session=".length()), secret);
+                return aid == null ? null : Athlete.findById(aid);
+            }
+        }
+        return null;
+    }
+
+    private String sessionCookie(int athleteId) {
+        String secret = sessionSecret.filter(s -> !s.isBlank())
+                .orElseThrow(() -> new WebApplicationException("Server not configured for web login.", 500));
+        Map<String, Object> session = new LinkedHashMap<>();
+        session.put("athlete_id", athleteId);
+        String header = "session=" + SessionCookie.sign(session, secret)
+                + "; path=/; Max-Age=" + SessionCookie.MAX_AGE_SECONDS + "; httponly; samesite=lax";
+        return cookieSecure ? header + "; secure" : header;
+    }
+
     /** Create a Strava-free account. `persistAndFlush` surfaces the apple_user_id
-     * unique-index violation from a concurrent double-tap here (rather than at commit),
-     * so we can answer 409 — the client retries and finds the athlete the winning
-     * request created. Rate-limiting is unnecessary: creation requires a valid,
-     * Apple-signed token (not a guessable code like /api/device/claim). */
+     * unique-index violation from a concurrent double-tap here (not at commit), so we
+     * answer 409 — the client retries and finds the winner's athlete. No rate-limit
+     * needed: creation requires a valid Apple-signed token (not a guessable code). */
     private Athlete create(AppleAuth.AppleId apple) {
         try {
             Athlete a = new Athlete();

@@ -29,4 +29,18 @@ class AppleResourceTest {
                 .then().statusCode(401)
                 .body(notNullValue());
     }
+
+    @Test
+    void webMissingTokenIsBadRequest() {
+        given().contentType("application/json").body("{}")
+                .when().post("/api/auth/apple/web")
+                .then().statusCode(400);
+    }
+
+    @Test
+    void webMalformedTokenIsUnauthorized() {
+        given().contentType("application/json").body("{\"identityToken\":\"not-a-jwt\"}")
+                .when().post("/api/auth/apple/web")
+                .then().statusCode(401);
+    }
 }

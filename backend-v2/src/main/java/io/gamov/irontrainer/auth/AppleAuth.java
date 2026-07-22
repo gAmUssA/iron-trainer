@@ -15,6 +15,7 @@ import jakarta.ws.rs.WebApplicationException;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.net.URI;
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -29,9 +30,11 @@ public class AppleAuth {
     private static final String ISSUER = "https://appleid.apple.com";
     private static final String JWKS_URL = "https://appleid.apple.com/auth/keys";
 
-    /** The native iOS app's bundle id — the identity token's `aud`. */
-    @ConfigProperty(name = "apple.audience", defaultValue = "io.gamov.irontrainer.helper")
-    String audience;
+    /** Accepted `aud` values for the identity token: the native app's bundle id
+     * AND the web Service ID (Sign in with Apple JS uses a different audience than
+     * the native app). Comma-separated. */
+    @ConfigProperty(name = "apple.audiences", defaultValue = "io.gamov.irontrainer.helper")
+    String audiences;
 
     private volatile ConfigurableJWTProcessor<SecurityContext> processor;
 
@@ -49,12 +52,17 @@ public class AppleAuth {
                             new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, keys);
                     ConfigurableJWTProcessor<SecurityContext> np = new DefaultJWTProcessor<>();
                     np.setJWSKeySelector(selector);
-                    // Verifies aud == our bundle id, iss == Apple, requires sub;
+                    Set<String> accepted = new HashSet<>();
+                    for (String a : audiences.split(",")) {
+                        if (!a.isBlank()) accepted.add(a.trim());
+                    }
+                    // Verifies aud ∈ accepted, iss == Apple, requires sub;
                     // exp/nbf are checked by DefaultJWTClaimsVerifier automatically.
                     np.setJWTClaimsSetVerifier(new DefaultJWTClaimsVerifier<>(
-                            audience,
+                            accepted,
                             new JWTClaimsSet.Builder().issuer(ISSUER).build(),
-                            Set.of("sub")));
+                            Set.of("sub"),
+                            null));
                     processor = p = np;
                 }
                 p = processor;
