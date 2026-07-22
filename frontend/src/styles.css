@@ -352,6 +352,9 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 .session-status.skip { color: var(--bad); }
 .session-status.todo { color: var(--dim); }
 .session-meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+/* Today card's meta — same look as .session-meta but stays visible on mobile
+   (the phone is the Today view's target device) and wraps instead of nowrap. */
+.today-session-meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .session-dl { display: flex; gap: 5px; flex: none; }
 .session-dl a {
   font-family: var(--mono);

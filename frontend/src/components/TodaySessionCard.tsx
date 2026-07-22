@@ -49,7 +49,7 @@ export function TodaySessionCard({
                   </span>
                   <div style={{ minWidth: 0 }}>
                     <div className="session-title">{wo.title}</div>
-                    <div className="session-meta">
+                    <div className="today-session-meta">
                       {fmtDur(wo.duration_s)}
                       {wo.intensity ? ` · ${wo.intensity}` : ""}
                       {wo.planned_tss != null ? ` · ${wo.planned_tss} TSS` : ""}

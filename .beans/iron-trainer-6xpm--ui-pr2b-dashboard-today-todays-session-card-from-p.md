@@ -5,7 +5,7 @@ status: todo
 type: task
 priority: normal
 created_at: 2026-07-15T23:17:57Z
-updated_at: 2026-07-22T03:47:35Z
+updated_at: 2026-07-22T03:54:33Z
 parent: iron-trainer-uywr
 ---
 
@@ -17,3 +17,7 @@ Follow-up split out of PR2 (iron-trainer-rero) per docs/research/ui-taxonomy.md.
 - Shared src/sport.ts (SPORT map + fmtDur) extracted from PlanView so the card reuses the exact badge styling instead of a 3rd copy (uywr flags the drift; full unify is PR3). PlanView imports from it.
 - Copy: tour nav text + comments Dashboard→Today.
 - Frontend build: tsc -b + vite clean. Live screenshot deferred (needs a data-populated authed session); eyeball on the front door after merge.
+
+## Review fix (2026-07-21)
+[CONFIRMED] the card reused .session-meta, which styles.css hides under 640px — so duration/intensity/TSS vanished on phones (the Today view's target device). Added a dedicated .today-session-meta (same look, always visible, wraps instead of nowrap) + switched the card to it. Rebuild clean.
+[PLAUSIBLE, left as-is] fmtDur 0→'—': pre-existing PlanView behavior; duration_s is never 0 for a generated workout and '—' reads as 'no duration set'.
