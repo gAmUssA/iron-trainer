@@ -1,11 +1,11 @@
 ---
 # iron-trainer-6xpm
 title: 'UI PR2b: Dashboard -> Today (+ today''s-session card from plan)'
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-07-15T23:17:57Z
-updated_at: 2026-07-22T03:54:33Z
+updated_at: 2026-07-22T04:10:34Z
 parent: iron-trainer-uywr
 ---
 
