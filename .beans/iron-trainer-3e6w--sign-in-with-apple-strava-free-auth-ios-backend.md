@@ -5,7 +5,7 @@ status: todo
 type: feature
 priority: critical
 created_at: 2026-07-21T23:54:20Z
-updated_at: 2026-07-22T21:55:44Z
+updated_at: 2026-07-22T22:00:23Z
 blocking:
     - iron-trainer-k5d0
 ---
@@ -28,3 +28,6 @@ Difficulty: MODERATE (~1 focused session, iOS-first). Slots into the existing au
 Verify on device via TestFlight (SIWA needs a real device/Apple ID). Follows the worktree → build → PR → review flow.
 
 ## Prioritized 2026-07-22 (Viktor) — implement next.
+
+## Account linking (2026-07-22, per Viktor)
+AppleResource links the Apple id to the CURRENT authenticated athlete: (1) known Apple id → that athlete; (2) authenticated (e.g. Strava session) + current athlete has no Apple id → LINK (Strava+Apple = one account); (3) else fresh account. So a Strava user who signs in with Apple while logged in gets linked, not forked. Reverse direction (Apple-first → connect Strava) = [[iron-trainer-4uj1]] (touches the parity-sensitive Strava callback; deferred). Merging two pre-existing accounts = out of scope.

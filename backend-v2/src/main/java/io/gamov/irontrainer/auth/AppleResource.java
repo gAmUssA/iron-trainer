@@ -28,6 +28,8 @@ public class AppleResource {
     AppleAuth appleAuth;
     @Inject
     Devices devices;
+    @Inject
+    CurrentAthlete current;
 
     public record AppleSignInRequest(String identityToken, String deviceName) {}
 
@@ -54,17 +56,37 @@ public class AppleResource {
         return out;
     }
 
-    /** find-or-create by the stable Apple `sub`. Apple gives email/name only on the
-     * first authorization; we store nothing sensitive by default (name is set later
-     * in the profile), mirroring the Strava find-or-create. */
+    /**
+     * Resolve the athlete for an Apple sign-in, with account **linking**:
+     * 1. Already linked to this Apple id → that athlete (returning user).
+     * 2. Otherwise, if the request is authenticated (e.g. via a Strava session/
+     *    bearer) and that athlete has no Apple id yet → LINK the Apple id to the
+     *    current athlete, so Strava + Apple are one account.
+     * 3. Otherwise → a fresh Strava-free account.
+     *
+     * (Merging two pre-existing accounts — you're signed in as A but sign in with
+     * an Apple id already owned by B — is out of scope; case 1 wins, returning B.
+     * The reverse link, adding Strava to an Apple-first account, is bean 4uj1.)
+     */
     private Athlete findOrCreate(AppleAuth.AppleId apple) {
-        Athlete a = Athlete.find("appleUserId", apple.sub()).firstResult();
-        if (a == null) {
-            a = new Athlete();
-            a.appleUserId = apple.sub();
-            a.persist();
-            LOG.infof("Created athlete %d via Sign in with Apple.", a.id);
+        Athlete linked = Athlete.find("appleUserId", apple.sub()).firstResult();
+        if (linked != null) {
+            return linked;
         }
+        Integer cur = current.idOrNull();
+        if (cur != null) {
+            Athlete a = Athlete.findById(cur);
+            if (a != null && a.appleUserId == null) {
+                a.appleUserId = apple.sub();
+                a.persist();
+                LOG.infof("Linked Apple id to existing athlete %d.", a.id);
+                return a;
+            }
+        }
+        Athlete a = new Athlete();
+        a.appleUserId = apple.sub();
+        a.persist();
+        LOG.infof("Created athlete %d via Sign in with Apple.", a.id);
         return a;
     }
 }
