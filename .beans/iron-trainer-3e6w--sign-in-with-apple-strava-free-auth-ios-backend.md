@@ -5,7 +5,7 @@ status: todo
 type: feature
 priority: critical
 created_at: 2026-07-21T23:54:20Z
-updated_at: 2026-07-22T22:00:23Z
+updated_at: 2026-07-22T22:16:23Z
 blocking:
     - iron-trainer-k5d0
 ---
@@ -31,3 +31,11 @@ Verify on device via TestFlight (SIWA needs a real device/Apple ID). Follows the
 
 ## Account linking (2026-07-22, per Viktor)
 AppleResource links the Apple id to the CURRENT authenticated athlete: (1) known Apple id → that athlete; (2) authenticated (e.g. Strava session) + current athlete has no Apple id → LINK (Strava+Apple = one account); (3) else fresh account. So a Strava user who signs in with Apple while logged in gets linked, not forked. Reverse direction (Apple-first → connect Strava) = [[iron-trainer-4uj1]] (touches the parity-sensitive Strava callback; deferred). Merging two pre-existing accounts = out of scope.
+
+## Security review fixes (2026-07-22) — 2 account-takeover bugs
+- [0/1 CRITICAL] linking used current.idOrNull() which falls back to the DEFAULT athlete (id 1) when auth-required is off, and accepted any bearer (incl. ingest tokens) → anonymous sign-in could hijack the owner account / ingest token could escalate. FIX: linking now gated on a genuine LOGIN bearer — an actual Authorization: Bearer header (no header → no link, so the default fallback never links) + a valid, non-ingest token. Regression test AppleLinkingTest (anonymous sign-in creates a fresh account, does not hijack an existing athlete).
+- [2] concurrent double-tap create raced the apple_user_id unique index → 500. FIX: persistAndFlush + catch → 409 (client retries, finds the winner's athlete).
+- [3] AppleAuth collapsed JWKS-outage into 401 (looked like a bad token). FIX: KeySourceException → 503 (retriable), other → 401.
+- [5] parsed Apple email but never used → dropped it (AppleId is just sub).
+- [4] no throttle: accepted — creation requires a valid Apple-signed token (not a guessable code); documented.
+All tests pass.

@@ -35,8 +35,8 @@ public class AppleAuth {
 
     private volatile ConfigurableJWTProcessor<SecurityContext> processor;
 
-    /** (sub, email?) — email is present only on the user's first authorization. */
-    public record AppleId(String sub, String email) {}
+    /** The stable Apple user id (`sub`). */
+    public record AppleId(String sub) {}
 
     private ConfigurableJWTProcessor<SecurityContext> processor() throws Exception {
         ConfigurableJWTProcessor<SecurityContext> p = processor;
@@ -63,17 +63,21 @@ public class AppleAuth {
         return p;
     }
 
-    /** Verify the token; throws 401 on any failure. */
+    /** Verify the token: 401 on an invalid/expired/wrong-audience token, but 503
+     * when Apple's key service can't be reached (an outage is not a bad token —
+     * a valid user must not be told their token is invalid, and it's retriable). */
     public AppleId verify(String identityToken) {
         try {
             JWTClaimsSet claims = processor().process(identityToken, null);
             String sub = claims.getSubject();
             if (sub == null || sub.isBlank()) {
-                throw new IllegalArgumentException("token has no subject");
+                throw new WebApplicationException("Apple token has no subject.", 401);
             }
-            return new AppleId(sub, claims.getStringClaim("email"));
+            return new AppleId(sub);
         } catch (WebApplicationException e) {
             throw e;
+        } catch (com.nimbusds.jose.KeySourceException e) {
+            throw new WebApplicationException("Apple key service unavailable — try again.", 503);
         } catch (Exception e) {
             throw new WebApplicationException("Invalid Apple identity token.", 401);
         }
