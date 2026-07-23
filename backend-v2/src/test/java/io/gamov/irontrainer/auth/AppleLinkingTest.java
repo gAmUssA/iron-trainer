@@ -1,6 +1,7 @@
 package io.gamov.irontrainer.auth;
 
 import io.gamov.irontrainer.athlete.Athlete;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.InjectMock;
 import jakarta.transaction.Transactional;
@@ -62,14 +63,28 @@ class AppleLinkingTest {
         return "session=" + SessionCookie.sign(Map.of("athlete_id", athleteId), SECRET);
     }
 
+    // Seed/read in COMMITTED transactions (not @Transactional on the method) so the
+    // over-HTTP request sees the data and holds no lock against it — see SessionAuthTest.
+    private static Integer seedAthlete(java.util.function.Consumer<Athlete> init) {
+        return QuarkusTransaction.requiringNew().call(() -> {
+            Athlete a = new Athlete();
+            init.accept(a);
+            a.persist();
+            return a.id;
+        });
+    }
+
+    private static String appleIdOf(Integer athleteId) {
+        return QuarkusTransaction.requiringNew().call(() -> {
+            Athlete a = Athlete.findById(athleteId);
+            return a.appleUserId;
+        });
+    }
+
     /** Happy path: a logged-in athlete with no Apple id links an unused one. */
     @Test
-    @Transactional
     void authenticatedLinkOntoUnusedAppleIdSucceeds() {
-        Athlete a1 = new Athlete();
-        a1.stravaAthleteId = 2_002L;
-        a1.persistAndFlush();
-        Integer a1Id = a1.id;
+        Integer a1Id = seedAthlete(a -> a.stravaAthleteId = 2_002L);
 
         when(appleAuth.verify(anyString())).thenReturn(new AppleAuth.AppleId("apple-new"));
 
@@ -78,8 +93,7 @@ class AppleLinkingTest {
                 .when().post("/api/auth/apple/web")
                 .then().statusCode(200);
 
-        Athlete reloaded = Athlete.findById(a1Id);
-        assertEquals("apple-new", reloaded.appleUserId, "Apple id should link onto the logged-in athlete");
+        assertEquals("apple-new", appleIdOf(a1Id), "Apple id should link onto the logged-in athlete");
     }
 
     /**
@@ -88,15 +102,9 @@ class AppleLinkingTest {
      * must 409 and leave both accounts untouched — never Set-Cookie A2.
      */
     @Test
-    @Transactional
     void authenticatedLinkCannotSwitchToAnAppleIdBoundElsewhere() {
-        Athlete a1 = new Athlete();
-        a1.stravaAthleteId = 1_001L;
-        a1.persistAndFlush();
-        Athlete a2 = new Athlete();
-        a2.appleUserId = "apple-A2";
-        a2.persistAndFlush();
-        Integer a1Id = a1.id, a2Id = a2.id;
+        Integer a1Id = seedAthlete(a -> a.stravaAthleteId = 1_001L);
+        Integer a2Id = seedAthlete(a -> a.appleUserId = "apple-A2");
 
         when(appleAuth.verify(anyString())).thenReturn(new AppleAuth.AppleId("apple-A2"));
 
@@ -105,18 +113,14 @@ class AppleLinkingTest {
                 .when().post("/api/auth/apple/web")
                 .then().statusCode(409);
 
-        assertNull(((Athlete) Athlete.findById(a1Id)).appleUserId, "A1 must not be linked");
-        assertEquals("apple-A2", ((Athlete) Athlete.findById(a2Id)).appleUserId, "A2 must be untouched");
+        assertNull(appleIdOf(a1Id), "A1 must not be linked");
+        assertEquals("apple-A2", appleIdOf(a2Id), "A2 must be untouched");
     }
 
     /** A logged-in athlete already linked to a DIFFERENT Apple id must 409, not fork. */
     @Test
-    @Transactional
     void authenticatedAthleteWithADifferentAppleIdConflicts() {
-        Athlete a1 = new Athlete();
-        a1.appleUserId = "apple-existing";
-        a1.persistAndFlush();
-        Integer a1Id = a1.id;
+        Integer a1Id = seedAthlete(a -> a.appleUserId = "apple-existing");
 
         when(appleAuth.verify(anyString())).thenReturn(new AppleAuth.AppleId("apple-other"));
 
@@ -125,7 +129,6 @@ class AppleLinkingTest {
                 .when().post("/api/auth/apple/web")
                 .then().statusCode(409);
 
-        assertEquals("apple-existing", ((Athlete) Athlete.findById(a1Id)).appleUserId,
-                "the existing Apple link must be unchanged");
+        assertEquals("apple-existing", appleIdOf(a1Id), "the existing Apple link must be unchanged");
     }
 }
