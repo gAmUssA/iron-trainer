@@ -33,7 +33,8 @@ public class AppleAuth {
     /** Accepted `aud` values for the identity token: the native app's bundle id
      * AND the web Service ID (Sign in with Apple JS uses a different audience than
      * the native app). Comma-separated. */
-    @ConfigProperty(name = "apple.audiences", defaultValue = "io.gamov.irontrainer.helper")
+    @ConfigProperty(name = "apple.audiences",
+            defaultValue = "io.gamov.irontrainer.helper,io.gamov.irontrainer.web")
     String audiences;
 
     private volatile ConfigurableJWTProcessor<SecurityContext> processor;

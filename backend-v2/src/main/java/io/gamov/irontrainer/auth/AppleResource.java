@@ -95,25 +95,43 @@ public class AppleResource {
     }
 
     /**
-     * 1. Already bound to this Apple id → that athlete. 2. Else if `linkTarget` is a
-     * genuinely-authenticated athlete with no Apple id → LINK (Strava + Apple = one
-     * account). 3. Else → a fresh Strava-free account. `linkTarget` is null unless a
-     * real credential was presented (see bearerLinkTarget/sessionLinkTarget), so the
-     * no-auth default-athlete fallback can never be hijacked. Merging two pre-existing
-     * accounts is out of scope; the reverse link (Strava onto an Apple account) is 4uj1.
+     * Resolve the athlete for this Apple sign-in.
+     *
+     * AUTHENTICATED (linkTarget != null — a real bearer/session was presented): this is
+     * a LINK, never an account switch. It must resolve to `linkTarget` or fail 409 — we
+     * must never mint a bearer / Set-Cookie for a *different* athlete, which would
+     * silently strand the caller's real (e.g. Strava) account and its data. So: already
+     * linked to this same athlete → idempotent; the Apple id belongs to someone else, or
+     * this athlete already has a different Apple id → 409 conflict; otherwise link.
+     *
+     * UNAUTHENTICATED (linkTarget == null): log in to the Apple-bound athlete, else
+     * create a fresh Strava-free one. linkTarget is null unless a real credential was
+     * presented (see bearerLinkTarget/sessionLinkTarget), so the no-auth default-athlete
+     * fallback can never be hijacked. Merging two pre-existing accounts is out of scope;
+     * the reverse link (Strava onto an Apple account) is 4uj1.
      */
     private Athlete resolveAthlete(AppleAuth.AppleId apple, Athlete linkTarget) {
         Athlete linked = Athlete.find("appleUserId", apple.sub()).firstResult();
-        if (linked != null) {
-            return linked;
-        }
-        if (linkTarget != null && linkTarget.appleUserId == null) {
+
+        if (linkTarget != null) {
+            if (linked != null) {
+                if (!linked.id.equals(linkTarget.id)) {
+                    throw new WebApplicationException(
+                            "This Apple account is already linked to a different account.", 409);
+                }
+                return linked; // already linked to this same athlete — idempotent
+            }
+            if (linkTarget.appleUserId != null) {
+                throw new WebApplicationException(
+                        "This account is already linked to a different Apple account.", 409);
+            }
             linkTarget.appleUserId = apple.sub();
             linkTarget.persist();
             LOG.infof("Linked Apple id to existing athlete %d.", linkTarget.id);
             return linkTarget;
         }
-        return create(apple);
+
+        return linked != null ? linked : create(apple);
     }
 
     /** Link target for the NATIVE flow: only when a real, login-capable bearer is
@@ -140,14 +158,21 @@ public class AppleResource {
         if (cookieHeader == null || secret == null) {
             return null;
         }
+        // On duplicate session= cookies the LAST one wins, matching
+        // BearerAuthFilter.sessionCookieValue (http.cookies semantics) — so linking
+        // resolves the same athlete the rest of the app authenticates the request as.
+        String value = null;
         for (String part : cookieHeader.split(";")) {
             String p = part.trim();
             if (p.startsWith("session=")) {
-                Integer aid = SessionCookie.athleteId(p.substring("session=".length()), secret);
-                return aid == null ? null : Athlete.findById(aid);
+                value = p.substring("session=".length());
             }
         }
-        return null;
+        if (value == null) {
+            return null;
+        }
+        Integer aid = SessionCookie.athleteId(value, secret);
+        return aid == null ? null : Athlete.findById(aid);
     }
 
     private String sessionCookie(int athleteId) {

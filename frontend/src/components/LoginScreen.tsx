@@ -39,9 +39,14 @@ export function LoginScreen({ status, notice }: { status: AppStatus; notice?: st
             AI-adaptive triathlon training. Sign in with Strava to load your activities,
             or with Apple to start fresh — your data stays private to your account.
           </p>
-          {(notice || appleError) && (
+          {notice && (
             <div className="card error" role="alert" style={{ marginBottom: 18, textAlign: "left" }}>
-              {notice || appleError}
+              {notice}
+            </div>
+          )}
+          {appleError && (
+            <div className="card error" role="alert" style={{ marginBottom: 18, textAlign: "left" }}>
+              {appleError}
             </div>
           )}
           {status.strava_configured ? (

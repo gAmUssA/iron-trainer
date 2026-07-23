@@ -16,6 +16,7 @@ export function AppleButton({
       className="apple-btn"
       onClick={onClick}
       disabled={busy}
+      aria-busy={busy}
       aria-label={label}
     >
       <svg className="apple-logo" viewBox="0 0 384 512" width="15" height="18" aria-hidden="true">
