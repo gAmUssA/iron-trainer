@@ -3,12 +3,14 @@
 // against Apple's JWKS (POST /api/auth/apple/web). Used both for Strava-free login
 // (LoginScreen) and for linking Apple onto a logged-in account (settings).
 //
-// ⚠ CLIENT_ID + REDIRECT_URI MUST match the Apple **Services ID** and one of its
-// registered Return URLs EXACTLY, or Apple rejects with "redirect_uri invalid".
-// Configure at: Apple Developer → Identifiers → Services ID → Sign in with Apple →
-// Configure. Keep CLIENT_ID in sync with the backend `apple.audiences` env var.
+// ⚠ CLIENT_ID must be the Apple **Services ID**; keep it in sync with the backend
+// `apple.audiences` env var. The redirectURI is the CURRENT page origin (computed at
+// call time) — in popup/web_message mode Apple posts the token back to the
+// redirect_uri's origin, so it must equal the page origin or the browser blocks the
+// postMessage ("Unable to post message ... Recipient has origin ..."). EVERY origin
+// the app is served on (https://irontrainer.app/, https://www.irontrainer.app/) must
+// therefore be registered as a Return URL in the Services ID → Configure dialog.
 const CLIENT_ID = "io.gamov.irontrainer.web";
-const REDIRECT_URI = "https://www.irontrainer.app/";
 const SDK_URL =
   "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";
 
@@ -53,7 +55,10 @@ function loadSdk(): Promise<void> {
 export async function getAppleIdentityToken(): Promise<string> {
   await loadSdk();
   const auth = window.AppleID!.auth;
-  auth.init({ clientId: CLIENT_ID, scope: "name", redirectURI: REDIRECT_URI, usePopup: true });
+  // Match the page origin so the popup's postMessage lands (see header note). Must be
+  // a registered Return URL on whatever domain the user loaded (apex or www).
+  const redirectURI = window.location.origin + "/";
+  auth.init({ clientId: CLIENT_ID, scope: "name", redirectURI, usePopup: true });
   try {
     const res = await auth.signIn();
     const token = res?.authorization?.id_token;
