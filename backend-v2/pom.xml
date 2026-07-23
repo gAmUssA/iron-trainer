@@ -45,6 +45,18 @@
             <artifactId>nimbus-jose-jwt</artifactId>
             <version>9.40</version>
         </dependency>
+        <!-- nimbus-jose-jwt references Google Tink classes (XChaCha20Poly1305, etc.)
+             for algorithms we don't use (we only verify Apple's RS256 tokens). On the
+             JVM they load lazily and never resolve; but GraalVM native-image eagerly
+             analyses them and fails the build (ClassNotFoundException) on Mandrel
+             versions that treat an incomplete classpath as a hard error — which is
+             what Railway's builder image hit. Declaring the exact Tink version nimbus
+             9.40 expects makes the classes resolvable so the native build succeeds. -->
+        <dependency>
+            <groupId>com.google.crypto.tink</groupId>
+            <artifactId>tink</artifactId>
+            <version>1.13.0</version>
+        </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-hibernate-orm-panache</artifactId>
