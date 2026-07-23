@@ -3,9 +3,8 @@
 -- with Apple. A unique index so one Apple id maps to exactly one athlete (partial,
 -- so the many NULLs for Strava-only athletes don't collide).
 --
--- ⚠ Flyway migrate-at-start is OFF in prod (%dev/%test only) — apply this to
--- Supabase MANUALLY before the image that reads apple_user_id cuts over, or the
--- deploy 500s on the missing column (bean backend-v2-railway-deploy).
+-- Flyway migrate-at-start is now ON in prod (baseline at V2), so this applies
+-- automatically on deploy — no manual Supabase ALTER needed.
 ALTER TABLE "public"."athlete"
     ADD COLUMN "apple_user_id" text;
 

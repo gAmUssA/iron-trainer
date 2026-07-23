@@ -1,11 +1,11 @@
 ---
 # iron-trainer-3e6w
 title: Sign in with Apple — Strava-free auth (iOS + backend)
-status: todo
+status: in-progress
 type: feature
 priority: critical
 created_at: 2026-07-21T23:54:20Z
-updated_at: 2026-07-22T22:16:23Z
+updated_at: 2026-07-23T03:12:04Z
 blocking:
     - iron-trainer-k5d0
 ---
@@ -39,3 +39,13 @@ AppleResource links the Apple id to the CURRENT authenticated athlete: (1) known
 - [5] parsed Apple email but never used → dropped it (AppleId is just sub).
 - [4] no throttle: accepted — creation requires a valid Apple-signed token (not a guessable code); documented.
 All tests pass.
+
+## Web SIWA frontend + Flyway (implemented)
+- appleSignIn.ts: Apple JS SDK loader + getAppleIdentityToken() (popup, clientId=io.gamov.irontrainer.web, redirectURI=https://www.irontrainer.app/).
+- AppleButton (HIG: black/light, white/dark, official logo).
+- LoginScreen: 'Sign in with Apple' button (+ 'or' divider; works with or without Strava configured).
+- AppleLinkCard in Settings: 'Continue with Apple' links Apple onto the logged-in athlete.
+- api.appleWeb(idToken) → POST /api/auth/apple/web (credentials:include).
+- Flyway ON in prod, baseline-version=2 (V1/V2 already manual in Supabase) → V3 auto-applies on deploy.
+- APPLE_AUDIENCES env staged in Railway (helper,web).
+- ⚠ clientId/redirectURI must match Viktor's Apple Services ID + Return URL exactly.

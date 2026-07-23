@@ -708,3 +708,28 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 .recovery-tile .delta.down { color: var(--bad); }
 :root[data-theme="light"] .recovery-tile .delta.up { color: #15803d; }
 .recovery-tile .spark { margin-top: 6px; }
+
+/* Sign in with Apple (bean 3e6w) — HIG button: black on light, white on dark. */
+.apple-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; max-width: 260px; height: 44px; padding: 0 16px;
+  background: #000; color: #fff; border: 1px solid #000; border-radius: 8px;
+  font-family: inherit; font-size: 15px; font-weight: 500; line-height: 1;
+  cursor: pointer;
+}
+.apple-btn:hover:not(:disabled) { background: #1a1a1a; }
+.apple-btn:disabled { opacity: 0.6; cursor: default; }
+.apple-btn .apple-logo { margin-top: -2px; }
+:root[data-theme="dark"] .apple-btn {
+  background: #fff; color: #000; border-color: #fff;
+}
+:root[data-theme="dark"] .apple-btn:hover:not(:disabled) { background: #f0f0f0; }
+/* "or" divider between Strava and Apple on the login card. */
+.login-or {
+  display: flex; align-items: center; text-align: center;
+  color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+  margin: 14px 0; gap: 12px;
+}
+.login-or::before, .login-or::after {
+  content: ""; flex: 1; height: 1px; background: var(--border, rgba(128,128,128,0.25));
+}

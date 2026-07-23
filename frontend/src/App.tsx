@@ -22,6 +22,7 @@ import { RaceCard } from "./components/RaceCard";
 import { RecoveryCard } from "./components/RecoveryCard";
 import { CheckinCard } from "./components/CheckinCard";
 import { ConnectCard, HealthIngestCard, ProfileEditor, ZonesCard } from "./components/Setup";
+import { AppleLinkCard } from "./components/AppleLinkCard";
 import { TestsView } from "./components/TestsView";
 import { TodayCall } from "./components/TodayCall";
 import { TodaySessionCard } from "./components/TodaySessionCard";
@@ -373,6 +374,7 @@ export default function App() {
           <div className="tab-panel">
             {hoursBanner}
             {status && <ConnectCard status={status} athlete={athlete} onSynced={safeLoad} />}
+            <AppleLinkCard />
             {status && <RaceCard status={status} onChanged={reload} />}
             <div className="grid-2">
               <ProfileEditor profile={athlete.profile} onSaved={safeLoad} />
