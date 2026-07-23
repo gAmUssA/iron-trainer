@@ -24,6 +24,11 @@ public class Athlete extends PanacheEntityBase {
     @Column(name = "strava_athlete_id")
     public Long stravaAthleteId;
 
+    // Sign in with Apple stable user identifier (the token `sub`). Lets an athlete
+    // exist without Strava — the Strava-free auth path (bean 3e6w).
+    @Column(name = "apple_user_id")
+    public String appleUserId;
+
     public Double ftp;
 
     @Column(name = "threshold_hr")

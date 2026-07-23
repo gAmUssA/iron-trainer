@@ -38,6 +38,13 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- Verify Apple's Sign-in-with-Apple identity token (JWT) against Apple's
+             JWKS — used only by AppleAuth, not for endpoint auth (bean 3e6w). -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>9.40</version>
+        </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-hibernate-orm-panache</artifactId>

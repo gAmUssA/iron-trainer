@@ -505,6 +505,11 @@ export const api = {
   status: () => getJSON<AppStatus>("/api/status"),
   me: () => getJSON<Me>("/api/me"),
   logout: () => send<{ ok: boolean }>("/api/auth/logout", "POST"),
+  // Sign in with Apple (web, bean 3e6w): verify the identity token → session cookie.
+  // With an existing session cookie present the backend links Apple onto that athlete.
+  appleWeb: (identityToken: string) =>
+    send<{ athlete: { name: string | null; strava_athlete_id: number | null } }>(
+      "/api/auth/apple/web", "POST", { identityToken }),
   createPairingCode: () =>
     send<{ code: string; expires_at: number; expires_in?: number }>(
       "/api/device/pairing-code", "POST", {}),
