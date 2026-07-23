@@ -29,6 +29,9 @@ Verify on device via TestFlight (SIWA needs a real device/Apple ID). Follows the
 
 ## Prioritized 2026-07-22 (Viktor) — implement next.
 
+## Decision (2026-07-22, Viktor): WEB-FIRST, iOS deferred
+SIWA is needed for athletes without/not-wanting Strava. Do it on the WEBSITE now; DEFER the iOS button. Web SIWA uses **Sign in with Apple JS** (AppleID.auth) with a **Service ID** audience (io.gamov.irontrainer.web), NOT the app bundle id, and mints a **web SESSION COOKIE** (like the Strava web login). iOS deferred: the app authenticates via device pairing (no in-app third-party login button), so Guideline 4.8 likely doesn't apply.
+
 ## Account linking (2026-07-22, per Viktor)
 AppleResource links the Apple id to the CURRENT authenticated athlete: (1) known Apple id → that athlete; (2) authenticated (e.g. Strava session) + current athlete has no Apple id → LINK (Strava+Apple = one account); (3) else fresh account. So a Strava user who signs in with Apple while logged in gets linked, not forked. Reverse direction (Apple-first → connect Strava) = [[iron-trainer-4uj1]] (touches the parity-sensitive Strava callback; deferred). Merging two pre-existing accounts = out of scope.
 
@@ -49,3 +52,12 @@ All tests pass.
 - Flyway ON in prod, baseline-version=2 (V1/V2 already manual in Supabase) → V3 auto-applies on deploy.
 - APPLE_AUDIENCES env staged in Railway (helper,web).
 - ⚠ clientId/redirectURI must match Viktor's Apple Services ID + Return URL exactly.
+
+## Review fixes (2026-07-23) — local multi-agent review of PR #100
+- CRITICAL: authenticated 'Link Apple' could switch the session to a different/empty account (data loss). resolveAthlete now link-only for authenticated callers (resolve to linkTarget or 409). +3 regression tests.
+- sessionLinkTarget now uses the LAST session= cookie (matches BearerAuthFilter).
+- apple.audiences default now includes the web Service ID.
+- LoginScreen shows notice+error independently; AppleButton exposes aria-busy.
+
+### iOS (DEFERRED — plan for later)
+The iOS app authenticates via device pairing (no in-app third-party login button), so Guideline 4.8 likely doesn't apply. When resumed: SignInWithAppleButton (AuthenticationServices) → identityToken → POST /api/auth/apple (native bearer endpoint, already built) → store bearer. Enable the applesignin capability on App ID io.gamov.irontrainer.helper. Device-test via TestFlight.
