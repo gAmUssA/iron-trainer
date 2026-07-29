@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: critical
 created_at: 2026-07-21T23:54:20Z
-updated_at: 2026-07-23T03:12:04Z
+updated_at: 2026-07-23T04:43:58Z
 blocking:
     - iron-trainer-k5d0
 ---
@@ -61,3 +61,7 @@ All tests pass.
 
 ### iOS (DEFERRED — plan for later)
 The iOS app authenticates via device pairing (no in-app third-party login button), so Guideline 4.8 likely doesn't apply. When resumed: SignInWithAppleButton (AuthenticationServices) → identityToken → POST /api/auth/apple (native bearer endpoint, already built) → store bearer. Enable the applesignin capability on App ID io.gamov.irontrainer.helper. Device-test via TestFlight.
+
+## Prod SIWA debugging (2026-07-23) — two Apple-config gotchas
+1. 'Sign Up Not Completed' AFTER the Apple sheet opens = Return URL exact-match fail. The Service ID had only https://irontrainer.app/ registered; frontend sent https://www.irontrainer.app/. Fix: register BOTH apex + www Return URLs.
+2. 'Unable to post message to <www>. Recipient has origin <apex>' = in usePopup/web_message mode Apple posts the id_token back to the redirect_uri's ORIGIN, which must equal the PAGE origin. Hardcoded www redirectURI broke apex loads. Fix (PR #102): redirectURI = window.location.origin + '/' (matches whichever registered domain the user is on). Both irontrainer.app + www.irontrainer.app must be registered as Return URLs AND Domains. Live on both domains, deploy SUCCESS.

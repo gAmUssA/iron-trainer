@@ -31,3 +31,9 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Local agent/skill tooling
+.junie/
+skills-lock.json
+supabase/
+.agents/
