@@ -1,11 +1,11 @@
 ---
 # iron-trainer-3e6w
 title: Sign in with Apple — Strava-free auth (iOS + backend)
-status: in-progress
+status: completed
 type: feature
 priority: critical
 created_at: 2026-07-21T23:54:20Z
-updated_at: 2026-07-23T04:43:58Z
+updated_at: 2026-07-29T12:51:13Z
 blocking:
     - iron-trainer-k5d0
 ---
@@ -65,3 +65,9 @@ The iOS app authenticates via device pairing (no in-app third-party login button
 ## Prod SIWA debugging (2026-07-23) — two Apple-config gotchas
 1. 'Sign Up Not Completed' AFTER the Apple sheet opens = Return URL exact-match fail. The Service ID had only https://irontrainer.app/ registered; frontend sent https://www.irontrainer.app/. Fix: register BOTH apex + www Return URLs.
 2. 'Unable to post message to <www>. Recipient has origin <apex>' = in usePopup/web_message mode Apple posts the id_token back to the redirect_uri's ORIGIN, which must equal the PAGE origin. Hardcoded www redirectURI broke apex loads. Fix (PR #102): redirectURI = window.location.origin + '/' (matches whichever registered domain the user is on). Both irontrainer.app + www.irontrainer.app must be registered as Return URLs AND Domains. Live on both domains, deploy SUCCESS.
+
+## Canonical domain cutover DONE (2026-07-29, PR #103)
+Root cause of the linking pain was the 3-domain / host-scoped-cookie footgun. Fixed: irontrainer.app is now the single canonical origin. CanonicalHostRoute (Vert.x route, order -1000, gated on CANONICAL_HOST env) 301s www.irontrainer.app → irontrainer.app on every path. CORS_ORIGINS + STRAVA_REDIRECT_URI flipped to https://irontrainer.app; Apple Return URL + Strava callback domain moved to apex. Verified: www→apex 301 (root + /api paths), apex health 200, SIWA endpoint live. Viktor's account (athlete 2) already linked to Apple via DB.
+
+## Summary of Changes (COMPLETED 2026-07-29)
+Web Sign in with Apple shipped and verified in prod (ADR 0052): JWKS verify, native + web endpoints, account linking (link-only for authed callers, 409 on conflict, security-reviewed), web sign-in button + Settings link card, Flyway V3 auto-applied, native build fixed (Tink), redirectURI=page origin, canonical domain irontrainer.app (www→apex 301). Viktor's account linked + end-to-end verified (Sign in with Apple lands on the real account). iOS in-app SIWA button split to its own follow-up bean (deferred). Reverse link = 4uj1.

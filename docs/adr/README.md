@@ -74,3 +74,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0049](0049-healthkit-reader-layer-delta-sync.md) | HealthKit reader layer: anchored delta-sync contract | Accepted |
 | [0050](0050-healthkit-night-assembler.md) | HealthKit night assembler + first unit-test target | Accepted |
 | [0051](0051-native-healthkit-ingest-and-delivery.md) | Native HealthKit ingest client + delivery | Accepted |
+| [0052](0052-sign-in-with-apple-web-and-canonical-domain.md) | Sign in with Apple (web) + account linking + canonical domain | Accepted |
