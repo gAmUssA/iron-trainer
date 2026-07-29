@@ -5,7 +5,7 @@ status: todo
 type: epic
 priority: normal
 created_at: 2026-07-29T12:53:30Z
-updated_at: 2026-07-29T12:53:30Z
+updated_at: 2026-07-29T20:33:42Z
 ---
 
 Goal: push generated structured swim/bike/run workouts (and plans) from Iron Trainer to the athlete's Garmin Connect calendar → their Garmin device, so they follow the workout on-watch. Complements the existing TrainingPeaks export.
@@ -36,3 +36,6 @@ Goal: push generated structured swim/bike/run workouts (and plans) from Iron Tra
 - OAuth2 PKCE spec: https://developerportal.garmin.com/sites/default/files/OAuth2PKCE_1.pdf
 - TrainingPeaks Garmin AutoSync: https://www.trainingpeaks.com/coach-blog/garmin-connect-autosync-integration/ , https://help.trainingpeaks.com/hc/en-us/articles/204070864
 - Workout JSON reference: https://github.com/ThomasRondof/GarminWorkoutAItoJSON
+
+## Update — Garmin acquired TrainingPeaks (per Viktor, 2026)
+Garmin now OWNS TrainingPeaks. This likely explains the Developer Program pause (consolidating the training-data pipeline) and makes the **interim TrainingPeaks AutoSync path even safer strategically** — it's now a first-party Garmin channel, not a competitor's. Reinforces: ship TP AutoSync (wkov) now; the native Training API (yys2) is the eventual first-party path once the program reopens.
