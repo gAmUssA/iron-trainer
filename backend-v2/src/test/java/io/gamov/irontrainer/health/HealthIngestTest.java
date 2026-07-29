@@ -148,6 +148,31 @@ class HealthIngestTest {
         assertEquals(250.0, day.get("cycling_ftp_w"));       // gauge (avg of one)
     }
 
+    @Test
+    void hrvCarriesSourceProvenance() {
+        // Provenance rides the HRV data point (bean aydv) — the recovery driver.
+        Map<String, Object> payload = Map.of("data", Map.of("metrics", List.of(
+                metric("heart_rate_variability", "ms", List.of(
+                        Map.of("date", "2026-07-13 07:00:00 -0400", "qty", 60.0, "source", "com.whoop.app"))),
+                metric("resting_heart_rate", "bpm", List.of(
+                        Map.of("date", "2026-07-13 06:00:00 -0400", "qty", 48.0, "source", "com.apple.health"))))));
+
+        Map<String, Object> day = HealthIngest.parsePayload(payload).days.get("2026-07-13");
+        assertEquals("com.whoop.app", day.get("source"), "source = the HRV point's source");
+        assertEquals(60.0, day.get("hrv_ms"));
+        // RHR's source is ignored — provenance tracks the recovery (HRV) signal only.
+    }
+
+    @Test
+    void noSourceKeyWhenHrvHasNoSource() {
+        Map<String, Object> payload = Map.of("data", Map.of("metrics", List.of(
+                metric("heart_rate_variability", "ms", List.of(
+                        rec("date", "2026-07-13 07:00:00 -0400", 60.0))))));
+        Map<String, Object> day = HealthIngest.parsePayload(payload).days.get("2026-07-13");
+        assertEquals(60.0, day.get("hrv_ms"));
+        assertTrue(day.get("source") == null, "no source key when the HRV point carries none");
+    }
+
     private static Map<String, Object> metric(String name, String units, List<Object> data) {
         return Map.of("name", name, "units", units, "data", data);
     }

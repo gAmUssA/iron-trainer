@@ -84,6 +84,34 @@ final class NightAssemblerTests: XCTestCase {
         XCTAssertNil(out[0].unspecifiedH)   // iphone's stage was dropped, not merged
     }
 
+    // MARK: provenance — HRV winner's source recorded; gauges never blend sources (aydv)
+
+    func testHrvSourceRecordedFromWinningSource() {
+        let s = [sleep(.asleepCore, date(2026, 7, 20, 23, 0), date(2026, 7, 21, 5, 0))]
+        let q = [
+            qty(.hrv, 55, date(2026, 7, 20, 23, 30), "com.whoop"),        // whoop: 2 in-window
+            qty(.hrv, 65, date(2026, 7, 21, 4, 0), "com.whoop"),          // → whoop mean 60, wins
+            qty(.hrv, 40, date(2026, 7, 21, 2, 0), "com.apple.health"),   // watch: 1, loses/not merged
+        ]
+        let out = NightAssembler.assemble(sleep: s, quantities: q, calendar: utc)
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out[0].hrvMs!, 60, accuracy: 0.01)
+        XCTAssertEqual(out[0].source, "com.whoop")   // provenance = the HRV winner
+    }
+
+    func testRhrPicksDominantSourceNeverBlends() {
+        // RHR is a calendar-day gauge; two sources same day must NOT be averaged
+        // together — pick the dominant source, then average within it (aydv).
+        let q = [
+            qty(.restingHeartRate, 50, date(2026, 7, 21, 6, 0), "com.apple.health"),
+            qty(.restingHeartRate, 52, date(2026, 7, 21, 7, 0), "com.apple.health"), // watch: 2 → avg 51 wins
+            qty(.restingHeartRate, 80, date(2026, 7, 21, 8, 0), "com.whoop"),        // whoop: 1 → ignored
+        ]
+        let out = NightAssembler.assemble(sleep: [], quantities: q, calendar: utc)
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out[0].rhrBpm!, 51, accuracy: 0.01)   // NOT (50+52+80)/3 = 60.67
+    }
+
     // MARK: overnight gauges use the sleep window; daytime samples excluded
 
     func testHrvUsesSleepWindowMean() {

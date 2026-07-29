@@ -84,4 +84,11 @@ public class DailyRecovery extends PanacheEntityBase {
      * seeds Athlete.ftp when the athlete has none (see HealthResource.ingest). */
     @Column(name = "cycling_ftp_w")
     public Double cyclingFtpW;
+
+    /** Provenance of the recovery signal (HRV source bundle id), e.g. Apple Watch vs
+     * WHOOP. Lets the client label readiness by origin for the WHOOP overlay so it's a
+     * genuine two-source comparison rather than WHOOP-raw vs WHOOP-score (bean aydv).
+     * Nullable — set only when the ingest carries an HRV source. */
+    @Column(name = "source")
+    public String source;
 }

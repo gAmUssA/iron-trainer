@@ -22,6 +22,11 @@ struct DailyRecovery: Equatable {
     var wristTempC: Double?
     var bodyMassKg: Double?
     var vo2Max: Double?
+    /// Bundle id of the source that provided this night's HRV (the recovery driver,
+    /// and exactly what WHOOP also writes to Apple Health). Lets the server label the
+    /// readiness by origin so a WHOOP vs Apple-Watch overlay is genuinely two sources
+    /// (bean aydv). nil when there was no overnight HRV.
+    var source: String?
 
     /// Total asleep = deep+core+rem+unspecified. `inBed` and `awake` are excluded
     /// (per research), so the bar never overstates sleep.
@@ -105,7 +110,10 @@ enum NightAssembler {
         // ── Overnight gauges: mean within the night's sleep window ────────────
         for (night, window) in windowByNight {
             var rec = record(night)
-            rec.hrvMs = windowMean(quantities, .hrv, window: window)
+            if let hrv = windowMeanWithSource(quantities, .hrv, window: window) {
+                rec.hrvMs = hrv.mean
+                rec.source = hrv.source   // provenance = the HRV winner (bean aydv)
+            }
             rec.respiratoryRate = windowMean(quantities, .respiratoryRate, window: window)
             rec.wristTempC = windowMean(quantities, .wristTemperature, window: window)
             byDay[night] = rec
@@ -144,13 +152,23 @@ enum NightAssembler {
         _ samples: [QuantitySample], _ metric: QuantityMetric,
         window: (start: Date, end: Date)
     ) -> Double? {
+        windowMeanWithSource(samples, metric, window: window)?.mean
+    }
+
+    /// windowMean plus the winning source's bundle id — used to record HRV
+    /// provenance (bean aydv) without changing the mean.
+    private static func windowMeanWithSource(
+        _ samples: [QuantitySample], _ metric: QuantityMetric,
+        window: (start: Date, end: Date)
+    ) -> (mean: Double, source: String)? {
         let inWindow = samples.filter {
             $0.metric == metric && $0.end >= window.start && $0.start <= window.end
         }
         guard let best = Dictionary(grouping: inWindow, by: \.sourceBundleID)
-            .max(by: { ($0.value.count, $0.key) < ($1.value.count, $1.key) })?.value
+            .max(by: { ($0.value.count, $0.key) < ($1.value.count, $1.key) })
         else { return nil }
-        return best.map(\.value).reduce(0, +) / Double(best.count)
+        let mean = best.value.map(\.value).reduce(0, +) / Double(best.value.count)
+        return (mean, best.key)
     }
 
     private static func average(_ v: [Double]) -> Double { v.reduce(0, +) / Double(v.count) }
@@ -164,11 +182,18 @@ enum NightAssembler {
         set: (inout DailyRecovery, Double) -> Void,
         into byDay: inout [Date: DailyRecovery]
     ) {
-        let ofMetric = samples.filter { $0.metric == metric }.sorted { $0.start < $1.start }
+        let ofMetric = samples.filter { $0.metric == metric }
         let byCalDay = Dictionary(grouping: ofMetric) { calendar.startOfDay(for: $0.start) }
         for (day, daySamples) in byCalDay {
+            // One source per day (most samples, deterministic tie-break) — never blend
+            // two wearables' readings of the same metric, e.g. Apple Watch + WHOOP both
+            // writing RHR to Apple Health (bean aydv). Then reduce within that source.
+            guard let winner = Dictionary(grouping: daySamples, by: \.sourceBundleID)
+                .max(by: { ($0.value.count, $0.key) < ($1.value.count, $1.key) })?.value
+            else { continue }
+            let vals = winner.sorted { $0.start < $1.start }.map(\.value)
             var rec = byDay[day] ?? DailyRecovery(day: day)
-            set(&rec, reduce(daySamples.map(\.value)))
+            set(&rec, reduce(vals))
             byDay[day] = rec
         }
     }

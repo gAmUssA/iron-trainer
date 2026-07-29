@@ -19,6 +19,7 @@ final class HealthIngestClientTests: XCTestCase {
         var r = DailyRecovery(day: day(2026, 7, 21))
         r.hrvMs = 55
         r.rhrBpm = 48
+        r.source = "com.whoop"   // provenance rides HRV only (aydv)
         r.deepH = 1.2
         r.coreH = 4
         r.remH = 1.5
@@ -38,6 +39,10 @@ final class HealthIngestClientTests: XCTestCase {
         let point = (hrv["data"] as! [[String: Any]])[0]
         XCTAssertEqual(point["qty"] as? Double, 55)
         XCTAssertNotNil(point["date"] as? String)
+        XCTAssertEqual(point["source"] as? String, "com.whoop")   // provenance on HRV
+        // …but not on other metrics.
+        let rhr = ms.first { $0["name"] as? String == "resting_heart_rate" }!
+        XCTAssertNil((rhr["data"] as! [[String: Any]])[0]["source"])
 
         let sleep = ms.first { $0["name"] as? String == "sleep_analysis" }!
         let srec = (sleep["data"] as! [[String: Any]])[0]
