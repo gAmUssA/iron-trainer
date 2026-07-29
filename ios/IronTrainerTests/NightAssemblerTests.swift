@@ -112,6 +112,18 @@ final class NightAssemblerTests: XCTestCase {
         XCTAssertEqual(out[0].rhrBpm!, 51, accuracy: 0.01)   // NOT (50+52+80)/3 = 60.67
     }
 
+    func testBodyMassTakesGlobalLatestAcrossSources() {
+        // `latest` metrics are NOT source-isolated: the globally-newest reading wins
+        // regardless of source (a fresh weigh-in on a second scale still counts).
+        let q = [
+            qty(.bodyMass, 80.0, date(2026, 7, 21, 7, 0), "com.withings"),       // older
+            qty(.bodyMass, 79.0, date(2026, 7, 21, 20, 0), "com.apple.health"),  // newest → wins
+        ]
+        let out = NightAssembler.assemble(sleep: [], quantities: q, calendar: utc)
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out[0].bodyMassKg!, 79.0, accuracy: 0.01)   // global latest, not per-source
+    }
+
     // MARK: overnight gauges use the sleep window; daytime samples excluded
 
     func testHrvUsesSleepWindowMean() {

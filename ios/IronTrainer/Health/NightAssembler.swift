@@ -120,11 +120,11 @@ enum NightAssembler {
         }
 
         // ── Calendar-day gauges ───────────────────────────────────────────────
-        applyDaily(quantities, .restingHeartRate, calendar, reduce: average,
+        applyDaily(quantities, .restingHeartRate, calendar, perSource: true, reduce: average,
                    set: { rec, v in rec.rhrBpm = v }, into: &byDay)
-        applyDaily(quantities, .bodyMass, calendar, reduce: latest,
+        applyDaily(quantities, .bodyMass, calendar, perSource: false, reduce: latest,
                    set: { rec, v in rec.bodyMassKg = v }, into: &byDay)
-        applyDaily(quantities, .vo2Max, calendar, reduce: latest,
+        applyDaily(quantities, .vo2Max, calendar, perSource: false, reduce: latest,
                    set: { rec, v in rec.vo2Max = v }, into: &byDay)
 
         return byDay.values.sorted { $0.day < $1.day }
@@ -178,6 +178,7 @@ enum NightAssembler {
     /// record. `reduce` receives the day's values in chronological order.
     private static func applyDaily(
         _ samples: [QuantitySample], _ metric: QuantityMetric, _ calendar: Calendar,
+        perSource: Bool,
         reduce: ([Double]) -> Double,
         set: (inout DailyRecovery, Double) -> Void,
         into byDay: inout [Date: DailyRecovery]
@@ -185,13 +186,21 @@ enum NightAssembler {
         let ofMetric = samples.filter { $0.metric == metric }
         let byCalDay = Dictionary(grouping: ofMetric) { calendar.startOfDay(for: $0.start) }
         for (day, daySamples) in byCalDay {
-            // One source per day (most samples, deterministic tie-break) — never blend
-            // two wearables' readings of the same metric, e.g. Apple Watch + WHOOP both
-            // writing RHR to Apple Health (bean aydv). Then reduce within that source.
-            guard let winner = Dictionary(grouping: daySamples, by: \.sourceBundleID)
-                .max(by: { ($0.value.count, $0.key) < ($1.value.count, $1.key) })?.value
-            else { continue }
-            let vals = winner.sorted { $0.start < $1.start }.map(\.value)
+            // `perSource` isolates the day to one source (most samples, deterministic
+            // tie-break) so an AVERAGE never blends two wearables' readings of the same
+            // metric — Apple Watch + WHOOP both writing RHR to Apple Health (bean aydv).
+            // A `latest` reducer must NOT isolate: the globally-newest reading wins
+            // regardless of source (a fresh weigh-in on a second scale still counts).
+            let chosen: [QuantitySample]
+            if perSource {
+                guard let winner = Dictionary(grouping: daySamples, by: \.sourceBundleID)
+                    .max(by: { ($0.value.count, $0.key) < ($1.value.count, $1.key) })?.value
+                else { continue }
+                chosen = winner
+            } else {
+                chosen = daySamples
+            }
+            let vals = chosen.sorted { $0.start < $1.start }.map(\.value)
             var rec = byDay[day] ?? DailyRecovery(day: day)
             set(&rec, reduce(vals))
             byDay[day] = rec
