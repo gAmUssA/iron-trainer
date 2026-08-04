@@ -235,6 +235,29 @@ export interface RecoveryDay {
   cycling_ftp_w?: number | null;
 }
 
+/** One WHOOP day from the member data-export ZIP. hrv_rmssd_ms is RMSSD —
+ * NOT comparable in absolute value to RecoveryDay.hrv_ms (Apple Health SDNN). */
+export interface WhoopDay {
+  date: string;
+  recovery_score: number | null;
+  hrv_rmssd_ms: number | null;
+  rhr_bpm: number | null;
+  day_strain: number | null;
+  energy_kcal: number | null;
+  spo2_pct: number | null;
+  skin_temp_c: number | null;
+  sleep_performance_pct: number | null;
+  sleep_efficiency_pct: number | null;
+  respiratory_rate: number | null;
+  asleep_h: number | null;
+}
+
+export interface WhoopImportResult {
+  cycles: number;
+  first_date: string | null;
+  last_date: string | null;
+}
+
 export interface SyncResult {
   fetched: number;
   upserted: number;
@@ -575,6 +598,17 @@ export const api = {
   regenerateRaceDayNutrition: () =>
     viaJob<RaceDayPlan>(() => send("/api/nutrition/race-day/regenerate?async=1", "POST")),
   recovery: (days = 14) => getJSON<{ days: RecoveryDay[] }>(`/api/health/recovery?days=${days}`),
+  whoopCycles: (days = DEFAULT_CHART_DAYS) =>
+    getJSON<{ days: WhoopDay[] }>(`/api/whoop/cycles?days=${days}`),
+  importWhoop: async (file: File): Promise<WhoopImportResult> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/whoop/import", {
+      method: "POST", credentials: "include", body: fd,
+    });
+    if (!res.ok) throw await httpError(res);
+    return (await res.json()) as WhoopImportResult;
+  },
   ingestToken: () =>
     send<{ token: string; header: string; path: string }>("/api/device/ingest-token", "POST"),
   job: (id: number) => getJSON<JobInfo>(`/api/jobs/${id}`),
