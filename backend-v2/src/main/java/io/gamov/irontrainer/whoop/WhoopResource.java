@@ -13,6 +13,7 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.ClientErrorException;
 import jakarta.ws.rs.core.MediaType;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -56,11 +57,14 @@ public class WhoopResource {
         } catch (IllegalArgumentException e) {
             throw new BadRequestException(e.getMessage());
         }
+        // The export is newest-first; sort oldest-first so the summary reads
+        // naturally and, on duplicate days (e.g. travel splitting a day across
+        // two cycles), the LATER cycle wins the upsert.
+        cycles.sort(Comparator.comparing((WhoopCycle c) -> c.date)
+                .thenComparing(c -> c.cycleStart == null ? "" : c.cycleStart));
         String now = Instant.now().toString();
         int upserted = QuarkusTransaction.requiringNew().call(() -> {
             int n = 0;
-            // Rows arrive oldest→newest in the export; on duplicate days (e.g.
-            // travel splitting a day across two cycles) the later cycle wins.
             for (WhoopCycle c : cycles) {
                 c.athleteId = aid;
                 c.updatedAt = now;
