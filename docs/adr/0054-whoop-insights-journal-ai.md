@@ -13,7 +13,7 @@ LLM pass turns them into a ranked, actionable read.
 
 ## Decision
 
-**1. journal_entries.csv now imports** into `whoop_journal` (V5, PK
+**1. journal_entries.csv now imports** into `whoop_journal` (V6, PK
 `athlete_id+date+question`, idempotent like cycles). Journal rows join their
 cycle **by the shared `Cycle start time`** and inherit its wake-date — an
 end-date heuristic would shift after-midnight bedtimes (exactly the nights
