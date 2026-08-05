@@ -150,8 +150,9 @@ public final class StravaArchive {
         return s.isEmpty() ? null : s;
     }
 
-    /** _num: strip, drop thousands commas, empty → null, else the parsed double. */
-    static Double num(String v) {
+    /** _num: strip, drop thousands commas, empty → null, else the parsed double.
+     * Public: WhoopArchive reuses the same CSV number semantics. */
+    public static Double num(String v) {
         if (v == null) {
             return null;
         }
@@ -199,8 +200,9 @@ public final class StravaArchive {
         return s;   // store as-is; better than dropping the activity
     }
 
-    /** Minimal RFC 4180 CSV → header-keyed row maps (Python csv.DictReader). */
-    static List<Map<String, String>> csvDictRows(String text) {
+    /** Minimal RFC 4180 CSV → header-keyed row maps (Python csv.DictReader).
+     * Public: WhoopArchive reuses it for the WHOOP export CSVs. */
+    public static List<Map<String, String>> csvDictRows(String text) {
         List<List<String>> rows = parseCsv(text);
         List<Map<String, String>> out = new ArrayList<>();
         if (rows.isEmpty()) {

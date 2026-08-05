@@ -28,11 +28,12 @@ import { TodayCall } from "./components/TodayCall";
 import { TodaySessionCard } from "./components/TodaySessionCard";
 import { PrCards, TrendsView } from "./components/TrendsView";
 import { RecoveryTrendsView } from "./components/RecoveryTrendsView";
+import { WhoopView } from "./components/WhoopView";
 import { useTheme } from "./theme";
 import { useUnits } from "./units";
 import { startTour } from "./tour";
 
-type Tab = "dashboard" | "plan" | "trends" | "recovery" | "nutrition" | "tests" | "settings";
+type Tab = "dashboard" | "plan" | "trends" | "recovery" | "whoop" | "nutrition" | "tests" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
   // id stays "dashboard" (state/deep-link stability); label is the IA-overhaul
@@ -41,6 +42,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "plan", label: "Training Plan" },
   { id: "trends", label: "Fitness" },
   { id: "recovery", label: "Recovery" },
+  { id: "whoop", label: "WHOOP" },
   { id: "nutrition", label: "Nutrition" },
   { id: "tests", label: "Tests" },
   { id: "settings", label: "Settings" },
@@ -339,6 +341,13 @@ export default function App() {
         {tab === "recovery" && (
           <div className="tab-panel">
             <RecoveryTrendsView />
+          </div>
+        )}
+
+        {/* WHOOP — export-ZIP upload + overlay vs Apple Health / Strava load. */}
+        {tab === "whoop" && (
+          <div className="tab-panel">
+            <WhoopView />
           </div>
         )}
 

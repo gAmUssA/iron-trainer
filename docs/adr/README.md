@@ -75,3 +75,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0050](0050-healthkit-night-assembler.md) | HealthKit night assembler + first unit-test target | Accepted |
 | [0051](0051-native-healthkit-ingest-and-delivery.md) | Native HealthKit ingest client + delivery | Accepted |
 | [0052](0052-sign-in-with-apple-web-and-canonical-domain.md) | Sign in with Apple (web) + account linking + canonical domain | Accepted |
+| [0053](0053-whoop-export-zip-import.md) | WHOOP export-ZIP import + overlay page | Accepted |
