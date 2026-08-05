@@ -5,7 +5,7 @@ status: completed
 type: feature
 priority: normal
 created_at: 2026-08-05T00:18:31Z
-updated_at: 2026-08-05T00:32:04Z
+updated_at: 2026-08-05T00:36:41Z
 parent: iron-trainer-ids6
 ---
 
@@ -25,3 +25,5 @@ From stevetan.com/resources/whoop-claude-health-analyst (PDF also in iCloud Down
 ## Summary of Changes
 
 ADR 0054. V5 (whoop_journal + whoop_insight), WhoopInsights (deterministic stats — LLM narrates, never computes), WhoopAi staged prompt (performance-not-medical, confounder-aware), insights/analyze endpoints, 3 new UI sections on WHOOP tab. Tests: +6 (WhoopInsightsTest 4, journal parse 2); suite 223 green. Validated with real export: 11,509 journal answers; analysis correctly flagged 90d HRV depression (29.8 vs 40.6 ms), +5bpm RHR, ±76min bedtime spread. Deferred: next-day lag correlations, per-cycle timezone storage, analysis history.
+
+**2026-08-05 follow-up:** AI analysis rate-limited to 2 runs/athlete/UTC-day (runs_date/runs_count on whoop_insight, charged before the paid call; analyze_runs_left in GET /insights, UI disables at 0).

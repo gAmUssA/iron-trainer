@@ -39,6 +39,12 @@ patterns → top-5 recovery damagers → weekly protocol), explicitly
 performance-not-medical with a see-a-doctor flag, told to call out
 confounders. Result persists in `whoop_insight` (one row per athlete —
 regenerate overwrites) so the paid, slow result survives reloads.
+**Abuse guard:** analysis is capped at 2 runs per athlete per UTC day
+(`runs_date`/`runs_count` on `whoop_insight`; gate order 429 → 503 → charge →
+call, so a keyless env never burns a run and the slot is spent *before* the
+paid call — retry-hammering can't multiply API cost). `GET /insights` exposes
+`analyze_runs_left`; the UI swaps the button for a "try again tomorrow" note
+at 0.
 
 **4. UI**: three new sections on the WHOOP tab — Behavior Impact table
 (colored Δrecovery/ΔHRV), Bedtime Consistency + 28-Day Direction cards, and

@@ -140,6 +140,7 @@ public class WhoopResource {
         }
         out.put("analysis", analysis);
         out.put("ai_available", llmAvailable());
+        out.put("analyze_runs_left", runsLeft(saved, utcToday()));
         return out;
     }
 
@@ -159,10 +160,32 @@ public class WhoopResource {
         return runAnalysis(aid);
     }
 
+    // The LLM call is paid and slow — cap it per athlete per UTC day.
+    static final int MAX_ANALYSES_PER_DAY = 2;
+
     private Map<String, Object> runAnalysis(int aid) {
-        if (!llmAvailable()) {
-            throw new ClientErrorException("ANTHROPIC_API_KEY is not configured.", 503);
+        String today = utcToday();
+        // Rate gate first (429 beats 503 — and a keyless env never burns a run).
+        if (runsLeft(QuarkusTransaction.requiringNew().call(() -> WhoopInsight.findById(aid)), today) <= 0) {
+            throw new ClientErrorException(
+                    "Analysis is limited to " + MAX_ANALYSES_PER_DAY + " runs per day — try again tomorrow.", 429);
         }
+        if (!llmAvailable()) {
+            throw new jakarta.ws.rs.ServiceUnavailableException("ANTHROPIC_API_KEY is not configured.");
+        }
+        // Spend the run BEFORE the paid call — a failure burns a slot, but the
+        // reverse order would let retry-hammering multiply API cost. Concurrent
+        // doubles are already blocked by the same-kind job.
+        QuarkusTransaction.requiringNew().run(() -> {
+            WhoopInsight row = WhoopInsight.findById(aid);
+            if (row == null) {
+                row = new WhoopInsight();
+                row.athleteId = aid;
+                row.persist();
+            }
+            row.runsCount = today.equals(row.runsDate) ? (row.runsCount == null ? 0 : row.runsCount) + 1 : 1;
+            row.runsDate = today;
+        });
         // DB reads in a tx; the LLM call runs OUTSIDE it (external, slow).
         record Ctx(Map<String, Object> insights, String recentDays) {}
         Ctx ctx = QuarkusTransaction.requiringNew().call(() -> {
@@ -176,11 +199,6 @@ public class WhoopResource {
         String now = Instant.now().toString();
         QuarkusTransaction.requiringNew().run(() -> {
             WhoopInsight row = WhoopInsight.findById(aid);
-            if (row == null) {
-                row = new WhoopInsight();
-                row.athleteId = aid;
-                row.persist();
-            }
             row.analysisMd = text;
             row.createdAt = now;
         });
@@ -216,6 +234,17 @@ public class WhoopResource {
 
     private static List<WhoopJournalEntry> allJournal(int aid) {
         return WhoopJournalEntry.list("athleteId = ?1", aid);
+    }
+
+    private static String utcToday() {
+        return Instant.now().toString().substring(0, 10);
+    }
+
+    static int runsLeft(WhoopInsight row, String utcToday) {
+        if (row == null || !utcToday.equals(row.runsDate) || row.runsCount == null) {
+            return MAX_ANALYSES_PER_DAY;
+        }
+        return Math.max(0, MAX_ANALYSES_PER_DAY - row.runsCount);
     }
 
     // Same key sentinel logic as NutritionLlm: the langchain4j extension needs a

@@ -12,10 +12,13 @@ CREATE TABLE "public"."whoop_journal" (
 );
 
 -- One AI analysis per athlete (regenerating overwrites — the LLM call is slow
--- and paid, so the latest result must survive page reloads).
+-- and paid, so the latest result must survive page reloads). runs_date/runs_count
+-- rate-limit the paid call to 2 per athlete per UTC day.
 CREATE TABLE "public"."whoop_insight" (
     "athlete_id" integer NOT NULL,
     "analysis_md" character varying,
     "created_at" character varying,
+    "runs_date" character varying,
+    "runs_count" integer,
     PRIMARY KEY ("athlete_id")
 );

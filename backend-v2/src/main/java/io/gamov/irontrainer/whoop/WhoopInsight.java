@@ -21,4 +21,11 @@ public class WhoopInsight extends PanacheEntityBase {
 
     @Column(name = "created_at")
     public String createdAt;
+
+    // Paid-call rate limit: runs so far on runs_date (UTC day).
+    @Column(name = "runs_date")
+    public String runsDate;
+
+    @Column(name = "runs_count")
+    public Integer runsCount;
 }

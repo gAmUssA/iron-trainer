@@ -296,6 +296,8 @@ export interface WhoopInsightsData {
   };
   analysis: { text: string; created_at: string } | null;
   ai_available: boolean;
+  /** Paid-call abuse guard: analyses remaining today (server-capped per UTC day). */
+  analyze_runs_left?: number;
 }
 
 export interface SyncResult {

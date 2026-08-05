@@ -92,6 +92,41 @@ class WhoopResourceTest {
     }
 
     @Test
+    void analyzeIsRateLimitedPerDay() {
+        // Seed today's runs at the cap; the gate fires before the LLM check, so
+        // this tests 429 even though tests run keyless (which would 503).
+        String today = java.time.Instant.now().toString().substring(0, 10);
+        QuarkusTransaction.requiringNew().run(() -> {
+            WhoopInsight row = WhoopInsight.findById(AID);
+            if (row == null) {
+                row = new WhoopInsight();
+                row.athleteId = AID;
+                row.persist();
+            }
+            row.runsDate = today;
+            row.runsCount = WhoopResource.MAX_ANALYSES_PER_DAY;
+        });
+        given().when().post("/api/whoop/insights/analyze")
+                .then().statusCode(429);
+
+        // A stale runs_date (yesterday) resets the budget — keyless env then 503s,
+        // proving the gate opened without burning toward a paid call.
+        QuarkusTransaction.requiringNew().run(() -> {
+            WhoopInsight row = WhoopInsight.findById(AID);
+            row.runsDate = "2000-01-01";
+        });
+        given().when().post("/api/whoop/insights/analyze")
+                .then().statusCode(503);
+    }
+
+    @Test
+    void insightsReportsRunsLeft() {
+        given().when().get("/api/whoop/insights")
+                .then().statusCode(200)
+                .body("ai_available", is(false));
+    }
+
+    @Test
     void rejectsNonWhoopZip() throws Exception {
         given().multiPart("file", "bad.zip", zipOf("readme.txt", "not a whoop export"), "application/zip")
                 .when().post("/api/whoop/import")

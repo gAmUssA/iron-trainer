@@ -160,8 +160,10 @@ export function WhoopView() {
   async function doAnalyze() {
     setAnalyzing(true);
     try {
-      const r = await api.whoopAnalyze();
-      setInsights((prev) => (prev ? { ...prev, analysis: r } : prev));
+      await api.whoopAnalyze();
+      // Refetch rather than merge — picks up the new analysis AND the
+      // decremented runs-left counter in one go.
+      setInsights(await api.whoopInsights());
     } catch (err) {
       setMsg(`Analysis failed: ${err}`);
     } finally {
@@ -369,15 +371,19 @@ export function WhoopView() {
               analysis, not medical advice
             </div>
             {insights?.ai_available ? (
-              <div className="btn-row">
-                <button className="btn" disabled={analyzing} onClick={doAnalyze}>
-                  {analyzing
-                    ? "Analyzing… (can take a minute)"
-                    : insights.analysis
-                      ? "Regenerate analysis"
-                      : "Analyze my WHOOP data"}
-                </button>
-              </div>
+              (insights.analyze_runs_left ?? 1) > 0 ? (
+                <div className="btn-row">
+                  <button className="btn" disabled={analyzing} onClick={doAnalyze}>
+                    {analyzing
+                      ? "Analyzing… (can take a minute)"
+                      : insights.analysis
+                        ? "Regenerate analysis"
+                        : "Analyze my WHOOP data"}
+                  </button>
+                </div>
+              ) : (
+                <p className="muted">Daily analysis limit reached — try again tomorrow.</p>
+              )
             ) : (
               <p className="muted">Configure ANTHROPIC_API_KEY on the backend to enable analysis.</p>
             )}
