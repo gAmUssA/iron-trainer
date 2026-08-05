@@ -1,10 +1,11 @@
 ---
 # iron-trainer-bnah
 title: 'WHOOP insights: journal correlations + staged AI analysis (Steve Tan method)'
-status: todo
+status: completed
 type: feature
+priority: normal
 created_at: 2026-08-05T00:18:31Z
-updated_at: 2026-08-05T00:18:31Z
+updated_at: 2026-08-05T00:32:04Z
 parent: iron-trainer-ids6
 ---
 
@@ -16,7 +17,11 @@ From stevetan.com/resources/whoop-claude-health-analyst (PDF also in iCloud Down
 4. **Staged AI analysis** — backend already has langchain4j-anthropic (plan generation). "Analyze my WHOOP data" button: Stage 1 inventory/gaps → 2 personal baselines → 3 pattern/correlation analysis → 4 top-5 ranked recovery damagers → 5 weekly protocol. Render as an insights card on the WHOOP tab.
 
 ## Todo
-- [ ] Import journal_entries.csv (whoop_journal table, header-tolerant like WhoopArchive)
-- [ ] Correlation endpoint: journal behaviors vs next-day recovery/HRV deltas
-- [ ] Bedtime-variance + strain:recovery ratio series
-- [ ] AI insights: staged prompt over cycles+journal via existing anthropic integration
+- [x] Import journal_entries.csv (whoop_journal, V5; joined to cycles by shared Cycle start time → wake date)
+- [x] GET /api/whoop/insights: same-day behavior deltas (≥5 days/side, top 10 by |Δrecovery|), computed in Java (WhoopInsights)
+- [x] Bedtime consistency (circular stddev, 28d vs all) + 28d-vs-prev-28d strain/recovery/HRV direction
+- [x] POST /api/whoop/insights/analyze (async job, WhoopAi 5-stage prompt, persisted in whoop_insight) + UI cards
+
+## Summary of Changes
+
+ADR 0054. V5 (whoop_journal + whoop_insight), WhoopInsights (deterministic stats — LLM narrates, never computes), WhoopAi staged prompt (performance-not-medical, confounder-aware), insights/analyze endpoints, 3 new UI sections on WHOOP tab. Tests: +6 (WhoopInsightsTest 4, journal parse 2); suite 223 green. Validated with real export: 11,509 journal answers; analysis correctly flagged 90d HRV depression (29.8 vs 40.6 ms), +5bpm RHR, ±76min bedtime spread. Deferred: next-day lag correlations, per-cycle timezone storage, analysis history.

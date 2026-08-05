@@ -76,3 +76,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0051](0051-native-healthkit-ingest-and-delivery.md) | Native HealthKit ingest client + delivery | Accepted |
 | [0052](0052-sign-in-with-apple-web-and-canonical-domain.md) | Sign in with Apple (web) + account linking + canonical domain | Accepted |
 | [0053](0053-whoop-export-zip-import.md) | WHOOP export-ZIP import + overlay page | Accepted |
+| [0054](0054-whoop-insights-journal-ai.md) | WHOOP insights: journal correlations + staged AI analysis | Accepted |

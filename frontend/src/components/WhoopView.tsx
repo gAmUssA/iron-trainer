@@ -16,6 +16,7 @@ import {
   type PmcDay,
   type RecoveryDay,
   type WhoopDay,
+  type WhoopInsightsData,
 } from "../api";
 import { useChart } from "../chartTheme";
 import { RangePicker } from "./RangePicker";
@@ -98,8 +99,10 @@ export function WhoopView() {
   const [whoop, setWhoop] = useState<WhoopDay[]>([]);
   const [apple, setApple] = useState<RecoveryDay[]>([]);
   const [pmc, setPmc] = useState<PmcDay[]>([]);
+  const [insights, setInsights] = useState<WhoopInsightsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const req = useRef(0);
 
@@ -112,13 +115,15 @@ export function WhoopView() {
       // Comparison sources are garnish — their failure must not blank the page.
       api.recovery(d).catch(() => ({ days: [] as RecoveryDay[] })),
       api.pmc(d).catch(() => ({ days: [] as PmcDay[] })),
+      api.whoopInsights().catch(() => null),
     ])
-      .then(([wr, ar, pr]) => {
+      .then(([wr, ar, pr, ins]) => {
         if (seq !== req.current) return; // stale response
         // whoop/recovery arrive newest-first; pmc oldest-first. merge() sorts anyway.
         setWhoop(wr.days);
         setApple(ar.days);
         setPmc(pr.days);
+        setInsights(ins);
       })
       .catch(() => {
         if (seq === req.current) setWhoop([]);
@@ -140,7 +145,8 @@ export function WhoopView() {
       const r = await api.importWhoop(file);
       setMsg(
         r.cycles > 0
-          ? `Imported ${r.cycles} days (${r.first_date} → ${r.last_date}).`
+          ? `Imported ${r.cycles} days (${r.first_date} → ${r.last_date})` +
+            (r.journal_answers ? ` and ${r.journal_answers} journal answers.` : ".")
           : "The export contained no scored days.",
       );
       load(days);
@@ -151,8 +157,30 @@ export function WhoopView() {
     }
   }
 
+  async function doAnalyze() {
+    setAnalyzing(true);
+    try {
+      const r = await api.whoopAnalyze();
+      setInsights((prev) => (prev ? { ...prev, analysis: r } : prev));
+    } catch (err) {
+      setMsg(`Analysis failed: ${err}`);
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   const rows = merge(whoop, apple, pmc);
   const hasWhoop = whoop.length > 0;
+  const behaviors = insights?.behaviors ?? [];
+  const bedtime = insights?.bedtime;
+  const trend = insights?.trend_28d;
+
+  const delta = (v: number | null | undefined, unit: string) =>
+    v == null ? "—" : `${v > 0 ? "+" : ""}${v}${unit}`;
+  const deltaColor = (v: number | null | undefined) =>
+    v == null ? undefined : v < 0 ? C.appleRhr : C.whoop;
+  const arrow = (now: number | null | undefined, prev: number | null | undefined) =>
+    now == null || prev == null ? "" : now > prev ? " ↑" : now < prev ? " ↓" : " →";
 
   return (
     <>
@@ -260,6 +288,109 @@ export function WhoopView() {
                 <Line yAxisId="strain" dataKey="strain" name="Day Strain" stroke={C.strain} strokeWidth={1.8} dot={false} connectNulls />
               </ComposedChart>
             </ResponsiveContainer>
+          </div>
+
+          {/* 5 — Behavior impact (journal correlations, computed server-side) */}
+          {behaviors.length > 0 && (
+            <div className="card">
+              <div className="card-title">Behavior Impact</div>
+              <div className="card-sub">
+                Journal answers vs same-day recovery, averaged over your whole history — observational,
+                ranked by impact
+              </div>
+              <table className="data-table" style={{ width: "100%", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ textAlign: "left" }}>
+                    <th>Behavior</th>
+                    <th>Days yes / no</th>
+                    <th>Recovery yes vs no</th>
+                    <th>Δ Recovery</th>
+                    <th>Δ HRV</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {behaviors.map((b) => (
+                    <tr key={b.question}>
+                      <td>{b.question}</td>
+                      <td className="muted">{b.yes_days} / {b.no_days}</td>
+                      <td className="muted">{b.recovery_yes}% vs {b.recovery_no}%</td>
+                      <td style={{ color: deltaColor(b.recovery_delta), fontWeight: 600 }}>
+                        {delta(b.recovery_delta, " pts")}
+                      </td>
+                      <td style={{ color: deltaColor(b.hrv_delta) }}>{delta(b.hrv_delta, " ms")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* 6 — Consistency & 28-day direction */}
+          {(bedtime || trend) && (
+            <div className="grid-2">
+              {bedtime && (
+                <div className="card">
+                  <div className="card-title">Bedtime Consistency</div>
+                  <div className="card-sub">
+                    Spread (±min) of your bedtime — variance often costs more recovery than short sleep
+                  </div>
+                  <p style={{ fontSize: 15 }}>
+                    Last 28 nights: <b>±{bedtime.stddev_min_28d ?? "—"} min</b>
+                    <span className="muted"> ({bedtime.nights_28d} nights)</span>
+                    <br />
+                    All time: <b>±{bedtime.stddev_min_all ?? "—"} min</b>
+                  </p>
+                </div>
+              )}
+              {trend && (
+                <div className="card">
+                  <div className="card-title">28-Day Direction</div>
+                  <div className="card-sub">Last 28 days vs the 28 before — is load outpacing recovery?</div>
+                  <p style={{ fontSize: 15 }}>
+                    Strain: <b>{trend.strain_28d ?? "—"}</b>
+                    <span className="muted"> vs {trend.strain_prev_28d ?? "—"}{arrow(trend.strain_28d, trend.strain_prev_28d)}</span>
+                    <br />
+                    Recovery: <b>{trend.recovery_28d ?? "—"}%</b>
+                    <span className="muted"> vs {trend.recovery_prev_28d ?? "—"}%{arrow(trend.recovery_28d, trend.recovery_prev_28d)}</span>
+                    <br />
+                    HRV: <b>{trend.hrv_28d ?? "—"} ms</b>
+                    <span className="muted"> vs {trend.hrv_prev_28d ?? "—"} ms{arrow(trend.hrv_28d, trend.hrv_prev_28d)}</span>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 7 — AI analysis (staged, persisted) */}
+          <div className="card">
+            <div className="card-title">AI Analysis</div>
+            <div className="card-sub">
+              Staged read of your baselines, behavior correlations and load trend — performance
+              analysis, not medical advice
+            </div>
+            {insights?.ai_available ? (
+              <div className="btn-row">
+                <button className="btn" disabled={analyzing} onClick={doAnalyze}>
+                  {analyzing
+                    ? "Analyzing… (can take a minute)"
+                    : insights.analysis
+                      ? "Regenerate analysis"
+                      : "Analyze my WHOOP data"}
+                </button>
+              </div>
+            ) : (
+              <p className="muted">Configure ANTHROPIC_API_KEY on the backend to enable analysis.</p>
+            )}
+            {insights?.analysis && (
+              <>
+                <p className="muted" style={{ fontSize: 12 }}>
+                  Generated {insights.analysis.created_at.slice(0, 10)}
+                </p>
+                <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.55 }}>
+                  {insights.analysis.text}
+                </div>
+              </>
+            )}
           </div>
         </>
       )}

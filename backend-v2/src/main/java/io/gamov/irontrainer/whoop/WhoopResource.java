@@ -1,7 +1,9 @@
 package io.gamov.irontrainer.whoop;
 
 import io.gamov.irontrainer.auth.CurrentAthlete;
+import io.gamov.irontrainer.jobs.JobRunner;
 import io.gamov.irontrainer.util.Params;
+import io.gamov.irontrainer.util.PyJson;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.BadRequestException;
@@ -36,6 +38,15 @@ public class WhoopResource {
     @Inject
     CurrentAthlete current;
 
+    @Inject
+    JobRunner jobs;
+
+    @Inject
+    WhoopAi ai;
+
+    @org.eclipse.microprofile.config.inject.ConfigProperty(name = "quarkus.langchain4j.anthropic.api-key")
+    java.util.Optional<String> apiKey;
+
     /** POST /api/whoop/import — parse an uploaded WHOOP export ZIP and upsert
      * one row per (athlete, day). Re-uploading a newer export is idempotent:
      * same days are overwritten, new days appended. Sync — even a multi-year
@@ -51,12 +62,13 @@ public class WhoopResource {
         if (file.size() > MAX_UPLOAD_BYTES) {
             throw new ClientErrorException("Archive exceeds the 200 MB upload limit.", 413);
         }
-        List<WhoopCycle> cycles;
+        WhoopArchive.Export export;
         try {
-            cycles = WhoopArchive.parse(file.uploadedFile());
+            export = WhoopArchive.parse(file.uploadedFile());
         } catch (IllegalArgumentException e) {
             throw new BadRequestException(e.getMessage());
         }
+        List<WhoopCycle> cycles = export.cycles();
         // The export is newest-first; sort oldest-first so the summary reads
         // naturally and, on duplicate days (e.g. travel splitting a day across
         // two cycles), the LATER cycle wins the upsert.
@@ -72,13 +84,20 @@ public class WhoopResource {
                 WhoopCycle.getEntityManager().merge(c);
                 n++;
             }
+            for (WhoopJournalEntry j : export.journal()) {
+                j.athleteId = aid;
+                j.updatedAt = now;
+                WhoopJournalEntry.getEntityManager().merge(j);
+            }
             return n;
         });
         String first = cycles.isEmpty() ? null : cycles.get(0).date;
         String last = cycles.isEmpty() ? null : cycles.get(cycles.size() - 1).date;
-        LOG.infof("Athlete %d imported WHOOP export: %d cycles (%s → %s).", aid, upserted, first, last);
+        LOG.infof("Athlete %d imported WHOOP export: %d cycles (%s → %s), %d journal answers.",
+                aid, upserted, first, last, export.journal().size());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("cycles", upserted);
+        out.put("journal_answers", export.journal().size());
         out.put("first_date", first);
         out.put("last_date", last);
         return out;
@@ -102,5 +121,106 @@ public class WhoopResource {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("days", out);
         return resp;
+    }
+
+    /** GET /api/whoop/insights — deterministic stats (behavior correlations,
+     * bedtime consistency, 28-day trend) + the persisted AI analysis, if any. */
+    @GET
+    @Path("/insights")
+    @jakarta.transaction.Transactional
+    public Map<String, Object> insights() {
+        int aid = current.require();
+        Map<String, Object> out = WhoopInsights.compute(allCycles(aid), allJournal(aid));
+        WhoopInsight saved = WhoopInsight.findById(aid);
+        Map<String, Object> analysis = null;
+        if (saved != null && saved.analysisMd != null) {
+            analysis = new LinkedHashMap<>();
+            analysis.put("text", saved.analysisMd);
+            analysis.put("created_at", saved.createdAt);
+        }
+        out.put("analysis", analysis);
+        out.put("ai_available", llmAvailable());
+        return out;
+    }
+
+    /** POST /api/whoop/insights/analyze — run the staged AI analysis over the
+     * computed insights + last 90 days, persist it, return it. The LLM call can
+     * take up to 60s, so ?async=1 runs it as a job (kind "whoop_insights"),
+     * mirroring nutrition regenerate. */
+    @POST
+    @Path("/insights/analyze")
+    public Map<String, Object> analyze(@QueryParam("async") String asyncParam) {
+        int aid = current.require();
+        if (Params.boolOr(asyncParam, false)) {
+            Map<String, Object> env = new LinkedHashMap<>();
+            env.put("job", jobs.submit(aid, "whoop_insights", () -> runAnalysis(aid)));
+            return env;
+        }
+        return runAnalysis(aid);
+    }
+
+    private Map<String, Object> runAnalysis(int aid) {
+        if (!llmAvailable()) {
+            throw new ClientErrorException("ANTHROPIC_API_KEY is not configured.", 503);
+        }
+        // DB reads in a tx; the LLM call runs OUTSIDE it (external, slow).
+        record Ctx(Map<String, Object> insights, String recentDays) {}
+        Ctx ctx = QuarkusTransaction.requiringNew().call(() -> {
+            List<WhoopCycle> cycles = allCycles(aid);
+            if (cycles.isEmpty()) {
+                throw new BadRequestException("No WHOOP data — upload an export first.");
+            }
+            return new Ctx(WhoopInsights.compute(cycles, allJournal(aid)), recentDaysBlock(cycles));
+        });
+        String text = ai.analyze(PyJson.dumps(ctx.insights()), ctx.recentDays());
+        String now = Instant.now().toString();
+        QuarkusTransaction.requiringNew().run(() -> {
+            WhoopInsight row = WhoopInsight.findById(aid);
+            if (row == null) {
+                row = new WhoopInsight();
+                row.athleteId = aid;
+                row.persist();
+            }
+            row.analysisMd = text;
+            row.createdAt = now;
+        });
+        LOG.infof("Athlete %d WHOOP AI analysis generated (%d chars).", aid, text == null ? 0 : text.length());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("text", text);
+        out.put("created_at", now);
+        return out;
+    }
+
+    /** Last 90 data days, oldest first, one compact line per day for the prompt. */
+    static String recentDaysBlock(List<WhoopCycle> cycles) {
+        List<WhoopCycle> sorted = new ArrayList<>(cycles);
+        sorted.sort(Comparator.comparing(c -> c.date));
+        List<WhoopCycle> tail = sorted.subList(Math.max(0, sorted.size() - 90), sorted.size());
+        StringBuilder b = new StringBuilder();
+        for (WhoopCycle c : tail) {
+            b.append(c.date).append(", ").append(dash(c.recoveryScore)).append(", ")
+                    .append(dash(c.hrvRmssdMs)).append(", ").append(dash(c.rhrBpm)).append(", ")
+                    .append(dash(c.dayStrain)).append(", ").append(dash(WhoopInsights.round1(c.asleepH)))
+                    .append(", ").append(dash(c.sleepPerformancePct)).append('\n');
+        }
+        return b.toString();
+    }
+
+    private static String dash(Double v) {
+        return v == null ? "-" : (v == Math.floor(v) ? String.valueOf(v.intValue()) : String.valueOf(v));
+    }
+
+    private static List<WhoopCycle> allCycles(int aid) {
+        return WhoopCycle.list("athleteId = ?1", aid);
+    }
+
+    private static List<WhoopJournalEntry> allJournal(int aid) {
+        return WhoopJournalEntry.list("athleteId = ?1", aid);
+    }
+
+    // Same key sentinel logic as NutritionLlm: the langchain4j extension needs a
+    // non-empty value to boot, "no-key" means no real key is configured.
+    private boolean llmAvailable() {
+        return apiKey.map(k -> !k.isBlank() && !k.equals("no-key")).orElse(false);
     }
 }

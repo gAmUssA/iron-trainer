@@ -9,6 +9,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -35,41 +36,101 @@ public final class WhoopArchive {
     private WhoopArchive() {
     }
 
+    /** Everything usable from one export ZIP. */
+    public record Export(List<WhoopCycle> cycles, List<WhoopJournalEntry> journal) {}
+
     /** @throws IllegalArgumentException (→ 400) when the ZIP isn't a WHOOP export. */
-    public static List<WhoopCycle> parse(Path zipPath) {
-        List<WhoopCycle> out = new ArrayList<>();
+    public static Export parse(Path zipPath) {
+        List<WhoopCycle> cycles = new ArrayList<>();
+        List<WhoopJournalEntry> journal = new ArrayList<>();
         try (ZipFile zf = new ZipFile(zipPath.toFile())) {
-            ZipEntry entry = zf.stream()
-                    .filter(e -> e.getName().toLowerCase(Locale.ROOT).endsWith("physiological_cycles.csv"))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "No physiological_cycles.csv found — is this a WHOOP data export ZIP?"));
-            if (entry.getSize() > MAX_MEMBER_BYTES) {
-                throw new IllegalArgumentException("physiological_cycles.csv is implausibly large — refusing to import.");
-            }
-            String text;
-            try (InputStream in = zf.getInputStream(entry)) {
-                text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            }
-            if (!text.isEmpty() && text.charAt(0) == '﻿') {
-                text = text.substring(1);
-            }
             int skipped = 0;
-            for (Map<String, String> row : StravaArchive.csvDictRows(text)) {
+            for (Map<String, String> row : csvRows(zf, "physiological_cycles.csv", true)) {
                 WhoopCycle c = rowToCycle(row);
                 if (c == null) {
                     skipped++;
                 } else {
-                    out.add(c);
+                    cycles.add(c);
                 }
             }
-            LOG.infof("Parsed WHOOP export: %d cycles (%d rows skipped).", out.size(), skipped);
+            // Journal is optional garnish — an export without it still imports.
+            // Both CSVs carry "Cycle start time", so journal answers join their
+            // cycle exactly and inherit its wake-date (an end-date heuristic
+            // would misattribute after-midnight bedtimes by one day).
+            Map<String, String> dateByCycleStart = new LinkedHashMap<>();
+            for (WhoopCycle c : cycles) {
+                if (c.cycleStart != null) {
+                    dateByCycleStart.put(c.cycleStart, c.date);
+                }
+            }
+            for (Map<String, String> row : csvRows(zf, "journal_entries.csv", false)) {
+                WhoopJournalEntry j = rowToJournal(row, dateByCycleStart);
+                if (j != null) {
+                    journal.add(j);
+                }
+            }
+            LOG.infof("Parsed WHOOP export: %d cycles (%d rows skipped), %d journal answers.",
+                    cycles.size(), skipped, journal.size());
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalArgumentException("Could not read the export ZIP: " + e.getMessage(), e);
         }
-        return out;
+        return new Export(cycles, journal);
+    }
+
+    private static List<Map<String, String>> csvRows(ZipFile zf, String fileName, boolean required)
+            throws Exception {
+        ZipEntry entry = zf.stream()
+                .filter(e -> e.getName().toLowerCase(Locale.ROOT).endsWith(fileName))
+                .findFirst().orElse(null);
+        if (entry == null) {
+            if (required) {
+                throw new IllegalArgumentException(
+                        "No " + fileName + " found — is this a WHOOP data export ZIP?");
+            }
+            return List.of();
+        }
+        if (entry.getSize() > MAX_MEMBER_BYTES) {
+            throw new IllegalArgumentException(fileName + " is implausibly large — refusing to import.");
+        }
+        String text;
+        try (InputStream in = zf.getInputStream(entry)) {
+            text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        if (!text.isEmpty() && text.charAt(0) == '﻿') {
+            text = text.substring(1);
+        }
+        return StravaArchive.csvDictRows(text);
+    }
+
+    private static WhoopJournalEntry rowToJournal(Map<String, String> row,
+                                                  Map<String, String> dateByCycleStart) {
+        String question = blank(col(row, "Question text"));
+        if (question == null) {
+            return null;
+        }
+        String start = blank(col(row, "Cycle start time"));
+        String date = start == null ? null : dateByCycleStart.get(start);
+        if (date == null) {
+            // Cycle not in (or dropped from) physiological_cycles.csv — fall back
+            // to the local cycle-end date (≈ wake day), then cycle start.
+            int offsetSec = tzOffsetSeconds(col(row, "Cycle timezone"));
+            date = localDate(col(row, "Cycle end time"), offsetSec);
+            if (date == null) {
+                date = localDate(start, offsetSec);
+            }
+        }
+        if (date == null) {
+            return null;
+        }
+        WhoopJournalEntry j = new WhoopJournalEntry();
+        j.date = date;
+        j.question = question;
+        String yes = blank(col(row, "Answered yes"));
+        j.answeredYes = yes == null ? null : Boolean.parseBoolean(yes.toLowerCase(Locale.ROOT));
+        j.notes = blank(col(row, "Notes"));
+        return j;
     }
 
     private static WhoopCycle rowToCycle(Map<String, String> row) {

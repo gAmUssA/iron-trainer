@@ -254,8 +254,48 @@ export interface WhoopDay {
 
 export interface WhoopImportResult {
   cycles: number;
+  journal_answers: number;
   first_date: string | null;
   last_date: string | null;
+}
+
+/** One journal behavior's same-day impact (avg on yes-days minus no-days). */
+export interface WhoopBehavior {
+  question: string;
+  yes_days: number;
+  no_days: number;
+  recovery_yes: number;
+  recovery_no: number;
+  recovery_delta: number;
+  hrv_delta: number | null;
+}
+
+export interface WhoopBaseline {
+  recovery: number | null;
+  hrv_ms: number | null;
+  rhr_bpm: number | null;
+  strain: number | null;
+  sleep_h: number | null;
+  sleep_performance: number | null;
+}
+
+export interface WhoopInsightsData {
+  days: number;
+  anchor_date?: string;
+  baseline_all?: WhoopBaseline;
+  baseline_90d?: WhoopBaseline;
+  behaviors?: WhoopBehavior[];
+  bedtime?: { stddev_min_28d: number | null; stddev_min_all: number | null; nights_28d: number };
+  trend_28d?: {
+    strain_28d: number | null;
+    strain_prev_28d: number | null;
+    recovery_28d: number | null;
+    recovery_prev_28d: number | null;
+    hrv_28d: number | null;
+    hrv_prev_28d: number | null;
+  };
+  analysis: { text: string; created_at: string } | null;
+  ai_available: boolean;
 }
 
 export interface SyncResult {
@@ -600,6 +640,10 @@ export const api = {
   recovery: (days = 14) => getJSON<{ days: RecoveryDay[] }>(`/api/health/recovery?days=${days}`),
   whoopCycles: (days = DEFAULT_CHART_DAYS) =>
     getJSON<{ days: WhoopDay[] }>(`/api/whoop/cycles?days=${days}`),
+  whoopInsights: () => getJSON<WhoopInsightsData>("/api/whoop/insights"),
+  whoopAnalyze: () =>
+    viaJob<{ text: string; created_at: string }>(() =>
+      send("/api/whoop/insights/analyze?async=1", "POST")),
   importWhoop: async (file: File): Promise<WhoopImportResult> => {
     const fd = new FormData();
     fd.append("file", file);
