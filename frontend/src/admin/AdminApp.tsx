@@ -5,7 +5,6 @@ import {
   type AdminJob,
   type AdminJobsPage,
   type AdminUser,
-  type AdminUserDetail,
 } from "./adminApi";
 
 /** Password-gated ops console (admin epic 18n4): inspect users (bean y8b2) and
@@ -137,24 +136,32 @@ function UsersView({ onLogout }: { onLogout: () => void }) {
         </tbody>
       </table>
 
-      {selected != null && <UserDetail id={selected} onClose={() => setSelected(null)} />}
+      {selected != null && <DetailDrawer id={selected} title={`User ${selected}`} load={adminApi.user} onClose={() => setSelected(null)} />}
     </>
   );
 }
 
-function UserDetail({ id, onClose }: { id: number; onClose: () => void }) {
-  const [detail, setDetail] = useState<AdminUserDetail | null>(null);
+/** Shared JSON detail drawer (users + jobs). `load` is a stable adminApi method,
+ * so keying the fetch on [id, load] never loops. */
+function DetailDrawer({ id, title, load, onClose }: {
+  id: number;
+  title: string;
+  load: (id: number) => Promise<Record<string, unknown>>;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setDetail(null);
-    adminApi.user(id).then(setDetail).catch((e) => setError(String(e)));
-  }, [id]);
+    setError(null);
+    load(id).then(setDetail).catch((e) => setError(String(e)));
+  }, [id, load]);
 
   return (
     <div className="admin-drawer">
       <div className="admin-drawer-head">
-        <strong>User {id}{detail?.name ? ` · ${String(detail.name)}` : ""}</strong>
+        <strong>{title}</strong>
         <button className="btn tiny" onClick={onClose}>Close</button>
       </div>
       {error && <div className="card error">{error}</div>}
@@ -234,30 +241,8 @@ function JobsView({ onLogout }: { onLogout: () => void }) {
         <button className="btn tiny" disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}>Next</button>
       </div>
 
-      {selected && <JobDetail id={selected.id} onClose={() => setSelected(null)} />}
+      {selected && <DetailDrawer id={selected.id} title={`Job ${selected.id}`} load={adminApi.job} onClose={() => setSelected(null)} />}
     </>
-  );
-}
-
-function JobDetail({ id, onClose }: { id: number; onClose: () => void }) {
-  const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setDetail(null);
-    adminApi.job(id).then(setDetail).catch((e) => setError(String(e)));
-  }, [id]);
-
-  return (
-    <div className="admin-drawer">
-      <div className="admin-drawer-head">
-        <strong>Job {id}</strong>
-        <button className="btn tiny" onClick={onClose}>Close</button>
-      </div>
-      {error && <div className="card error">{error}</div>}
-      {!detail && !error && <p className="muted">Loading…</p>}
-      {detail && <pre className="admin-json">{JSON.stringify(detail, null, 2)}</pre>}
-    </div>
   );
 }
 

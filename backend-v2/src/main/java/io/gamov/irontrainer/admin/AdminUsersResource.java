@@ -63,17 +63,23 @@ public class AdminUsersResource {
         counts.put("jobs", Job.count("athleteId", id));
         m.put("counts", counts);
 
-        // One query, newest-first: derive both "last job per kind" and "recent jobs".
-        List<Job> jobs = Job.find("athleteId = ?1 order by id desc", id).page(0, 200).list();
+        // Last job per kind — group-by max(id) so a rarely-run kind whose last run is
+        // far older than the recent window still shows "ran long ago", not "never ran"
+        // (the whole point of the sync-health view). Few kinds → the follow-up load is cheap.
+        List<Integer> lastIds = Job.getEntityManager()
+                .createQuery("select max(j.id) from Job j where j.athleteId = ?1 group by j.kind", Integer.class)
+                .setParameter(1, id).getResultList();
         Map<String, Object> lastByKind = new LinkedHashMap<>();
-        List<Map<String, Object>> recent = new ArrayList<>();
-        for (Job j : jobs) {
-            lastByKind.computeIfAbsent(j.kind, k -> jobRow(j));
-            if (recent.size() < 10) {
-                recent.add(jobRow(j));
-            }
+        for (Job j : Job.<Job>list("id in ?1 order by id desc", lastIds.isEmpty() ? List.of(-1) : lastIds)) {
+            lastByKind.put(j.kind, jobRow(j));
         }
         m.put("last_sync", lastByKind);
+
+        // Recent jobs — the 10 most recent overall.
+        List<Map<String, Object>> recent = new ArrayList<>();
+        for (Job j : Job.<Job>find("athleteId = ?1 order by id desc", id).page(0, 10).list()) {
+            recent.add(jobRow(j));
+        }
         m.put("recent_jobs", recent);
         return m;
     }
