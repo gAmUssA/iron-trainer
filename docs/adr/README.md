@@ -80,3 +80,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0055](0055-healthkit-source-provenance.md) | HealthKit recovery source provenance (WHOOP-vs-Apple overlay foundation) | Accepted |
 | [0056](0056-admin-console-jobs.md) | Admin console: password-gated ops + jobs view | Accepted |
 | [0057](0057-admin-console-users-view.md) | Admin console: Users view (list + per-user detail) | Accepted |
+| [0058](0058-admin-console-sync-health.md) | Admin console: sync-health telemetry (failure rates + recent failures) | Accepted |

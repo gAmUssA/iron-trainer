@@ -67,4 +67,10 @@ public final class PyJson {
     public static String utcNowIso() {
         return OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS).format(ISO);
     }
+
+    /** Same format as {@link #utcNowIso()}, N days ago — a lexicographically-correct
+     * lower bound for comparing against stored created_at strings. */
+    public static String utcIsoDaysAgo(long days) {
+        return OffsetDateTime.now(ZoneOffset.UTC).minusDays(days).truncatedTo(ChronoUnit.MICROS).format(ISO);
+    }
 }
