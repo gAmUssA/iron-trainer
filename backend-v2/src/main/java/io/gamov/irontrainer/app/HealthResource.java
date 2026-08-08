@@ -101,6 +101,7 @@ public class HealthResource {
             m.put("exercise_min", r.exerciseMin);
             m.put("step_count", r.stepCount);
             m.put("cycling_ftp_w", r.cyclingFtpW);
+            m.put("source", r.source);   // HRV provenance for the overlay (bean aydv)
             out.add(m);
         }
         Map<String, Object> resp = new LinkedHashMap<>();
@@ -232,6 +233,9 @@ public class HealthResource {
         }
         if (f.get("cycling_ftp_w") != null) {
             row.cyclingFtpW = asD(f.get("cycling_ftp_w"));
+        }
+        if (f.get("source") != null) {
+            row.source = String.valueOf(f.get("source"));   // HRV provenance (bean aydv)
         }
     }
 

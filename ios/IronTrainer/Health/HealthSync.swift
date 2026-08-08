@@ -83,7 +83,11 @@ struct HealthIngestClient {
         for metric in QuantityMetric.allCases {
             let data: [[String: Any]] = records.compactMap { r in
                 guard let v = metric.value(from: r) else { return nil }
-                return ["date": dayString(r.day), "qty": v]
+                var point: [String: Any] = ["date": dayString(r.day), "qty": v]
+                // Carry provenance on HRV (the recovery driver) so the server can label
+                // readiness by source for the WHOOP overlay (bean aydv).
+                if metric == .hrv, let src = r.source { point["source"] = src }
+                return point
             }
             if !data.isEmpty {
                 metrics.append(["name": metric.exportName, "units": metric.exportUnits, "data": data])

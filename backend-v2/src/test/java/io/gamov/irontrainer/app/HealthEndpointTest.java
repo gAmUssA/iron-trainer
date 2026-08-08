@@ -41,8 +41,8 @@ class HealthEndpointTest {
     void ingestStoresRecoveryAndReadsItBack() {
         String payload = "{\"data\":{\"metrics\":["
                 + "{\"name\":\"heart_rate_variability\",\"units\":\"ms\",\"data\":["
-                + "{\"date\":\"2026-07-13 07:00:00 -0400\",\"qty\":55},"
-                + "{\"date\":\"2026-07-13 08:00:00 -0400\",\"qty\":65}]},"
+                + "{\"date\":\"2026-07-13 07:00:00 -0400\",\"qty\":55,\"source\":\"com.whoop.app\"},"
+                + "{\"date\":\"2026-07-13 08:00:00 -0400\",\"qty\":65,\"source\":\"com.whoop.app\"}]},"
                 + "{\"name\":\"resting_heart_rate\",\"units\":\"bpm\",\"data\":["
                 + "{\"date\":\"2026-07-13 06:00:00 -0400\",\"qty\":48}]},"
                 + "{\"name\":\"mystery_metric\",\"data\":["
@@ -61,7 +61,10 @@ class HealthEndpointTest {
                 .then().statusCode(200)
                 .body("days[0].date", is("2026-07-13"))
                 .body("days[0].hrv_ms", is(60.0f))   // (55+65)/2
-                .body("days[0].rhr_bpm", is(48.0f));
+                .body("days[0].rhr_bpm", is(48.0f))
+                // Full persistence round-trip for HRV provenance (bean aydv):
+                // entity mapping or serialization dropping `source` fails here.
+                .body("days[0].source", is("com.whoop.app"));
     }
 
     @Test
