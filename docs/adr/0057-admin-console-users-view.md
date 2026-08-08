@@ -18,8 +18,9 @@ footprint. This slice adds the Users view.
   counts.
 - **`GET /api/admin/users/{id}`** (`@RequireAdmin`) — the same summary plus
   thresholds (ftp/hr/target), data counts (activities, recovery days, jobs),
-  **last job per kind** and the 10 most recent jobs — both derived from a single
-  newest-first paged query (page 0, 200) rather than N queries.
+  **last job per kind** (a `max(id)` group-by, so a rarely-run kind whose last run
+  is far older than the recent window still shows as "ran long ago", not "never
+  ran") and the 10 most recent jobs (a separate newest-first query).
 - **Never expose secrets.** A shared `summary()` helper builds the athlete view and
   deliberately excludes `strava_access_token` / `strava_refresh_token`; only the
   boolean `connected` flag leaks. A regression test asserts the raw response

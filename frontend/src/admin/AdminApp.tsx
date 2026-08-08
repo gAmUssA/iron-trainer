@@ -116,7 +116,7 @@ function UsersView({ onLogout }: { onLogout: () => void }) {
         <tbody>
           {(users ?? []).map((u) => (
             <tr key={u.id} className={selected === u.id ? "sel" : ""} onClick={() => setSelected(u.id)}>
-              <td>{u.id}</td>
+              <td><button className="admin-rowbtn" onClick={() => setSelected(u.id)}>{u.id}</button></td>
               <td>{u.name || <span className="muted">—</span>}</td>
               <td>{u.connected
                 ? <span className="pill pill-succeeded">connected</span>
@@ -136,27 +136,38 @@ function UsersView({ onLogout }: { onLogout: () => void }) {
         </tbody>
       </table>
 
-      {selected != null && <DetailDrawer id={selected} title={`User ${selected}`} load={adminApi.user} onClose={() => setSelected(null)} />}
+      {selected != null && <DetailDrawer id={selected} title={`User ${selected}`} load={adminApi.user} onClose={() => setSelected(null)} onUnauthorized={onLogout} />}
     </>
   );
 }
 
-/** Shared JSON detail drawer (users + jobs). `load` is a stable adminApi method,
- * so keying the fetch on [id, load] never loops. */
-function DetailDrawer({ id, title, load, onClose }: {
+/** Shared JSON detail drawer (users + jobs). `load` / `onUnauthorized` are stable
+ * adminApi/handler references, so keying the fetch on them never loops. */
+function DetailDrawer({ id, title, load, onClose, onUnauthorized }: {
   id: number;
   title: string;
   load: (id: number) => Promise<Record<string, unknown>>;
   onClose: () => void;
+  onUnauthorized: () => void;
 }) {
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // `cancelled` guards against a slower earlier request overwriting a newer
+    // selection's detail (or firing logout/error after the drawer moved on).
+    let cancelled = false;
     setDetail(null);
     setError(null);
-    load(id).then(setDetail).catch((e) => setError(String(e)));
-  }, [id, load]);
+    load(id)
+      .then((d) => { if (!cancelled) setDetail(d); })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e instanceof AdminUnauthorized) onUnauthorized();
+        else setError(String(e));
+      });
+    return () => { cancelled = true; };
+  }, [id, load, onUnauthorized]);
 
   return (
     <div className="admin-drawer">
@@ -222,7 +233,7 @@ function JobsView({ onLogout }: { onLogout: () => void }) {
         <tbody>
           {jobs.map((j) => (
             <tr key={j.id} className={selected?.id === j.id ? "sel" : ""} onClick={() => setSelected(j)}>
-              <td>{j.id}</td>
+              <td><button className="admin-rowbtn" onClick={() => setSelected(j)}>{j.id}</button></td>
               <td>{j.athlete_id ?? "—"}</td>
               <td>{j.kind}</td>
               <td><span className={`pill pill-${j.status}`}>{j.status}</span></td>
@@ -241,7 +252,7 @@ function JobsView({ onLogout }: { onLogout: () => void }) {
         <button className="btn tiny" disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}>Next</button>
       </div>
 
-      {selected && <DetailDrawer id={selected.id} title={`Job ${selected.id}`} load={adminApi.job} onClose={() => setSelected(null)} />}
+      {selected && <DetailDrawer id={selected.id} title={`Job ${selected.id}`} load={adminApi.job} onClose={() => setSelected(null)} onUnauthorized={onLogout} />}
     </>
   );
 }
