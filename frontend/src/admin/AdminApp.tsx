@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { adminApi, AdminUnauthorized, type AdminJob, type AdminJobsPage } from "./adminApi";
+import {
+  adminApi,
+  AdminUnauthorized,
+  type AdminJob,
+  type AdminJobsPage,
+  type AdminUser,
+  type AdminUserDetail,
+} from "./adminApi";
 
-/** Password-gated ops console (bean gfb3): inspect background jobs across all
- * athletes to debug Strava / Apple Health / dedup / check-in sync failures. */
+/** Password-gated ops console (admin epic 18n4): inspect users (bean y8b2) and
+ * background jobs (bean gfb3) across all athletes to debug sync failures. */
 export function AdminApp() {
   const [authed, setAuthed] = useState<boolean | null>(null); // null = checking
 
@@ -17,7 +24,7 @@ export function AdminApp() {
 
   if (authed === null) return <div className="admin-wrap"><p className="muted">Loading…</p></div>;
   if (!authed) return <AdminLogin onSuccess={() => setAuthed(true)} />;
-  return <AdminConsole onLogout={() => setAuthed(false)} />;
+  return <AdminShell onLogout={() => setAuthed(false)} />;
 }
 
 function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
@@ -60,9 +67,108 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
+type Tab = "users" | "jobs";
+
+function AdminShell({ onLogout }: { onLogout: () => void }) {
+  const [tab, setTab] = useState<Tab>("users");
+
+  async function logout() {
+    await adminApi.logout();
+    onLogout();
+  }
+
+  return (
+    <div className="admin-wrap admin-console">
+      <header className="admin-header">
+        <nav className="admin-nav">
+          <button className={`btn tiny ${tab === "users" ? "primary" : ""}`} onClick={() => setTab("users")}>Users</button>
+          <button className={`btn tiny ${tab === "jobs" ? "primary" : ""}`} onClick={() => setTab("jobs")}>Jobs</button>
+        </nav>
+        <button className="btn tiny" onClick={logout}>Logout</button>
+      </header>
+      {tab === "users" ? <UsersView onLogout={onLogout} /> : <JobsView onLogout={onLogout} />}
+    </div>
+  );
+}
+
+// ── Users ───────────────────────────────────────────────────────────────────
+
+function UsersView({ onLogout }: { onLogout: () => void }) {
+  const [users, setUsers] = useState<AdminUser[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+
+  const load = useCallback(() => {
+    setError(null);
+    adminApi.users()
+      .then((r) => setUsers(r.users))
+      .catch((e) => { if (e instanceof AdminUnauthorized) onLogout(); else setError(String(e)); });
+  }, [onLogout]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <>
+      {error && <div className="card error" role="alert">{error}</div>}
+      <table className="admin-table">
+        <thead>
+          <tr><th>id</th><th>name</th><th>strava</th><th>apple</th><th>activities</th><th>jobs</th><th>failed</th></tr>
+        </thead>
+        <tbody>
+          {(users ?? []).map((u) => (
+            <tr key={u.id} className={selected === u.id ? "sel" : ""} onClick={() => setSelected(u.id)}>
+              <td>{u.id}</td>
+              <td>{u.name || <span className="muted">—</span>}</td>
+              <td>{u.connected
+                ? <span className="pill pill-succeeded">connected</span>
+                : <span className="muted">—</span>}</td>
+              <td>{u.apple_linked
+                ? <span className="pill pill-running">linked</span>
+                : <span className="muted">—</span>}</td>
+              <td className="mono">{u.activities}</td>
+              <td className="mono">{u.jobs}</td>
+              <td className="mono">{u.failed_jobs > 0
+                ? <span className="pill pill-failed">{u.failed_jobs}</span>
+                : "0"}</td>
+            </tr>
+          ))}
+          {users && users.length === 0 && <tr><td colSpan={7} className="muted">No users.</td></tr>}
+          {!users && !error && <tr><td colSpan={7} className="muted">Loading…</td></tr>}
+        </tbody>
+      </table>
+
+      {selected != null && <UserDetail id={selected} onClose={() => setSelected(null)} />}
+    </>
+  );
+}
+
+function UserDetail({ id, onClose }: { id: number; onClose: () => void }) {
+  const [detail, setDetail] = useState<AdminUserDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDetail(null);
+    adminApi.user(id).then(setDetail).catch((e) => setError(String(e)));
+  }, [id]);
+
+  return (
+    <div className="admin-drawer">
+      <div className="admin-drawer-head">
+        <strong>User {id}{detail?.name ? ` · ${String(detail.name)}` : ""}</strong>
+        <button className="btn tiny" onClick={onClose}>Close</button>
+      </div>
+      {error && <div className="card error">{error}</div>}
+      {!detail && !error && <p className="muted">Loading…</p>}
+      {detail && <pre className="admin-json">{JSON.stringify(detail, null, 2)}</pre>}
+    </div>
+  );
+}
+
+// ── Jobs ────────────────────────────────────────────────────────────────────
+
 const STATUSES = ["", "queued", "running", "succeeded", "failed"];
 
-function AdminConsole({ onLogout }: { onLogout: () => void }) {
+function JobsView({ onLogout }: { onLogout: () => void }) {
   const [kind, setKind] = useState("");
   const [status, setStatus] = useState("");
   const [athleteId, setAthleteId] = useState("");
@@ -84,21 +190,11 @@ function AdminConsole({ onLogout }: { onLogout: () => void }) {
 
   useEffect(() => { load(); }, [load]);
 
-  async function logout() {
-    await adminApi.logout();
-    onLogout();
-  }
-
   const jobs = page?.jobs ?? [];
   const total = page?.total ?? 0;
 
   return (
-    <div className="admin-wrap admin-console">
-      <header className="admin-header">
-        <h2>Admin · Jobs</h2>
-        <button className="btn tiny" onClick={logout}>Logout</button>
-      </header>
-
+    <>
       <div className="admin-filters">
         <input placeholder="kind (e.g. strava_sync)" value={kind}
                onChange={(e) => { setOffset(0); setKind(e.target.value.trim()); }} />
@@ -139,7 +235,7 @@ function AdminConsole({ onLogout }: { onLogout: () => void }) {
       </div>
 
       {selected && <JobDetail id={selected.id} onClose={() => setSelected(null)} />}
-    </div>
+    </>
   );
 }
 

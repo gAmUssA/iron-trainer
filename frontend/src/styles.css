@@ -739,6 +739,7 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 .admin-login { max-width: 360px; margin: 12vh auto; display: flex; flex-direction: column; gap: 12px; }
 .admin-login input { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border, #ccc); background: var(--bg, #fff); color: inherit; font: inherit; }
 .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.admin-nav { display: flex; gap: 8px; }
 .admin-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .admin-filters input, .admin-filters select { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border, #ccc); background: var(--bg, #fff); color: inherit; font: inherit; }
 .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
