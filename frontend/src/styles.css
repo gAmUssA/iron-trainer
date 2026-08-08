@@ -744,12 +744,13 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
    click stays as a mouse convenience. */
 .admin-rowbtn { background: none; border: 0; color: inherit; font: inherit; padding: 0; cursor: pointer; text-decoration: underline; }
 .admin-subhead { margin: 18px 0 6px; font-size: 0.95rem; }
-.failbar { position: relative; display: inline-flex; align-items: center; width: 120px; height: 16px; background: var(--border, #333); border-radius: 3px; overflow: hidden; }
+.failbar-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.failbar { position: relative; display: inline-block; width: 120px; height: 12px; background: var(--border, #333); border-radius: 3px; overflow: hidden; }
 .failbar-fill { position: absolute; left: 0; top: 0; bottom: 0; }
 .failbar-ok { background: var(--ok, #22c55e); }
 .failbar-warn { background: #eab308; }
 .failbar-bad { background: var(--bad, #ef4444); }
-.failbar-label { position: relative; padding-left: 6px; font-size: 0.72rem; }
+.failbar-label { font-size: 0.72rem; }
 .admin-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .admin-filters input, .admin-filters select { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border, #ccc); background: var(--bg, #fff); color: inherit; font: inherit; }
 .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }

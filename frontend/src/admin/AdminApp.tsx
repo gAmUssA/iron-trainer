@@ -102,15 +102,22 @@ function HealthView({ onLogout }: { onLogout: () => void }) {
   const [days, setDays] = useState(7);
   const [data, setData] = useState<AdminJobHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0); // bump to force a refresh
 
-  const load = useCallback(() => {
+  // `cancelled` guards against a slower earlier request (e.g. a 1d fetch during
+  // a rapid switch to 30d) overwriting the newer window's data or firing logout.
+  useEffect(() => {
+    let cancelled = false;
     setError(null);
     adminApi.jobHealth(days)
-      .then(setData)
-      .catch((e) => { if (e instanceof AdminUnauthorized) onLogout(); else setError(String(e)); });
-  }, [days, onLogout]);
-
-  useEffect(() => { load(); }, [load]);
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e instanceof AdminUnauthorized) onLogout();
+        else setError(String(e));
+      });
+    return () => { cancelled = true; };
+  }, [days, nonce, onLogout]);
 
   return (
     <>
@@ -119,7 +126,7 @@ function HealthView({ onLogout }: { onLogout: () => void }) {
         {WINDOWS.map((w) => (
           <button key={w} className={`btn tiny ${days === w ? "primary" : ""}`} onClick={() => setDays(w)}>{w}d</button>
         ))}
-        <button className="btn tiny" onClick={load}>Refresh</button>
+        <button className="btn tiny" onClick={() => setNonce((n) => n + 1)}>Refresh</button>
       </div>
 
       {error && <div className="card error" role="alert">{error}</div>}
@@ -168,13 +175,16 @@ function HealthView({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-/** A tiny inline bar — width = failure rate, colored by severity. */
+/** A tiny inline bar — fill width = failure rate, colored by severity; the
+ * percentage sits beside the bar (not overlaid) so it stays readable. */
 function FailureBar({ rate }: { rate: number }) {
   const pct = Math.round(rate * 100);
   const tone = pct >= 25 ? "bad" : pct >= 5 ? "warn" : "ok";
   return (
-    <span className="failbar" aria-label={`${pct}% failing`}>
-      <span className={`failbar-fill failbar-${tone}`} style={{ width: `${Math.max(pct, 2)}%` }} />
+    <span className="failbar-wrap" aria-label={`${pct}% failing`}>
+      <span className="failbar" aria-hidden="true">
+        <span className={`failbar-fill failbar-${tone}`} style={{ width: `${pct}%` }} />
+      </span>
       <span className="failbar-label mono">{pct}%</span>
     </span>
   );
