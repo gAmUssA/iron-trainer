@@ -1,18 +1,23 @@
 package io.gamov.irontrainer.admin;
 
+import io.gamov.irontrainer.auth.ClaimThrottle;
 import io.gamov.irontrainer.jobs.Job;
 import io.gamov.irontrainer.jobs.JobRunner;
 import io.quarkus.hibernate.orm.panache.PanacheQuery;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.net.SocketAddress;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +42,8 @@ public class AdminResource {
 
     @Inject
     JobRunner jobRunner;
+    @Inject
+    ClaimThrottle throttle;   // brute-force friction on the shared admin password
 
     @ConfigProperty(name = "irontrainer.admin-password")
     Optional<String> adminPassword;
@@ -53,18 +60,29 @@ public class AdminResource {
     @Path("/login")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response login(LoginRequest req) {
+    public Response login(LoginRequest req,
+                          @HeaderParam("X-Forwarded-For") String xff,
+                          @Context HttpServerRequest request) {
         String configured = adminPassword.filter(s -> !s.isBlank()).orElse(null);
         String secret = sessionSecret.filter(s -> !s.isBlank()).orElse(null);
         if (configured == null || secret == null) {
             // No ADMIN_PASSWORD (or no signing secret) → admin console disabled.
             throw new WebApplicationException("Admin console is not configured.", 503);
         }
+        // Per-client brute-force friction (Copilot review): deny after repeated fails,
+        // keyed per client so one attacker can't lock everyone out. "admin:" prefix
+        // keeps it separate from the device-claim throttle sharing the same bean.
+        String client = "admin:" + clientKey(xff, request);
+        if (throttle.throttled(client)) {
+            throw new WebApplicationException("Too many attempts — try again in a minute.", 429);
+        }
         if (req == null || req.password() == null
                 || !MessageDigest.isEqual(req.password().getBytes(StandardCharsets.UTF_8),
                         configured.getBytes(StandardCharsets.UTF_8))) {
+            throttle.recordFailure(client);
             throw new WebApplicationException("Invalid admin password.", 401);
         }
+        throttle.clear(client);   // a fat-fingered password then the right one shouldn't self-lock
         return Response.ok(Map.of("ok", true))
                 .header("Set-Cookie", cookie(AdminSession.sign(secret), AdminSession.TTL_SECONDS))
                 .build();
@@ -102,7 +120,19 @@ public class AdminResource {
             where.append(where.isEmpty() ? "" : " and ").append("status = :status");
             params.put("status", status);
         }
-        Integer aid = parseIntOrNull(athleteId);   // free-text filter → ignore if non-numeric
+        int lim = Math.min(Math.max(limit, 1), 200);
+        int off = Math.max(offset, 0);
+        Integer aid = parseIntOrNull(athleteId);
+        if (athleteId != null && !athleteId.isBlank() && aid == null) {
+            // Provided but non-numeric → an impossible filter. Return NOTHING rather
+            // than silently broadening to every athlete (Copilot review).
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("jobs", List.of());
+            empty.put("total", 0L);
+            empty.put("limit", lim);
+            empty.put("offset", off);
+            return empty;
+        }
         if (aid != null) {
             where.append(where.isEmpty() ? "" : " and ").append("athleteId = :aid");
             params.put("aid", aid);
@@ -111,8 +141,6 @@ public class AdminResource {
         PanacheQuery<Job> query = params.isEmpty() ? Job.find(q) : Job.find(q, params);
 
         long total = query.count();
-        int lim = Math.min(Math.max(limit, 1), 200);
-        int off = Math.max(offset, 0);
         List<Job> rows = total == 0 ? List.of() : query.range(off, off + lim - 1).list();
 
         List<Map<String, Object>> out = new ArrayList<>();
@@ -155,6 +183,16 @@ public class AdminResource {
         return AdminSession.COOKIE + "=" + value
                 + "; path=/; Max-Age=" + maxAge + "; httponly; samesite=lax"
                 + (cookieSecure ? "; secure" : "");
+    }
+
+    /** Client identity for throttling: first X-Forwarded-For hop behind the proxy,
+     * else the socket address. Mirrors DeviceResource.clientKey. */
+    private static String clientKey(String xff, HttpServerRequest request) {
+        if (xff != null && !xff.isEmpty()) {
+            return xff.split(",")[0].strip();
+        }
+        SocketAddress addr = request == null ? null : request.remoteAddress();
+        return addr != null ? addr.host() : "unknown";
     }
 
     private static Integer parseIntOrNull(String s) {

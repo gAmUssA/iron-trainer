@@ -749,10 +749,15 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 .admin-table .mono { font-family: var(--mono, monospace); font-size: 11.5px; color: var(--muted); }
 .admin-table .err { color: var(--bad, #c0392b); font-size: 11.5px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
-.pill-succeeded { background: rgba(21,128,61,0.15); color: #15803d; }
-.pill-failed { background: rgba(192,57,43,0.15); color: #c0392b; }
-.pill-running { background: rgba(37,99,235,0.15); color: #2563eb; }
-.pill-queued { background: rgba(128,128,128,0.15); color: var(--muted); }
+/* Bright semantic text by default (readable on the dark theme); darker overrides
+   for the light theme so 11px pills keep contrast in both (Copilot review). */
+.pill-succeeded { background: rgba(74,222,128,0.15); color: var(--ok); }
+.pill-failed { background: rgba(248,113,113,0.15); color: var(--bad); }
+.pill-running { background: rgba(96,165,250,0.18); color: #60a5fa; }
+.pill-queued { background: rgba(128,128,128,0.18); color: var(--muted); }
+:root[data-theme="light"] .pill-succeeded { color: #15803d; }
+:root[data-theme="light"] .pill-failed { color: #b91c1c; }
+:root[data-theme="light"] .pill-running { color: #2563eb; }
 .admin-pager { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .admin-drawer { position: fixed; right: 0; top: 0; bottom: 0; width: min(560px, 92vw); background: var(--bg, #fff); border-left: 1px solid var(--border, #ccc); box-shadow: -8px 0 24px rgba(0,0,0,0.15); padding: 16px; overflow: auto; z-index: 50; }
 .admin-drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
