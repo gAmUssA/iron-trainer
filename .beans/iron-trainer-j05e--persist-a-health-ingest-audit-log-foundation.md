@@ -1,11 +1,11 @@
 ---
 # iron-trainer-j05e
 title: Persist a health-ingest audit log (foundation)
-status: todo
+status: in-progress
 type: feature
 priority: high
 created_at: 2026-08-08T21:58:33Z
-updated_at: 2026-08-08T21:58:33Z
+updated_at: 2026-08-08T22:57:05Z
 parent: iron-trainer-6uys
 ---
 
