@@ -1,11 +1,11 @@
 ---
 # iron-trainer-y8b2
 title: Admin Users view (/api/admin/users + detail)
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-08-08T10:29:35Z
-updated_at: 2026-08-08T18:44:17Z
+updated_at: 2026-08-08T19:55:18Z
 parent: iron-trainer-18n4
 ---
 

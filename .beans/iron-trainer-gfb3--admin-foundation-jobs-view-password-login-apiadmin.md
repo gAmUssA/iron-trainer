@@ -1,11 +1,11 @@
 ---
 # iron-trainer-gfb3
 title: Admin foundation + Jobs view (password login + /api/admin/jobs)
-status: todo
+status: completed
 type: feature
 priority: high
 created_at: 2026-08-08T10:29:35Z
-updated_at: 2026-08-08T10:29:35Z
+updated_at: 2026-08-08T19:55:18Z
 parent: iron-trainer-18n4
 ---
 
