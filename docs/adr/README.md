@@ -77,3 +77,5 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0052](0052-sign-in-with-apple-web-and-canonical-domain.md) | Sign in with Apple (web) + account linking + canonical domain | Accepted |
 | [0053](0053-whoop-export-zip-import.md) | WHOOP export-ZIP import + overlay page | Accepted |
 | [0054](0054-whoop-insights-journal-ai.md) | WHOOP insights: journal correlations + staged AI analysis | Accepted |
+| [0055](0055-healthkit-source-provenance.md) | HealthKit recovery source provenance (WHOOP-vs-Apple overlay foundation) | Accepted |
+| [0056](0056-admin-console-jobs.md) | Admin console: password-gated ops + jobs view | Accepted |
