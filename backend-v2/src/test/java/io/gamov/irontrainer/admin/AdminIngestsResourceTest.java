@@ -47,9 +47,11 @@ class AdminIngestsResourceTest {
     @Test
     void windowExcludesAncientAndFiltersWork() {
         String now = PyJson.utcNowIso();
-        String ancient = "2020-01-01T00:00:00.000000+00:00";
+        // ~100 days old: outside the 7d window but inside the endpoint's 365d clamp,
+        // so a wide window can still include it.
+        String old = PyJson.utcIsoDaysAgo(100);
         QuarkusTransaction.requiringNew().run(() -> {
-            log(ancient, "hae", true);   // out-of-window (inserted first: not the group max)
+            log(old, "hae", true);   // out-of-7d-window (inserted first: not the group max)
             log(now, "hae", true);
             log(now, "native", true);
             log(now, "hae", false);
@@ -74,9 +76,9 @@ class AdminIngestsResourceTest {
                 .then().statusCode(200)
                 .body("total", equalTo(1));
 
-        // wide window includes the ancient row too (4 total for this athlete).
+        // wide window (within the 365d clamp) includes the ~100-day-old row too.
         given().header("Cookie", adminCookie())
-                .when().get("/api/admin/health/ingests?athlete_id=" + AID + "&days=3650")
+                .when().get("/api/admin/health/ingests?athlete_id=" + AID + "&days=365")
                 .then().statusCode(200)
                 .body("total", equalTo(4));
     }
