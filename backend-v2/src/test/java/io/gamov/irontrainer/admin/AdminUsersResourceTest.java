@@ -10,6 +10,7 @@ import io.gamov.irontrainer.jobs.Job;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +23,9 @@ class AdminUsersResourceTest {
     // Distinct sentinels so a leak under ANY key (not just the known token keys) is caught.
     static final String ACCESS_SENTINEL = "SENTINEL-ACCESS-a1b2c3";
     static final String REFRESH_SENTINEL = "SENTINEL-REFRESH-d4e5f6";
+    // @BeforeEach runs per test and QuarkusTest shares the DB, so strava/apple ids
+    // must be unique across seeds to avoid the athlete unique-index collisions.
+    static final AtomicLong STRAVA_SEQ = new AtomicLong(900000);
 
     int athleteId;
 
@@ -31,10 +35,10 @@ class AdminUsersResourceTest {
         QuarkusTransaction.requiringNew().run(() -> {
             Athlete a = new Athlete();
             a.name = "Sentinel User";
-            a.stravaAthleteId = 987654L;
+            a.stravaAthleteId = STRAVA_SEQ.incrementAndGet();
             a.stravaAccessToken = ACCESS_SENTINEL;
             a.stravaRefreshToken = REFRESH_SENTINEL;
-            a.appleUserId = "apple-sentinel-001";
+            a.appleUserId = "apple-sentinel-" + java.util.UUID.randomUUID();
             a.persist();
             idHolder.set(a.id);
 
