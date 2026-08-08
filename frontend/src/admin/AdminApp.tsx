@@ -10,7 +10,9 @@ export function AdminApp() {
   useEffect(() => {
     adminApi.jobs({ limit: 1 })
       .then(() => setAuthed(true))
-      .catch((e) => setAuthed(e instanceof AdminUnauthorized ? false : true));
+      // Only a confirmed 200 means authed. 401 → login; any other error (500/network)
+      // → also fall back to login rather than showing a broken console shell.
+      .catch(() => setAuthed(false));
   }, []);
 
   if (authed === null) return <div className="admin-wrap"><p className="muted">Loading…</p></div>;
@@ -28,10 +30,12 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      if (await adminApi.login(password)) onSuccess();
+      const status = await adminApi.login(password);
+      if (status === 200) onSuccess();
+      else if (status === 503) setError("Admin console isn't configured (ADMIN_PASSWORD not set).");
       else setError("Incorrect password.");
     } catch {
-      setError("Login failed — admin console may not be configured.");
+      setError("Login failed — couldn't reach the server.");
     } finally {
       setBusy(false);
     }

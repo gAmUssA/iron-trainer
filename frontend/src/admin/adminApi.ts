@@ -12,7 +12,6 @@ export interface AdminJob {
   started_at: string | null;
   finished_at: string | null;
   error: string | null;
-  has_result: boolean;
 }
 
 export interface AdminJobsPage {
@@ -38,15 +37,15 @@ async function adminGet<T>(path: string): Promise<T> {
 }
 
 export const adminApi = {
-  /** Returns true on success (200), false on bad password (401). */
-  async login(password: string): Promise<boolean> {
+  /** Returns the HTTP status: 200 = ok, 401 = wrong password, 503 = not configured. */
+  async login(password: string): Promise<number> {
     const res = await fetch("/api/admin/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ password }),
     });
-    return res.ok;
+    return res.status;
   },
 
   logout: () => fetch("/api/admin/logout", { method: "POST", credentials: "include" }),

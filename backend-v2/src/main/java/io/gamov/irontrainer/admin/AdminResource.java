@@ -33,7 +33,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 @Path("/api/admin")
 public class AdminResource {
 
-    private static final long ADMIN_TTL_SECONDS = 43_200L;   // 12h
     private static final int ERROR_PREVIEW = 300;
 
     @Inject
@@ -67,7 +66,7 @@ public class AdminResource {
             throw new WebApplicationException("Invalid admin password.", 401);
         }
         return Response.ok(Map.of("ok", true))
-                .header("Set-Cookie", cookie(AdminSession.sign(secret), ADMIN_TTL_SECONDS))
+                .header("Set-Cookie", cookie(AdminSession.sign(secret), AdminSession.TTL_SECONDS))
                 .build();
     }
 
@@ -90,7 +89,7 @@ public class AdminResource {
     @RequireAdmin
     public Map<String, Object> jobs(@QueryParam("kind") String kind,
                                     @QueryParam("status") String status,
-                                    @QueryParam("athlete_id") Integer athleteId,
+                                    @QueryParam("athlete_id") String athleteId,
                                     @QueryParam("limit") @DefaultValue("50") int limit,
                                     @QueryParam("offset") @DefaultValue("0") int offset) {
         StringBuilder where = new StringBuilder();
@@ -103,9 +102,10 @@ public class AdminResource {
             where.append(where.isEmpty() ? "" : " and ").append("status = :status");
             params.put("status", status);
         }
-        if (athleteId != null) {
+        Integer aid = parseIntOrNull(athleteId);   // free-text filter → ignore if non-numeric
+        if (aid != null) {
             where.append(where.isEmpty() ? "" : " and ").append("athleteId = :aid");
-            params.put("aid", athleteId);
+            params.put("aid", aid);
         }
         String q = (where.isEmpty() ? "" : where + " ") + "order by id desc";
         PanacheQuery<Job> query = params.isEmpty() ? Job.find(q) : Job.find(q, params);
@@ -126,7 +126,6 @@ public class AdminResource {
             m.put("started_at", j.startedAt);
             m.put("finished_at", j.finishedAt);
             m.put("error", preview(j.error));
-            m.put("has_result", j.resultJson != null && !j.resultJson.isEmpty());
             out.add(m);
         }
         Map<String, Object> resp = new LinkedHashMap<>();
@@ -156,6 +155,17 @@ public class AdminResource {
         return AdminSession.COOKIE + "=" + value
                 + "; path=/; Max-Age=" + maxAge + "; httponly; samesite=lax"
                 + (cookieSecure ? "; secure" : "");
+    }
+
+    private static Integer parseIntOrNull(String s) {
+        if (s == null || s.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(s.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static String preview(String error) {

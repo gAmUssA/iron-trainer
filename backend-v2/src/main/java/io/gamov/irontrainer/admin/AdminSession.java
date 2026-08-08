@@ -1,6 +1,7 @@
 package io.gamov.irontrainer.admin;
 
 import io.gamov.irontrainer.auth.SessionCookie;
+import java.time.Instant;
 import java.util.Map;
 
 /**
@@ -15,20 +16,32 @@ public final class AdminSession {
 
     public static final String COOKIE = "admin_session";
 
+    /** Admin session lifetime — 12h. Enforced SERVER-SIDE via the payload `exp`, not
+     * just the browser Max-Age. (SessionCookie's own gate is 14 days, far too long for
+     * an admin token, so we carry + check our own expiry — bean gfb3 review.) */
+    public static final long TTL_SECONDS = 43_200L;
+
     private AdminSession() {
     }
 
-    /** Mint the admin_session cookie value (signed with the shared session secret). */
+    /** Mint the admin_session cookie value: signed marker + a 12h expiry. */
     public static String sign(String secret) {
-        return SessionCookie.sign(Map.of("admin", true), secret);
+        long exp = Instant.now().getEpochSecond() + TTL_SECONDS;
+        return SessionCookie.sign(Map.of("admin", true, "exp", exp), secret);
     }
 
     /**
-     * True when the Cookie header carries a validly-signed, unexpired admin_session.
-     * Uses the LAST {@code admin_session=} occurrence (http.cookies semantics, matching
-     * BearerAuthFilter). Any signature/expiry/secret problem → false (never throws).
+     * True when the Cookie header carries a validly-signed admin_session whose `exp`
+     * is still in the future. Uses the LAST {@code admin_session=} occurrence
+     * (http.cookies semantics, matching BearerAuthFilter). Any signature/expiry/secret
+     * problem → false (never throws).
      */
     public static boolean isValid(String cookieHeader, String secret) {
+        return isValid(cookieHeader, secret, Instant.now().getEpochSecond());
+    }
+
+    /** Testable overload with an injected clock. */
+    static boolean isValid(String cookieHeader, String secret, long nowEpochSeconds) {
         if (cookieHeader == null || secret == null || secret.isBlank()) {
             return false;
         }
@@ -43,6 +56,9 @@ public final class AdminSession {
             return false;
         }
         Map<String, Object> m = SessionCookie.read(value, secret);
-        return m != null && m.containsKey("admin");
+        if (m == null || !m.containsKey("admin")) {
+            return false;
+        }
+        return m.get("exp") instanceof Number exp && nowEpochSeconds < exp.longValue();
     }
 }

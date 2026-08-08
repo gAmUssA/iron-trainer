@@ -39,4 +39,12 @@ class AdminSessionTest {
         String good = AdminSession.sign(SECRET);
         assertTrue(AdminSession.isValid("admin_session=junk; admin_session=" + good, SECRET));
     }
+
+    @Test
+    void expiresAfterTtl() {
+        String cookie = header(AdminSession.sign(SECRET));
+        long now = java.time.Instant.now().getEpochSecond();
+        assertTrue(AdminSession.isValid(cookie, SECRET, now), "valid within TTL");
+        assertFalse(AdminSession.isValid(cookie, SECRET, now + AdminSession.TTL_SECONDS + 1), "invalid past 12h");
+    }
 }
