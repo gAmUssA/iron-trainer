@@ -8,27 +8,15 @@ import io.gamov.irontrainer.health.HealthIngestLog;
 import io.gamov.irontrainer.util.PyJson;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** Admin health-ingest feed (bean j05e): guard, filters (source/ok), and window
- * exclusion. Uses a unique athlete id so the shared test DB stays deterministic. */
+ * exclusion. Seeds inside the asserting test (not @BeforeEach) with a unique
+ * athlete id so counts stay deterministic on the shared test DB. */
 @QuarkusTest
 class AdminIngestsResourceTest {
 
-    static final int AID = 7001;
-
-    @BeforeEach
-    void seed() {
-        String now = PyJson.utcNowIso();
-        String ancient = "2020-01-01T00:00:00.000000+00:00";
-        QuarkusTransaction.requiringNew().run(() -> {
-            log(ancient, "hae", true);   // out-of-window (inserted first: not the group max)
-            log(now, "hae", true);
-            log(now, "native", true);
-            log(now, "hae", false);
-        });
-    }
+    static final int AID = 770101;
 
     static void log(String receivedAt, String source, boolean ok) {
         HealthIngestLog l = new HealthIngestLog();
@@ -58,6 +46,15 @@ class AdminIngestsResourceTest {
 
     @Test
     void windowExcludesAncientAndFiltersWork() {
+        String now = PyJson.utcNowIso();
+        String ancient = "2020-01-01T00:00:00.000000+00:00";
+        QuarkusTransaction.requiringNew().run(() -> {
+            log(ancient, "hae", true);   // out-of-window (inserted first: not the group max)
+            log(now, "hae", true);
+            log(now, "native", true);
+            log(now, "hae", false);
+        });
+
         // athlete-scoped + 7d window → the 3 recent rows, ancient excluded.
         given().header("Cookie", adminCookie())
                 .when().get("/api/admin/health/ingests?athlete_id=" + AID + "&days=7")
