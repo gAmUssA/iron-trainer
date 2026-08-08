@@ -71,6 +71,39 @@ export interface AdminJobHealth {
   recent_failures: AdminRecentFailure[];
 }
 
+export interface AdminIngest {
+  id: number;
+  athlete_id: number | null;
+  source: string;
+  received_at: string | null;
+  ok: boolean;
+  days_stored: number | null;
+  records: number | null;
+  unknown_metrics: number | null;
+  bad_dates: number | null;
+  byte_size: number | null;
+  error: string | null;
+}
+
+export interface AdminIngestsPage {
+  window_days: number;
+  since: string;
+  total: number;
+  limit: number;
+  offset: number;
+  ingests: AdminIngest[];
+  last_by_source: AdminIngest[];
+}
+
+export interface AdminIngestsQuery {
+  days?: number;
+  athlete_id?: string;
+  source?: string;
+  ok?: string;
+  limit?: number;
+  offset?: number;
+}
+
 async function adminGet<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: { Accept: "application/json" }, credentials: "include" });
   if (res.status === 401) throw new AdminUnauthorized();
@@ -109,4 +142,15 @@ export const adminApi = {
   user: (id: number) => adminGet<AdminUserDetail>(`/api/admin/users/${id}`),
 
   jobHealth: (days: number) => adminGet<AdminJobHealth>(`/api/admin/health/jobs?days=${days}`),
+
+  ingests(q: AdminIngestsQuery): Promise<AdminIngestsPage> {
+    const p = new URLSearchParams();
+    p.set("days", String(q.days ?? 7));
+    if (q.athlete_id) p.set("athlete_id", q.athlete_id);
+    if (q.source) p.set("source", q.source);
+    if (q.ok) p.set("ok", q.ok);
+    p.set("limit", String(q.limit ?? 50));
+    p.set("offset", String(q.offset ?? 0));
+    return adminGet<AdminIngestsPage>(`/api/admin/health/ingests?${p.toString()}`);
+  },
 };

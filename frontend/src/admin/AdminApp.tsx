@@ -6,6 +6,7 @@ import {
   type AdminJobsPage,
   type AdminUser,
   type AdminJobHealth,
+  type AdminIngestsPage,
 } from "./adminApi";
 
 /** Password-gated ops console (admin epic 18n4): inspect users (bean y8b2) and
@@ -67,7 +68,7 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-type Tab = "health" | "users" | "jobs";
+type Tab = "health" | "ingests" | "users" | "jobs";
 
 function AdminShell({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("health");
@@ -82,15 +83,122 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
       <header className="admin-header">
         <nav className="admin-nav">
           <button className={`btn tiny ${tab === "health" ? "primary" : ""}`} onClick={() => setTab("health")}>Health</button>
+          <button className={`btn tiny ${tab === "ingests" ? "primary" : ""}`} onClick={() => setTab("ingests")}>Ingests</button>
           <button className={`btn tiny ${tab === "users" ? "primary" : ""}`} onClick={() => setTab("users")}>Users</button>
           <button className={`btn tiny ${tab === "jobs" ? "primary" : ""}`} onClick={() => setTab("jobs")}>Jobs</button>
         </nav>
         <button className="btn tiny" onClick={logout}>Logout</button>
       </header>
       {tab === "health" && <HealthView onLogout={onLogout} />}
+      {tab === "ingests" && <IngestsView onLogout={onLogout} />}
       {tab === "users" && <UsersView onLogout={onLogout} />}
       {tab === "jobs" && <JobsView onLogout={onLogout} />}
     </div>
+  );
+}
+
+// ── Health ingests (HAE / native) ────────────────────────────────────────────
+
+const INGEST_WINDOWS = [1, 7, 30];
+const SOURCES = ["", "hae", "native", "unknown"];
+
+function IngestsView({ onLogout }: { onLogout: () => void }) {
+  const [days, setDays] = useState(7);
+  const [source, setSource] = useState("");
+  const [okFilter, setOkFilter] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<AdminIngestsPage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const limit = 50;
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    adminApi.ingests({ days, source, ok: okFilter, limit, offset })
+      .then((p) => { if (!cancelled) setPage(p); })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e instanceof AdminUnauthorized) onLogout();
+        else setError(String(e));
+      });
+    return () => { cancelled = true; };
+  }, [days, source, okFilter, offset, nonce, onLogout]);
+
+  const rows = page?.ingests ?? [];
+  const total = page?.total ?? 0;
+
+  return (
+    <>
+      <div className="admin-filters">
+        <span className="muted small">Window:</span>
+        {INGEST_WINDOWS.map((w) => (
+          <button key={w} className={`btn tiny ${days === w ? "primary" : ""}`} onClick={() => { setOffset(0); setDays(w); }}>{w}d</button>
+        ))}
+        <select value={source} onChange={(e) => { setOffset(0); setSource(e.target.value); }}>
+          {SOURCES.map((s) => <option key={s} value={s}>{s || "all sources"}</option>)}
+        </select>
+        <select value={okFilter} onChange={(e) => { setOffset(0); setOkFilter(e.target.value); }}>
+          <option value="">ok + failed</option>
+          <option value="true">ok only</option>
+          <option value="false">failed only</option>
+        </select>
+        <button className="btn tiny" onClick={() => setNonce((n) => n + 1)}>Refresh</button>
+      </div>
+
+      {error && <div className="card error" role="alert">{error}</div>}
+
+      <h3 className="admin-subhead">Last ingest per client</h3>
+      <table className="admin-table">
+        <thead>
+          <tr><th>source</th><th>athlete</th><th>when</th><th>ok</th><th>days</th><th>records</th></tr>
+        </thead>
+        <tbody>
+          {(page?.last_by_source ?? []).map((l) => (
+            <tr key={l.id}>
+              <td>{l.source}</td>
+              <td>{l.athlete_id ?? "—"}</td>
+              <td className="mono">{fmt(l.received_at)}</td>
+              <td>{l.ok ? <span className="pill pill-succeeded">ok</span> : <span className="pill pill-failed">fail</span>}</td>
+              <td className="mono">{l.days_stored ?? "—"}</td>
+              <td className="mono">{l.records ?? "—"}</td>
+            </tr>
+          ))}
+          {page && page.last_by_source.length === 0 && <tr><td colSpan={6} className="muted">No ingests recorded yet.</td></tr>}
+        </tbody>
+      </table>
+
+      <h3 className="admin-subhead">Recent ingests</h3>
+      <table className="admin-table">
+        <thead>
+          <tr><th>id</th><th>source</th><th>athlete</th><th>when</th><th>ok</th><th>days</th><th>records</th><th>unknown</th><th>bad dates</th><th>error</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((l) => (
+            <tr key={l.id}>
+              <td>{l.id}</td>
+              <td>{l.source}</td>
+              <td>{l.athlete_id ?? "—"}</td>
+              <td className="mono">{fmt(l.received_at)}</td>
+              <td>{l.ok ? <span className="pill pill-succeeded">ok</span> : <span className="pill pill-failed">fail</span>}</td>
+              <td className="mono">{l.days_stored ?? "—"}</td>
+              <td className="mono">{l.records ?? "—"}</td>
+              <td className="mono">{(l.unknown_metrics ?? 0) > 0 ? <span className="pill pill-running">{l.unknown_metrics}</span> : "0"}</td>
+              <td className="mono">{(l.bad_dates ?? 0) > 0 ? <span className="pill pill-failed">{l.bad_dates}</span> : "0"}</td>
+              <td className="err" title={l.error ?? ""}>{l.error ? l.error.slice(0, 80) : ""}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && page && <tr><td colSpan={10} className="muted">No ingests match.</td></tr>}
+          {!page && !error && <tr><td colSpan={10} className="muted">Loading…</td></tr>}
+        </tbody>
+      </table>
+
+      <div className="admin-pager">
+        <span className="muted small">{total === 0 ? 0 : offset + 1}–{Math.min(offset + limit, total)} of {total}</span>
+        <button className="btn tiny" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Prev</button>
+        <button className="btn tiny" disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}>Next</button>
+      </div>
+    </>
   );
 }
 
