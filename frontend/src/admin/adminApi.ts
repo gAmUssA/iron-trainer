@@ -44,6 +44,33 @@ export interface AdminUser {
 // Left loosely typed (Record) since the view renders it structurally.
 export type AdminUserDetail = Record<string, unknown>;
 
+export interface AdminKindHealth {
+  kind: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  running: number;
+  queued: number;
+  other: number;
+  failure_rate: number;
+}
+
+export interface AdminRecentFailure {
+  id: number;
+  kind: string;
+  athlete_id: number | null;
+  created_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
+export interface AdminJobHealth {
+  window_days: number;
+  since: string;
+  kinds: AdminKindHealth[];
+  recent_failures: AdminRecentFailure[];
+}
+
 async function adminGet<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: { Accept: "application/json" }, credentials: "include" });
   if (res.status === 401) throw new AdminUnauthorized();
@@ -80,4 +107,6 @@ export const adminApi = {
   users: () => adminGet<{ users: AdminUser[] }>("/api/admin/users"),
 
   user: (id: number) => adminGet<AdminUserDetail>(`/api/admin/users/${id}`),
+
+  jobHealth: (days: number) => adminGet<AdminJobHealth>(`/api/admin/health/jobs?days=${days}`),
 };

@@ -5,6 +5,7 @@ import {
   type AdminJob,
   type AdminJobsPage,
   type AdminUser,
+  type AdminJobHealth,
 } from "./adminApi";
 
 /** Password-gated ops console (admin epic 18n4): inspect users (bean y8b2) and
@@ -66,10 +67,10 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-type Tab = "users" | "jobs";
+type Tab = "health" | "users" | "jobs";
 
 function AdminShell({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<Tab>("users");
+  const [tab, setTab] = useState<Tab>("health");
 
   async function logout() {
     await adminApi.logout();
@@ -80,13 +81,102 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
     <div className="admin-wrap admin-console">
       <header className="admin-header">
         <nav className="admin-nav">
+          <button className={`btn tiny ${tab === "health" ? "primary" : ""}`} onClick={() => setTab("health")}>Health</button>
           <button className={`btn tiny ${tab === "users" ? "primary" : ""}`} onClick={() => setTab("users")}>Users</button>
           <button className={`btn tiny ${tab === "jobs" ? "primary" : ""}`} onClick={() => setTab("jobs")}>Jobs</button>
         </nav>
         <button className="btn tiny" onClick={logout}>Logout</button>
       </header>
-      {tab === "users" ? <UsersView onLogout={onLogout} /> : <JobsView onLogout={onLogout} />}
+      {tab === "health" && <HealthView onLogout={onLogout} />}
+      {tab === "users" && <UsersView onLogout={onLogout} />}
+      {tab === "jobs" && <JobsView onLogout={onLogout} />}
     </div>
+  );
+}
+
+// ── Sync health ───────────────────────────────────────────────────────────────
+
+const WINDOWS = [1, 7, 30];
+
+function HealthView({ onLogout }: { onLogout: () => void }) {
+  const [days, setDays] = useState(7);
+  const [data, setData] = useState<AdminJobHealth | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setError(null);
+    adminApi.jobHealth(days)
+      .then(setData)
+      .catch((e) => { if (e instanceof AdminUnauthorized) onLogout(); else setError(String(e)); });
+  }, [days, onLogout]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <>
+      <div className="admin-filters">
+        <span className="muted small">Window:</span>
+        {WINDOWS.map((w) => (
+          <button key={w} className={`btn tiny ${days === w ? "primary" : ""}`} onClick={() => setDays(w)}>{w}d</button>
+        ))}
+        <button className="btn tiny" onClick={load}>Refresh</button>
+      </div>
+
+      {error && <div className="card error" role="alert">{error}</div>}
+
+      <h3 className="admin-subhead">Per-kind failure rate</h3>
+      <table className="admin-table">
+        <thead>
+          <tr><th>kind</th><th>failure rate</th><th>total</th><th>ok</th><th>failed</th><th>running</th><th>queued</th></tr>
+        </thead>
+        <tbody>
+          {(data?.kinds ?? []).map((k) => (
+            <tr key={k.kind}>
+              <td>{k.kind}</td>
+              <td><FailureBar rate={k.failure_rate} /></td>
+              <td className="mono">{k.total}</td>
+              <td className="mono">{k.succeeded}</td>
+              <td className="mono">{k.failed > 0 ? <span className="pill pill-failed">{k.failed}</span> : "0"}</td>
+              <td className="mono">{k.running}</td>
+              <td className="mono">{k.queued}</td>
+            </tr>
+          ))}
+          {data && data.kinds.length === 0 && <tr><td colSpan={7} className="muted">No jobs in this window.</td></tr>}
+          {!data && !error && <tr><td colSpan={7} className="muted">Loading…</td></tr>}
+        </tbody>
+      </table>
+
+      <h3 className="admin-subhead">Recent failures</h3>
+      <table className="admin-table">
+        <thead>
+          <tr><th>id</th><th>kind</th><th>athlete</th><th>when</th><th>error</th></tr>
+        </thead>
+        <tbody>
+          {(data?.recent_failures ?? []).map((f) => (
+            <tr key={f.id}>
+              <td>{f.id}</td>
+              <td>{f.kind}</td>
+              <td>{f.athlete_id ?? "—"}</td>
+              <td className="mono">{fmt(f.created_at)}</td>
+              <td className="err" title={f.error ?? ""}>{f.error ? f.error.slice(0, 120) : ""}</td>
+            </tr>
+          ))}
+          {data && data.recent_failures.length === 0 && <tr><td colSpan={5} className="muted">No failures 🎉</td></tr>}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+/** A tiny inline bar — width = failure rate, colored by severity. */
+function FailureBar({ rate }: { rate: number }) {
+  const pct = Math.round(rate * 100);
+  const tone = pct >= 25 ? "bad" : pct >= 5 ? "warn" : "ok";
+  return (
+    <span className="failbar" aria-label={`${pct}% failing`}>
+      <span className={`failbar-fill failbar-${tone}`} style={{ width: `${Math.max(pct, 2)}%` }} />
+      <span className="failbar-label mono">{pct}%</span>
+    </span>
   );
 }
 
