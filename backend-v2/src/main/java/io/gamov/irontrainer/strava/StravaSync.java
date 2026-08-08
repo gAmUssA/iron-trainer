@@ -233,9 +233,12 @@ public class StravaSync {
     }
 
     /** Epoch of the athlete's most recent stored activity, or null (incremental
-     * lower bound). */
-    private Long latestActivityEpoch(int aid) {
-        Activity latest = Activity.find("athleteId = ?1 order by startDate desc", aid).firstResult();
+     * lower bound). Own transaction: runSync's setup runs on the async job thread
+     * (no request context), so this read must open its own tx or it throws
+     * ContextNotActiveException. Package-private for the async-context regression test. */
+    Long latestActivityEpoch(int aid) {
+        Activity latest = QuarkusTransaction.requiringNew().call(() ->
+                Activity.find("athleteId = ?1 order by startDate desc", aid).firstResult());
         if (latest == null || latest.startDate == null) return null;
         var dt = Iso.parseDateTime(latest.startDate);
         return dt == null ? null : dt.toEpochSecond(ZoneOffset.UTC);
