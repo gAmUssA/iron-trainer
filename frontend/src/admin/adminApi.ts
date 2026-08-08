@@ -29,6 +29,21 @@ export interface AdminJobsQuery {
   offset?: number;
 }
 
+export interface AdminUser {
+  id: number;
+  name: string | null;
+  strava_athlete_id: number | null;
+  connected: boolean;
+  apple_linked: boolean;
+  activities: number;
+  jobs: number;
+  failed_jobs: number;
+}
+
+// user(id) detail — a superset of AdminUser plus counts/last_sync/recent_jobs.
+// Left loosely typed (Record) since the view renders it structurally.
+export type AdminUserDetail = Record<string, unknown>;
+
 async function adminGet<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: { Accept: "application/json" }, credentials: "include" });
   if (res.status === 401) throw new AdminUnauthorized();
@@ -61,4 +76,8 @@ export const adminApi = {
   },
 
   job: (id: number) => adminGet<Record<string, unknown>>(`/api/admin/jobs/${id}`),
+
+  users: () => adminGet<{ users: AdminUser[] }>("/api/admin/users"),
+
+  user: (id: number) => adminGet<AdminUserDetail>(`/api/admin/users/${id}`),
 };
