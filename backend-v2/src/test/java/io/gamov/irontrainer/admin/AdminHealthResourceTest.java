@@ -2,6 +2,7 @@ package io.gamov.irontrainer.admin;
 
 import static io.restassured.RestAssured.given;
 
+import io.gamov.irontrainer.athlete.Athlete;
 import io.gamov.irontrainer.jobs.Job;
 import io.gamov.irontrainer.util.PyJson;
 import io.quarkus.narayana.jta.QuarkusTransaction;
@@ -17,8 +18,9 @@ import org.junit.jupiter.api.Test;
 @QuarkusTest
 class AdminHealthResourceTest {
 
-    static void job(String kind, String status, String createdAt) {
+    static void job(int athleteId, String kind, String status, String createdAt) {
         Job j = new Job();
+        j.athleteId = athleteId; // job.athlete_id is NOT NULL
         j.kind = kind;
         j.status = status;
         j.createdAt = createdAt;
@@ -48,9 +50,13 @@ class AdminHealthResourceTest {
         String ancient = "2020-01-01T00:00:00.000000+00:00";
 
         QuarkusTransaction.requiringNew().run(() -> {
-            for (int i = 0; i < 3; i++) job(sync, "succeeded", now);
-            for (int i = 0; i < 2; i++) job(sync, "failed", now);
-            job(old, "failed", ancient); // outside the 7-day window → must be excluded
+            Athlete a = new Athlete();
+            a.name = "HealthTest";
+            a.persist();
+            int aid = a.id;
+            for (int i = 0; i < 3; i++) job(aid, sync, "succeeded", now);
+            for (int i = 0; i < 2; i++) job(aid, sync, "failed", now);
+            job(aid, old, "failed", ancient); // outside the 7-day window → must be excluded
         });
 
         JsonPath jp = given().header("Cookie", adminCookie())
