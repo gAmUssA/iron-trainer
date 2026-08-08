@@ -99,7 +99,6 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
 
 // ── Health ingests (HAE / native) ────────────────────────────────────────────
 
-const INGEST_WINDOWS = [1, 7, 30];
 const SOURCES = ["", "hae", "native", "unknown"];
 
 function IngestsView({ onLogout }: { onLogout: () => void }) {
@@ -132,7 +131,7 @@ function IngestsView({ onLogout }: { onLogout: () => void }) {
     <>
       <div className="admin-filters">
         <span className="muted small">Window:</span>
-        {INGEST_WINDOWS.map((w) => (
+        {WINDOWS.map((w) => (
           <button key={w} className={`btn tiny ${days === w ? "primary" : ""}`} onClick={() => { setOffset(0); setDays(w); }}>{w}d</button>
         ))}
         <select value={source} onChange={(e) => { setOffset(0); setSource(e.target.value); }}>
