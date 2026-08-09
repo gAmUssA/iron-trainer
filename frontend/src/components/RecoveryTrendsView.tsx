@@ -32,6 +32,8 @@ const C = {
   vo2: "#4ade80",
   spo2: "#38bdf8",
   resp: "#ffb454",
+  bodyFat: "#f472b6",
+  bmi: "#a78bfa",
 };
 
 const DAY_MS = 86_400_000;
@@ -128,6 +130,8 @@ export function RecoveryTrendsView() {
   const vo2 = spark("vo2max");
   const spo2 = spark("spo2_pct");
   const resp = spark("respiratory_rate");
+  const bodyFat = spark("body_fat_pct");
+  const bmi = spark("bmi");
 
   const empty = !loading && rows.length === 0;
 
@@ -247,6 +251,17 @@ export function RecoveryTrendsView() {
                 {vo2.length > 0 && <MiniSpark title="VO₂max" unit="ml/kg/min" color={C.vo2} data={vo2} />}
                 {spo2.length > 0 && <MiniSpark title="SpO₂" unit="%" color={C.spo2} data={spo2} />}
                 {resp.length > 0 && <MiniSpark title="Respiratory" unit="br/min" color={C.resp} data={resp} />}
+              </div>
+            </div>
+          )}
+
+          {bodyFat.length + bmi.length > 0 && (
+            <div className="card">
+              <div className="card-title">Body Composition</div>
+              <div className="card-sub">Body fat and BMI (from Health Auto Export), alongside the weight trend above</div>
+              <div className="grid-2">
+                {bodyFat.length > 0 && <MiniSpark title="Body Fat" unit="%" color={C.bodyFat} data={bodyFat} />}
+                {bmi.length > 0 && <MiniSpark title="BMI" unit="" color={C.bmi} data={bmi} />}
               </div>
             </div>
           )}

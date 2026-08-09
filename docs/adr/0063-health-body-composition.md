@@ -30,7 +30,9 @@ Additive, same pattern as the existing metrics:
 - **Native HealthKit path not touched** — this is the HAE (Health Auto Export) route
   Viktor uses; adding body composition to the native iOS reader is a separate
   follow-up if wanted.
-- No UI chart added (not requested); the data is captured + exposed via the API.
+- **Web display:** the Recovery Trends page gains a "Body Composition" section —
+  Body Fat % and BMI `MiniSpark`s beside the existing Body Weight chart. Only shown
+  when data exists.
 
 ## Verification
 
