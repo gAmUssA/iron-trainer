@@ -173,6 +173,26 @@ class HealthIngestTest {
         assertTrue(day.get("source") == null, "no source key when the HRV point carries none");
     }
 
+    @Test
+    void parsesBodyComposition() {
+        // Body fat % + BMI (bean qugv) map to their columns; weight stays too.
+        Map<String, Object> payload = Map.of("data", Map.of("metrics", List.of(
+                metric("body_fat_percentage", "%", List.of(
+                        rec("date", "2026-07-13 06:00:00 -0400", 18.5))),
+                metric("body_mass_index", "count", List.of(
+                        rec("date", "2026-07-13 06:00:00 -0400", 22.4))),
+                metric("weight_body_mass", "kg", List.of(
+                        rec("date", "2026-07-13 06:00:00 -0400", 70.0))))));
+
+        HealthIngest.Result r = HealthIngest.parsePayload(payload);
+        Map<String, Object> day = r.days.get("2026-07-13");
+        assertTrue(day != null, "day present");
+        assertEquals(18.5, day.get("body_fat_pct"));
+        assertEquals(22.4, day.get("bmi"));
+        assertEquals(70.0, day.get("weight_kg"));
+        assertTrue(r.unknownMetrics.isEmpty(), "body fat / BMI are recognized, not unknown");
+    }
+
     private static Map<String, Object> metric(String name, String units, List<Object> data) {
         return Map.of("name", name, "units", units, "data", data);
     }

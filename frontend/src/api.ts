@@ -224,6 +224,8 @@ export interface RecoveryDay {
   hrv_ms: number | null;
   rhr_bpm: number | null;
   weight_kg: number | null;
+  body_fat_pct?: number | null;
+  bmi?: number | null;
   vo2max?: number | null;
   respiratory_rate?: number | null;
   wrist_temp_c?: number | null;

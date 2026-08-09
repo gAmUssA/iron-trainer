@@ -45,6 +45,10 @@ class HealthEndpointTest {
                 + "{\"date\":\"2026-07-13 08:00:00 -0400\",\"qty\":65,\"source\":\"com.whoop.app\"}]},"
                 + "{\"name\":\"resting_heart_rate\",\"units\":\"bpm\",\"data\":["
                 + "{\"date\":\"2026-07-13 06:00:00 -0400\",\"qty\":48}]},"
+                + "{\"name\":\"body_fat_percentage\",\"units\":\"%\",\"data\":["
+                + "{\"date\":\"2026-07-13 06:00:00 -0400\",\"qty\":18.5}]},"
+                + "{\"name\":\"body_mass_index\",\"units\":\"count\",\"data\":["
+                + "{\"date\":\"2026-07-13 06:00:00 -0400\",\"qty\":22.4}]},"
                 + "{\"name\":\"mystery_metric\",\"data\":["
                 + "{\"date\":\"2026-07-13 06:00:00 -0400\",\"qty\":1}]}"
                 + "]}}";
@@ -53,7 +57,7 @@ class HealthEndpointTest {
                 .then().statusCode(200)
                 .body("ok", is(true))
                 .body("days", is(1))
-                .body("parsed.records", is(4))   // 2 HRV + 1 RHR + 1 mystery data records
+                .body("parsed.records", is(6))   // 2 HRV + 1 RHR + 1 body-fat + 1 BMI + 1 mystery
                 .body("parsed.bad_dates", is(0))
                 .body("parsed.unknown_metrics[0]", is("mystery_metric"));
 
@@ -64,7 +68,10 @@ class HealthEndpointTest {
                 .body("days[0].rhr_bpm", is(48.0f))
                 // Full persistence round-trip for HRV provenance (bean aydv):
                 // entity mapping or serialization dropping `source` fails here.
-                .body("days[0].source", is("com.whoop.app"));
+                .body("days[0].source", is("com.whoop.app"))
+                // Body composition round-trip (bean qugv): column/entity/applyFields/read.
+                .body("days[0].body_fat_pct", is(18.5f))
+                .body("days[0].bmi", is(22.4f));
     }
 
     @Test

@@ -55,6 +55,13 @@ public class DailyRecovery extends PanacheEntityBase {
     @Column(name = "weight_kg")
     public Double weightKg;
 
+    // Body composition from Health Auto Export (bean qugv).
+    @Column(name = "body_fat_pct")
+    public Double bodyFatPct;
+
+    @Column(name = "bmi")
+    public Double bmi;
+
     @Column(name = "vo2max")
     public Double vo2max;
 

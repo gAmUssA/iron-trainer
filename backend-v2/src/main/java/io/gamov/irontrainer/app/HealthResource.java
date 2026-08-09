@@ -96,6 +96,8 @@ public class HealthResource {
             m.put("hrv_ms", r.hrvMs);
             m.put("rhr_bpm", r.rhrBpm);
             m.put("weight_kg", r.weightKg);
+            m.put("body_fat_pct", r.bodyFatPct);
+            m.put("bmi", r.bmi);
             m.put("vo2max", r.vo2max);
             m.put("respiratory_rate", r.respiratoryRate);
             m.put("wrist_temp_c", r.wristTempC);
@@ -263,6 +265,12 @@ public class HealthResource {
         }
         if (f.get("weight_kg") != null) {
             row.weightKg = asD(f.get("weight_kg"));
+        }
+        if (f.get("body_fat_pct") != null) {
+            row.bodyFatPct = asD(f.get("body_fat_pct"));
+        }
+        if (f.get("bmi") != null) {
+            row.bmi = asD(f.get("bmi"));
         }
         if (f.get("vo2max") != null) {
             row.vo2max = asD(f.get("vo2max"));
