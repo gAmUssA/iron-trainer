@@ -5,10 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import org.junit.jupiter.api.Test;
 
-/** Byte-exact parity against a cookie signed by the real Python itsdangerous
- * 2.2.0 (the version FastAPI/Starlette use). The fixture below was produced by
- * a FixedSigner over {@code {"athlete_id": 7}} with secret "test-secret-key"
- * at a pinned epoch, so the age gate is deterministic:
+/** The itsdangerous VERIFY path is a live-data contract: real browser cookies
+ * signed by FastAPI/Starlette (itsdangerous 2.2.0, spaced {@code json.dumps}
+ * payload) must still verify. The fixture below is one such Python-signed cookie
+ * (secret "test-secret-key", pinned epoch), and it must keep verifying even now
+ * that minting emits a compact payload — verification reads the received bytes and
+ * never re-serializes. (Replacing the scheme itself is deferred — bean x8t8.)
  * <pre>
  *   base64.b64encode(json.dumps({"athlete_id": 7}).encode())  -> payload
  *   TimestampSigner("test-secret-key", get_timestamp()->1700000000).sign(payload)
@@ -20,15 +22,6 @@ class SessionCookieTest {
     // payload {"athlete_id": 7} . timestamp(1700000000) . HMAC-SHA1 signature
     private static final String COOKIE =
             "eyJhdGhsZXRlX2lkIjogN30=.ZVPxAA.d-cuM89lfIvJTyg5a8oKFq6JAQ4";
-
-    @Test
-    void mintsByteIdenticalToPython() {
-        // The strongest minting check: sign() must reproduce the Python
-        // itsdangerous/Starlette cookie byte-for-byte (so FastAPI verifies ours).
-        String minted = SessionCookie.sign(
-                new java.util.LinkedHashMap<>(java.util.Map.of("athlete_id", 7)), SECRET, SIGNED_AT);
-        assertEquals(COOKIE, minted);
-    }
 
     @Test
     void mintRoundTripsWithReadAndAthleteId() {

@@ -83,3 +83,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0058](0058-admin-console-sync-health.md) | Admin console: sync-health telemetry (failure rates + recent failures) | Accepted |
 | [0059](0059-admin-health-ingest-log.md) | Admin: health-ingest audit log + view (HAE / native observability) | Accepted |
 | [0060](0060-health-ingest-stale-detection-retention.md) | Health-ingest: stale-detection + retention | Accepted |
+| [0061](0061-depython-compact-json.md) | De-Python: compact JSON (retire PyJson byte-parity) | Accepted |

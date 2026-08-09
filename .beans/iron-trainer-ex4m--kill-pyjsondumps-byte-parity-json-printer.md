@@ -1,11 +1,11 @@
 ---
 # iron-trainer-ex4m
 title: Kill PyJson.dumps byte-parity JSON printer
-status: todo
+status: completed
 type: task
 priority: high
 created_at: 2026-08-08T23:24:17Z
-updated_at: 2026-08-08T23:24:17Z
+updated_at: 2026-08-09T12:54:38Z
 parent: iron-trainer-y2yz
 ---
 
@@ -18,3 +18,6 @@ Flagship safe win. util/PyJson.java:24-52 subclasses MinimalPrettyPrinter to for
 
 ## Notes
 LOW risk: readers only parse. Do NOT touch PyJson.utcNowIso format here (coupled to string-timestamp columns — see the timestamp child).
+
+## Summary of Changes
+PyJson.dumps now emits compact JSON via the plain ObjectMapper (deleted the MinimalPrettyPrinter byte-parity subclass + imports); ~15 callers unchanged. Timestamps kept exact (iOS wire + string-column lexicographic queries). SessionCookie.sign is now compact but SAFE: verify reads received bytes (old FastAPI-signed cookies still verify — SessionCookieTest.verifiesPythonSignedCookie passes) and backend-v2 signs+verifies its own. Removed obsolete mintsByteIdenticalToPython; PyJsonTest/JobRunnerTest assert compact. ADR 0061.

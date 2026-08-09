@@ -12,8 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** GET /api/strava/connect — 307 to Strava consent with a minted oauth_state
- * session cookie. Validates the byte-identical minting end-to-end (the cookie
- * must read back as a valid session carrying the state in the Location). */
+ * session cookie. Validates minting end-to-end (the cookie must read back as a
+ * valid session carrying the state in the Location). */
 @QuarkusTest
 class StravaConnectTest {
 
@@ -34,8 +34,8 @@ class StravaConnectTest {
         assertTrue(location.contains("approval_prompt=auto"), location);
 
         // A non-empty state param and a signed session cookie (payload.ts.sig)
-        // are set. Minting correctness (byte-identical + round-trip) is proven in
-        // SessionCookieTest; here we just confirm connect mints + sets the cookie.
+        // are set. Minting/round-trip correctness is proven in SessionCookieTest;
+        // here we just confirm connect mints + sets the cookie.
         String state = location.replaceAll(".*[?&]state=([^&]+).*", "$1");
         assertTrue(state.length() >= 20, "urlsafe(16) state");
         String cookie = r.getCookie("session");

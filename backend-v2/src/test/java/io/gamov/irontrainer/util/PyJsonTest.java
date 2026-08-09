@@ -9,24 +9,22 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** PyJson must match Python's json.dumps + datetime.isoformat byte-for-byte, so
- * blobs/timestamps written to the shared DB are identical to FastAPI's. */
+/** PyJson: compact JSON (FastAPI is gone — only backend-v2 reads these blobs, and
+ * it only parses them) + ISO-8601-UTC timestamps (still the iOS wire format). */
 class PyJsonTest {
 
     @Test
-    void dumpsMatchesJsonDumpsSpacing() {
-        // json.dumps default: ": " after key, ", " between items — not compact.
-        assertEquals("{\"ftp\": 238}", PyJson.dumps(Map.of("ftp", 238)));
+    void dumpsIsCompact() {
+        assertEquals("{\"ftp\":238}", PyJson.dumps(Map.of("ftp", 238)));
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("avg_power_w", 250);
         m.put("note", "ok");
-        assertEquals("{\"avg_power_w\": 250, \"note\": \"ok\"}", PyJson.dumps(m));
-        assertEquals("[1, 2, 3]", PyJson.dumps(List.of(1, 2, 3)));
-        // Nested (a workout step): array + object spacing together.
+        assertEquals("{\"avg_power_w\":250,\"note\":\"ok\"}", PyJson.dumps(m));
+        assertEquals("[1,2,3]", PyJson.dumps(List.of(1, 2, 3)));
         Map<String, Object> step = new LinkedHashMap<>();
         step.put("type", "warmup");
         step.put("duration_s", 900);
-        assertEquals("[{\"type\": \"warmup\", \"duration_s\": 900}]",
+        assertEquals("[{\"type\":\"warmup\",\"duration_s\":900}]",
                 PyJson.dumps(List.of(step)));
     }
 
