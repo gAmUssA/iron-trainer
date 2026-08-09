@@ -32,10 +32,9 @@ public final class PyJson {
         }
     }
 
-    /** json.loads(s) — parse a shared-DB JSON blob into Maps/Lists/scalars. Like
-     * Python, this THROWS on malformed input (the caller that reads a possibly-
-     * null column should apply the `s or "[]"` default first) so a corrupt blob
-     * fails the same way on both backends rather than silently diverging. */
+    /** Parse a stored JSON blob into Maps/Lists/scalars. THROWS on malformed input
+     * — a caller reading a possibly-null column should apply its own type-appropriate
+     * default first (e.g. [] for a list, {} for a map) rather than passing null. */
     public static Object loads(String s) {
         try {
             return MAPPER.readValue(s, Object.class);

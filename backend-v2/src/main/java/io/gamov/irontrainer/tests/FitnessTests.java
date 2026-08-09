@@ -5,10 +5,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Fitness-test protocol catalog — faithful port of app/fitness_tests.py.
- * The catalog is a small fixed set (no DB table); it must serialize
- * byte-identically to FastAPI's catalog() (key order + exact copy). The compute
- * lambdas + to_workout live with the write vertical; reads only need this. */
+/** Fitness-test protocol catalog — a small fixed set (no DB table), serialized
+ * with a stable key order. The compute lambdas + to_workout live with the write
+ * vertical; reads only need this. */
 public final class FitnessTests {
 
     private FitnessTests() {}

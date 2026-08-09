@@ -52,9 +52,8 @@ public class FitnessTestsResource {
         public String date;
     }
 
-    // Results ordered by `date` only — deliberately the SAME clause as FastAPI's
-    // list_test_results (no tie-break), so both backends read the identical order
-    // from the shared DB. Full entities: listResults needs them for toRow().
+    // Results ordered by `date` only (no tie-break). Full entities: listResults
+    // needs them for toRow().
     private List<FitnessTestResult> results(int aid) {
         return FitnessTestResult.list("athleteId = ?1 order by date", aid);
     }
