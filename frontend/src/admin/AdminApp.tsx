@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { timeAgo } from "../api";
 import {
   adminApi,
   AdminUnauthorized,
@@ -163,7 +164,7 @@ function IngestsView({ onLogout }: { onLogout: () => void }) {
               <tr key={l.id}>
                 <td>{l.source}</td>
                 <td>{l.athlete_id ?? "—"}</td>
-                <td className="mono" title={fmt(l.received_at)}>{relAge(l.received_at)}</td>
+                <td className="mono" title={fmt(l.received_at)}>{timeAgo(l.received_at) ?? "—"}</td>
                 <td><span className={`pill pill-${st.tone}`}>{st.label}</span></td>
                 <td className="mono">{l.days_stored ?? "—"}</td>
                 <td className="mono">{l.records ?? "—"}</td>
@@ -478,20 +479,14 @@ function fmt(ts: string | null): string {
 
 // Silent-sync / stale-ingest detection (bean vcf4): a client is "stale" if its
 // last ingest was over STALE_DAYS ago, "failing" if that last ingest errored.
+// Relative-time display reuses timeAgo() from ../api; only the numeric threshold
+// lives here.
 const STALE_DAYS = 3;
 
 function ageDays(ts: string | null): number | null {
   if (!ts) return null;
   const ms = Date.now() - Date.parse(ts);
   return Number.isNaN(ms) ? null : ms / 86_400_000;
-}
-
-function relAge(ts: string | null): string {
-  const d = ageDays(ts);
-  if (d == null) return "—";
-  if (d < 1 / 24) return "just now";
-  if (d < 1) return `${Math.floor(d * 24)}h ago`;
-  return `${Math.floor(d)}d ago`;
 }
 
 function ingestStatus(l: { ok: boolean; received_at: string | null }): { tone: string; label: string } {
