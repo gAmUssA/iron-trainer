@@ -8,10 +8,18 @@ import org.junit.jupiter.api.Test;
 class HealthSourceDetectTest {
 
     @Test
-    void headerWins() {
+    void headerExactMatchWins() {
         assertEquals("native", HealthResource.detectSource("native", "whatever"));
         assertEquals("hae", HealthResource.detectSource("hae", null));
-        assertEquals("hae", HealthResource.detectSource("Health Auto Export", null));
+        assertEquals("native", HealthResource.detectSource(" NATIVE ", null)); // trimmed + case-insensitive
+    }
+
+    @Test
+    void substringHeaderIsNotAccepted() {
+        // "not-native" / "some-hae-client" must NOT classify as native/hae.
+        assertEquals("unknown", HealthResource.detectSource("not-native", null));
+        assertEquals("unknown", HealthResource.detectSource("some-hae-client", null));
+        assertEquals("unknown", HealthResource.detectSource("Health Auto Export", null)); // header must be exactly "hae"
     }
 
     @Test

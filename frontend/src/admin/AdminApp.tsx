@@ -134,10 +134,10 @@ function IngestsView({ onLogout }: { onLogout: () => void }) {
         {WINDOWS.map((w) => (
           <button key={w} className={`btn tiny ${days === w ? "primary" : ""}`} onClick={() => { setOffset(0); setDays(w); }}>{w}d</button>
         ))}
-        <select value={source} onChange={(e) => { setOffset(0); setSource(e.target.value); }}>
+        <select aria-label="Filter by source" value={source} onChange={(e) => { setOffset(0); setSource(e.target.value); }}>
           {SOURCES.map((s) => <option key={s} value={s}>{s || "all sources"}</option>)}
         </select>
-        <select value={okFilter} onChange={(e) => { setOffset(0); setOkFilter(e.target.value); }}>
+        <select aria-label="Filter by result" value={okFilter} onChange={(e) => { setOffset(0); setOkFilter(e.target.value); }}>
           <option value="">ok + failed</option>
           <option value="true">ok only</option>
           <option value="false">failed only</option>

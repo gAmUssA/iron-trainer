@@ -123,6 +123,9 @@ public class HealthResource {
     public Map<String, Object> ingest(String body,
             @HeaderParam("X-Ingest-Client") String client,
             @HeaderParam("User-Agent") String userAgent) {
+        // Timestamp at arrival, not completion — a large batch takes time to upsert,
+        // and the audit + stale-client math should reflect when the POST landed.
+        String receivedAt = PyJson.utcNowIso();
         int byteSize = body == null ? 0 : body.getBytes(StandardCharsets.UTF_8).length;
         String source = detectSource(client, userAgent);
         Object parsed;
@@ -130,7 +133,7 @@ public class HealthResource {
             parsed = PyJson.loads(body == null ? "" : body);
         } catch (Exception e) {
             LOG.warn("Health ingest: malformed JSON body");
-            logIngest(current.idOrNull(), source, false, 0, 0, 0, 0, byteSize, userAgent, "invalid JSON");
+            logIngest(receivedAt, current.idOrNull(), source, false, 0, 0, 0, 0, byteSize, userAgent, "invalid JSON");
             Map<String, Object> bad = new LinkedHashMap<>();
             bad.put("ok", false);
             bad.put("error", "invalid JSON");
@@ -164,7 +167,7 @@ public class HealthResource {
         parsedOut.put("records", r.records);
         parsedOut.put("unknown_metrics", r.unknownMetrics);
         parsedOut.put("bad_dates", r.badDates);
-        logIngest(current.idOrNull(), source, true, stored, r.records,
+        logIngest(receivedAt, current.idOrNull(), source, true, stored, r.records,
                 r.unknownMetrics.size(), r.badDates, byteSize, userAgent, null);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
@@ -177,11 +180,14 @@ public class HealthResource {
      * Auto Export automation can be configured with X-Ingest-Client: hae (its
      * User-Agent is a best-effort fallback). Unknown otherwise. */
     static String detectSource(String client, String userAgent) {
-        if (client != null && !client.isBlank()) {
+        if (client != null) {
+            // Exact match on the documented header values — substring matching would
+            // misclassify "not-native"/"some-hae-client".
             String c = client.trim().toLowerCase(Locale.ROOT);
-            if (c.contains("native")) return "native";
-            if (c.contains("hae") || c.contains("health auto export")) return "hae";
+            if (c.equals("native")) return "native";
+            if (c.equals("hae")) return "hae";
         }
+        // User-Agent stays a heuristic fallback (HAE sets its app name there).
         if (userAgent != null && userAgent.toLowerCase(Locale.ROOT).contains("health auto export")) {
             return "hae";
         }
@@ -190,14 +196,14 @@ public class HealthResource {
 
     /** Best-effort audit row (bean j05e). Its own tx; a logging failure must NEVER
      * fail the ingest. error is truncated. */
-    private void logIngest(Integer athleteId, String source, boolean ok, int daysStored,
+    private void logIngest(String receivedAt, Integer athleteId, String source, boolean ok, int daysStored,
             int records, int unknownMetrics, int badDates, int byteSize, String userAgent, String error) {
         try {
             QuarkusTransaction.requiringNew().run(() -> {
                 HealthIngestLog row = new HealthIngestLog();
                 row.athleteId = athleteId;
                 row.source = source;
-                row.receivedAt = PyJson.utcNowIso();
+                row.receivedAt = receivedAt;
                 row.ok = ok;
                 row.daysStored = daysStored;
                 row.records = records;
