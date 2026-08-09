@@ -52,8 +52,8 @@ public class FitnessTestsResource {
         public String date;
     }
 
-    // Results ordered by `date` only (no tie-break) — a stable, deterministic
-    // order. Full entities: listResults needs them for toRow().
+    // Results ordered by `date` only (no tie-break). Full entities: listResults
+    // needs them for toRow().
     private List<FitnessTestResult> results(int aid) {
         return FitnessTestResult.list("athleteId = ?1 order by date", aid);
     }

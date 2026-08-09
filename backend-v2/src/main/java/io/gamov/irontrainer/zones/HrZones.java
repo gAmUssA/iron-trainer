@@ -76,8 +76,8 @@ public final class HrZones {
         }
         List<Map<String, Object>> zones = new ArrayList<>();
         for (Band b : bands) {
-            // Math.rint = ties-to-even (banker's rounding) on X.5 inputs, so the
-            // stored zone bounds are deterministic.
+            // Math.rint = ties-to-even (banker's rounding), so zone bounds round
+            // consistently on X.5 inputs.
             long hi = (long) Math.rint(base * b.hi());
             if (maxHr != null && maxHr > 0) {
                 hi = Math.min(hi, maxHr);

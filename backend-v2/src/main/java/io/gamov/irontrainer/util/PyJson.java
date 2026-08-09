@@ -33,8 +33,8 @@ public final class PyJson {
     }
 
     /** Parse a stored JSON blob into Maps/Lists/scalars. THROWS on malformed input
-     * (a caller reading a possibly-null column should apply its `s or "[]"` default
-     * first) rather than silently returning a wrong value. */
+     * — a caller reading a possibly-null column should apply its own type-appropriate
+     * default first (e.g. [] for a list, {} for a map) rather than passing null. */
     public static Object loads(String s) {
         try {
             return MAPPER.readValue(s, Object.class);
