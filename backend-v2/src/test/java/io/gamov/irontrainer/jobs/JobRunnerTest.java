@@ -34,8 +34,8 @@ class JobRunnerTest {
             QuarkusTransaction.requiringNew().run(() -> {
                 Job j = Job.findById(jobId);
                 assertEquals("succeeded", j.status);
-                // PyJson.dumps spacing (", "/": ") for shared-DB byte parity.
-                assertEquals("{\"ok\": true}", j.resultJson);
+                // result_json is compact JSON (FastAPI gone; only backend-v2 reads it).
+                assertEquals("{\"ok\":true}", j.resultJson);
             }));
     }
 

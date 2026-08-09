@@ -1,51 +1,32 @@
 package io.gamov.irontrainer.util;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.PrettyPrinter;
-import com.fasterxml.jackson.core.util.MinimalPrettyPrinter;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 
-/** Match Python's json.dumps + datetime.isoformat byte-for-byte, so JSON blobs
- * and timestamps this backend WRITES to the shared DB (inputs_json, result_json,
- * structure_json, created_at) are identical to what FastAPI writes. Jackson's
- * default is compact ({"a":1}); Python's default has ", "/": " separators
- * ({"a": 1}). */
+/** JSON + timestamp helpers. Historically these reproduced Python's json.dumps
+ * spacing byte-for-byte because the DB blobs (inputs_json, result_json, …) were
+ * shared with a FastAPI backend. FastAPI is decommissioned — backend-v2 is the
+ * sole reader/writer of these blobs and only ever parses them — so dumps now emits
+ * plain compact JSON. The timestamp format is still ISO-8601-UTC (kept: it is the
+ * iOS wire format and the columns are still text with lexicographic range queries). */
 public final class PyJson {
 
     private PyJson() {}
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** MinimalPrettyPrinter emits no newlines; override the separators to match
-     * json.dumps' default (item ", ", key/value ": "). */
-    private static final PrettyPrinter DUMPS = new MinimalPrettyPrinter() {
-        @Override
-        public void writeObjectFieldValueSeparator(JsonGenerator g) throws IOException {
-            g.writeRaw(": ");
-        }
-        @Override
-        public void writeObjectEntrySeparator(JsonGenerator g) throws IOException {
-            g.writeRaw(", ");
-        }
-        @Override
-        public void writeArrayValueSeparator(JsonGenerator g) throws IOException {
-            g.writeRaw(", ");
-        }
-    };
-
     // Python isoformat: microsecond precision, explicit +00:00 offset (not 'Z').
     private static final DateTimeFormatter ISO =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSxxx");
 
-    /** json.dumps(obj) — compact but with ", "/": " spacing. */
+    /** Serialize to compact JSON. (Only backend-v2 reads these blobs; it parses
+     * them, so whitespace is insignificant.) */
     public static String dumps(Object obj) {
         try {
-            return MAPPER.writer(DUMPS).writeValueAsString(obj);
+            return MAPPER.writeValueAsString(obj);
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new RuntimeException("json.dumps failed", e);
         }
