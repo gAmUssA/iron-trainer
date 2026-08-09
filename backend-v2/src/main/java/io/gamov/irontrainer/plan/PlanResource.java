@@ -738,11 +738,9 @@ public class PlanResource {
         return d;
     }
 
-    /** Mirror Python `json.loads(x or "[]")`: a null/EMPTY column → []. A
-     * non-empty value (incl. whitespace-only, which is truthy in Python) is
-     * parsed and, like Python, THROWS on malformed input → 500 — so a corrupt
-     * blob fails identically on both backends (the strangler serves reads with a
-     * 5xx local fallback, so the client still gets FastAPI's answer). */
+    /** A null/EMPTY column → []. A non-empty value (incl. whitespace-only) is
+     * parsed and THROWS on malformed input → 500, so a corrupt blob fails loudly
+     * rather than silently returning a wrong plan. */
     private Object parseJson(String json) {
         if (json == null || json.isEmpty()) {
             return List.of();
