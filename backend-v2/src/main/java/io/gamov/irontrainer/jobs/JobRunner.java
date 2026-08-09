@@ -94,9 +94,8 @@ public class JobRunner {
         LOG.debugf("Job running: id=%d", jobId);
         try {
             Object result = work.get();
-            // PyJson.dumps (not the plain mapper) for shared-DB byte parity: the
-            // job table is read/written by BOTH backends, and result_json must be
-            // byte-identical to FastAPI's json.dumps (", "/": " spacing).
+            // Serialize the result for the job row. Only backend-v2 reads result_json
+            // (it parses it), so compact JSON is fine — see ADR 0061.
             String resultJson = PyJson.dumps(result);
             transition(jobId, j -> {
                 j.status = "succeeded";
