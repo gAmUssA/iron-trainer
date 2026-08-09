@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { timeAgo } from "../api";
 import {
   adminApi,
   AdminUnauthorized,
@@ -126,6 +127,7 @@ function IngestsView({ onLogout }: { onLogout: () => void }) {
 
   const rows = page?.ingests ?? [];
   const total = page?.total ?? 0;
+  const attention = (page?.last_by_source ?? []).filter((l) => ingestStatus(l).tone !== "succeeded").length;
 
   return (
     <>
@@ -147,22 +149,28 @@ function IngestsView({ onLogout }: { onLogout: () => void }) {
 
       {error && <div className="card error" role="alert">{error}</div>}
 
-      <h3 className="admin-subhead">Last ingest per client</h3>
+      <h3 className="admin-subhead">
+        Last ingest per client
+        {attention > 0 && <span className="pill pill-failed" style={{ marginLeft: 8 }}>{attention} {attention === 1 ? "needs" : "need"} attention</span>}
+      </h3>
       <table className="admin-table">
         <thead>
-          <tr><th>source</th><th>athlete</th><th>when</th><th>ok</th><th>days</th><th>records</th></tr>
+          <tr><th>source</th><th>athlete</th><th>last seen</th><th>status</th><th>days</th><th>records</th></tr>
         </thead>
         <tbody>
-          {(page?.last_by_source ?? []).map((l) => (
-            <tr key={l.id}>
-              <td>{l.source}</td>
-              <td>{l.athlete_id ?? "—"}</td>
-              <td className="mono">{fmt(l.received_at)}</td>
-              <td>{l.ok ? <span className="pill pill-succeeded">ok</span> : <span className="pill pill-failed">fail</span>}</td>
-              <td className="mono">{l.days_stored ?? "—"}</td>
-              <td className="mono">{l.records ?? "—"}</td>
-            </tr>
-          ))}
+          {(page?.last_by_source ?? []).map((l) => {
+            const st = ingestStatus(l);
+            return (
+              <tr key={l.id}>
+                <td>{l.source}</td>
+                <td>{l.athlete_id ?? "—"}</td>
+                <td className="mono" title={fmt(l.received_at)}>{timeAgo(l.received_at) ?? "—"}</td>
+                <td><span className={`pill pill-${st.tone}`}>{st.label}</span></td>
+                <td className="mono">{l.days_stored ?? "—"}</td>
+                <td className="mono">{l.records ?? "—"}</td>
+              </tr>
+            );
+          })}
           {page && page.last_by_source.length === 0 && <tr><td colSpan={6} className="muted">No ingests recorded yet.</td></tr>}
         </tbody>
       </table>
@@ -467,6 +475,25 @@ function JobsView({ onLogout }: { onLogout: () => void }) {
 function fmt(ts: string | null): string {
   if (!ts) return "—";
   return ts.replace("T", " ").slice(0, 19);
+}
+
+// Silent-sync / stale-ingest detection (bean vcf4): a client is "stale" if its
+// last ingest was over STALE_DAYS ago, "failing" if that last ingest errored.
+// Relative-time display reuses timeAgo() from ../api; only the numeric threshold
+// lives here.
+const STALE_DAYS = 3;
+
+function ageDays(ts: string | null): number | null {
+  if (!ts) return null;
+  const ms = Date.now() - Date.parse(ts);
+  return Number.isNaN(ms) ? null : ms / 86_400_000;
+}
+
+function ingestStatus(l: { ok: boolean; received_at: string | null }): { tone: string; label: string } {
+  if (!l.ok) return { tone: "failed", label: "failing" };
+  const d = ageDays(l.received_at);
+  if (d != null && d > STALE_DAYS) return { tone: "running", label: `stale ${Math.floor(d)}d` };
+  return { tone: "succeeded", label: "ok" };
 }
 
 function duration(start: string | null, end: string | null): string {
