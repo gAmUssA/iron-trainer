@@ -76,8 +76,8 @@ public final class HrZones {
         }
         List<Map<String, Object>> zones = new ArrayList<>();
         for (Band b : bands) {
-            // Math.rint = ties-to-even, matching Python round() (banker's
-            // rounding) exactly on X.5 inputs — required for byte parity.
+            // Math.rint = ties-to-even (banker's rounding), so zone bounds round
+            // consistently on X.5 inputs.
             long hi = (long) Math.rint(base * b.hi());
             if (maxHr != null && maxHr > 0) {
                 hi = Math.min(hi, maxHr);

@@ -12,8 +12,8 @@ import java.util.TreeMap;
 /** Training-load math — faithful port of app/metrics.py (the write side:
  * per-activity TSS and the CTL/ATL/TSB series). Pure functions; the values it
  * produces are stored to activities.tss and metrics_daily, so every round()
- * routes through Py (banker's rounding) to stay byte-identical to FastAPI.
- * normalized_power (Strava-import only) is intentionally not ported here. */
+ * routes through Py (banker's rounding) for deterministic, stable stored values.
+ * normalized_power (Strava-import only) is intentionally not implemented here. */
 public final class Metrics {
 
     private Metrics() {}

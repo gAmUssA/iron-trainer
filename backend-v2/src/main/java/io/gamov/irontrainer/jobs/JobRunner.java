@@ -35,8 +35,9 @@ public class JobRunner {
     // Serializes the check-then-create in submit(): without it two simultaneous
     // submits of the same kind both see "no active job" and both start threads —
     // double Claude spend / double Strava calls. Process-wide is sufficient
-    // (single instance; jobs are per-(athlete,kind) rows underneath). Mirrors
-    // FastAPI's _submit_lock.
+    // (single instance; jobs are per-(athlete,kind) rows underneath).
+    // ponytail: single-instance ceiling — a per-(athlete,kind) DB advisory lock if
+    // this ever runs multi-instance.
     private final Object submitLock = new Object();
 
     @Inject
