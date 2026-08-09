@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 
 /** GET /api/strava/callback in DEPLOYMENT (auth-required) mode — the LOGIN path.
  * Verifies the oauth_state CSRF gate, the allowlist, and that a successful login
- * mints an athlete_id session (byte-identical minting) + persists the tokens.
+ * mints an athlete_id session + persists the tokens.
  * The test secret is the fixed %test one (test-secret-key). */
 @QuarkusTest
 @TestProfile(StravaCallbackAuthTest.AuthProfile.class)

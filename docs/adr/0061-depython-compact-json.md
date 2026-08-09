@@ -15,9 +15,10 @@ is invisible to a parser, so the byte-parity printer is dead weight.
 
 ## Decision
 
-- `PyJson.dumps` now emits plain **compact** JSON via the injected `ObjectMapper`
-  (`{"a":1}`); the custom `MinimalPrettyPrinter` subclass and its imports are
-  deleted. All ~15 call sites are unchanged — they get compact output for free.
+- `PyJson.dumps` now emits plain **compact** JSON via `PyJson`'s existing static
+  `ObjectMapper` (`{"a":1}`); the custom `MinimalPrettyPrinter` subclass and its
+  imports are deleted. All ~15 call sites are unchanged — they get compact output
+  for free.
 - **Timestamps unchanged.** `utcNowIso()` / `utcIsoDaysAgo()` keep the exact
   `.SSSSSS+00:00` ISO format — it is the iOS wire contract and the string columns
   still use lexicographic range queries (that migration is a separate deferred bean,

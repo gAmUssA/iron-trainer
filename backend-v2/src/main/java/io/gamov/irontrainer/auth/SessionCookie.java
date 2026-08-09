@@ -123,11 +123,13 @@ public final class SessionCookie {
         }
     }
 
-    /** MINT a Starlette {@code SessionMiddleware} cookie value from a session map
-     * — the exact inverse of {@link #read}, byte-identical to Python
-     * itsdangerous/Starlette. Used by the Strava OAuth connect/callback
-     * (oauth_state / athlete_id login). Uses {@link PyJson#dumps} (", "/": "
-     * spacing) so the base64 payload matches Starlette's {@code json.dumps}. */
+    /** MINT a Starlette-style {@code SessionMiddleware} cookie value from a session
+     * map — the exact inverse of {@link #read}. Used by the Strava OAuth
+     * connect/callback (oauth_state / athlete_id login). The payload is compact
+     * JSON ({@link PyJson#dumps}); backend-v2 signs and verifies its own cookies,
+     * and old FastAPI-signed cookies still verify on {@link #read} (it reads the
+     * received bytes). Byte-exact minting parity with Python is no longer required
+     * — FastAPI is decommissioned; see ADR 0061. */
     public static String sign(Map<String, Object> session, String secret) {
         return sign(session, secret, Instant.now().getEpochSecond());
     }
