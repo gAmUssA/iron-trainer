@@ -36,6 +36,25 @@ class HealthIngestLogRetentionTest {
         assert recentKept : "the 1-day-old row should be kept";
     }
 
+    @Test
+    void keepsTheSoleOldRowForAQuietClient() {
+        // A client quiet for >90d has ONE (old) row — it must survive pruning so it
+        // stays visible as stale, not vanish. Use a distinct source to isolate the group.
+        String old = PyJson.utcIsoDaysAgo(200);
+        Long id = QuarkusTransaction.requiringNew().call(() -> {
+            HealthIngestLog l = row(old);
+            l.source = "quiet-client-" + java.util.UUID.randomUUID();
+            l.persist();
+            return l.id.longValue();
+        });
+
+        retention.prune(90);
+
+        boolean kept = QuarkusTransaction.requiringNew()
+                .call(() -> HealthIngestLog.findById(id.intValue()) != null);
+        assert kept : "the sole (old) row for a quiet client must be preserved";
+    }
+
     static HealthIngestLog row(String receivedAt) {
         HealthIngestLog l = new HealthIngestLog();
         l.athleteId = 88001;

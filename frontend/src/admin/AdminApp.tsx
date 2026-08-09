@@ -151,7 +151,7 @@ function IngestsView({ onLogout }: { onLogout: () => void }) {
 
       <h3 className="admin-subhead">
         Last ingest per client
-        {attention > 0 && <span className="pill pill-failed" style={{ marginLeft: 8 }}>{attention} need attention</span>}
+        {attention > 0 && <span className="pill pill-failed" style={{ marginLeft: 8 }}>{attention} {attention === 1 ? "needs" : "need"} attention</span>}
       </h3>
       <table className="admin-table">
         <thead>

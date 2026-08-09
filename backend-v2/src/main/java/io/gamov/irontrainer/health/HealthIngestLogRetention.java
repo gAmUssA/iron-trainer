@@ -33,10 +33,16 @@ public class HealthIngestLogRetention {
         }
     }
 
-    /** Delete audit rows older than {@code days}; returns the count. received_at is
-     * ISO-8601-UTC, which sorts lexicographically = chronologically. */
+    /** Delete audit rows older than {@code days}, but ALWAYS keep the newest row per
+     * (athlete, source) — otherwise a client quiet for >{@code days} loses its only
+     * row and vanishes from stale-detection (last_by_source), the opposite of what
+     * we want. received_at is ISO-8601-UTC (sorts lexicographically = chronologically). */
     long prune(int days) {
         String cutoff = PyJson.utcIsoDaysAgo(days);
-        return QuarkusTransaction.requiringNew().call(() -> HealthIngestLog.delete("receivedAt < ?1", cutoff));
+        return QuarkusTransaction.requiringNew().call(() -> (long) HealthIngestLog.getEntityManager()
+                .createQuery("delete from HealthIngestLog l where l.receivedAt < ?1 and l.id not in "
+                        + "(select max(l2.id) from HealthIngestLog l2 group by l2.athleteId, l2.source)")
+                .setParameter(1, cutoff)
+                .executeUpdate());
     }
 }
