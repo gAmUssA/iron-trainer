@@ -64,6 +64,7 @@ struct HealthIngestClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        req.setValue("native", forHTTPHeaderField: "X-Ingest-Client") // admin ingest-log source tag (bean j05e)
         req.httpBody = try JSONSerialization.data(withJSONObject: Self.payload(records))
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {

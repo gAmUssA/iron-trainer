@@ -81,3 +81,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0056](0056-admin-console-jobs.md) | Admin console: password-gated ops + jobs view | Accepted |
 | [0057](0057-admin-console-users-view.md) | Admin console: Users view (list + per-user detail) | Accepted |
 | [0058](0058-admin-console-sync-health.md) | Admin console: sync-health telemetry (failure rates + recent failures) | Accepted |
+| [0059](0059-admin-health-ingest-log.md) | Admin: health-ingest audit log + view (HAE / native observability) | Accepted |

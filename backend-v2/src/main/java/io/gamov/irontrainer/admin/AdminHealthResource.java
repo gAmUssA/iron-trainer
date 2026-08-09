@@ -1,7 +1,10 @@
 package io.gamov.irontrainer.admin;
 
+import io.gamov.irontrainer.health.HealthIngestLog;
 import io.gamov.irontrainer.jobs.Job;
 import io.gamov.irontrainer.util.PyJson;
+import io.quarkus.hibernate.orm.panache.PanacheQuery;
+import io.quarkus.panache.common.Parameters;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -75,6 +78,105 @@ public class AdminHealthResource {
         out.put("kinds", kinds);
         out.put("recent_failures", recentFailures);
         return out;
+    }
+
+    /**
+     * Health-ingest audit feed (bean j05e): recent POST /api/health/ingest events
+     * over a window (filterable by athlete/source/ok) + the last ingest per
+     * (athlete, source) regardless of window (for spotting a client that went quiet).
+     */
+    @GET
+    @Path("/health/ingests")
+    @Produces(MediaType.APPLICATION_JSON)
+    @RequireAdmin
+    public Map<String, Object> ingests(
+            @QueryParam("days") @DefaultValue("7") int daysParam,
+            @QueryParam("athlete_id") String athleteId,
+            @QueryParam("source") String source,
+            @QueryParam("ok") String ok,
+            @QueryParam("limit") @DefaultValue("50") int limitParam,
+            @QueryParam("offset") @DefaultValue("0") int offsetParam) {
+        int days = Math.min(365, Math.max(1, daysParam));
+        int lim = Math.min(200, Math.max(1, limitParam));
+        int off = Math.max(0, offsetParam);
+        String since = PyJson.utcIsoDaysAgo(days);
+
+        StringBuilder q = new StringBuilder("receivedAt >= :since");
+        Parameters params = Parameters.with("since", since);
+        if (athleteId != null && !athleteId.isBlank()) {
+            Integer aid = parseIntOrNull(athleteId);
+            if (aid == null) return ingestPage(days, since, lim, off, 0L, List.of(), lastBySource());
+            q.append(" and athleteId = :aid");
+            params.and("aid", aid);
+        }
+        if (source != null && !source.isBlank()) {
+            q.append(" and source = :source");
+            params.and("source", source.trim());
+        }
+        if ("true".equalsIgnoreCase(ok) || "false".equalsIgnoreCase(ok)) {
+            q.append(" and ok = :ok");
+            params.and("ok", Boolean.valueOf(ok));
+        }
+
+        PanacheQuery<HealthIngestLog> query = HealthIngestLog.find(q + " order by id desc", params);
+        long total = query.count();
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (HealthIngestLog l : query.range(off, off + lim - 1).<HealthIngestLog>list()) {
+            items.add(ingestRow(l));
+        }
+        return ingestPage(days, since, lim, off, total, items, lastBySource());
+    }
+
+    /** Last ingest per (athlete, source), regardless of window — max(id) group-by
+     * then load, so a client that stopped posting still shows its last event. */
+    private static List<Map<String, Object>> lastBySource() {
+        List<Integer> lastIds = HealthIngestLog.getEntityManager()
+                .createQuery("select max(l.id) from HealthIngestLog l group by l.athleteId, l.source", Integer.class)
+                .getResultList();
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (!lastIds.isEmpty()) {
+            for (HealthIngestLog l : HealthIngestLog.<HealthIngestLog>list("id in ?1 order by id desc", lastIds)) {
+                out.add(ingestRow(l));
+            }
+        }
+        return out;
+    }
+
+    private static Map<String, Object> ingestPage(int days, String since, int lim, int off,
+            long total, List<Map<String, Object>> items, List<Map<String, Object>> lastBySource) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("window_days", days);
+        out.put("since", since);
+        out.put("total", total);
+        out.put("limit", lim);
+        out.put("offset", off);
+        out.put("ingests", items);
+        out.put("last_by_source", lastBySource);
+        return out;
+    }
+
+    private static Map<String, Object> ingestRow(HealthIngestLog l) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", l.id);
+        m.put("athlete_id", l.athleteId);
+        m.put("source", l.source);
+        m.put("received_at", l.receivedAt);
+        m.put("ok", l.ok);
+        m.put("days_stored", l.daysStored);
+        m.put("records", l.records);
+        m.put("unknown_metrics", l.unknownMetrics);
+        m.put("bad_dates", l.badDates);
+        m.put("byte_size", l.byteSize);
+        m.put("error", l.error);
+        return m;
+    }
+
+    private static Integer parseIntOrNull(String s) {
+        try {
+            return Integer.valueOf(s.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** Per-kind tally. "other" catches queued/anything non-terminal beyond the known set. */

@@ -2,23 +2,27 @@ package io.gamov.irontrainer.app;
 
 import io.gamov.irontrainer.auth.CurrentAthlete;
 import io.gamov.irontrainer.health.HealthIngest;
+import io.gamov.irontrainer.health.HealthIngestLog;
 import io.gamov.irontrainer.readiness.DailyRecovery;
 import io.gamov.irontrainer.util.Params;
 import io.gamov.irontrainer.util.PyJson;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import javax.sql.DataSource;
 import org.jboss.logging.Logger;
@@ -116,12 +120,20 @@ public class HealthResource {
     @POST
     @Path("/ingest")
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, Object> ingest(String body) {
+    public Map<String, Object> ingest(String body,
+            @HeaderParam("X-Ingest-Client") String client,
+            @HeaderParam("User-Agent") String userAgent) {
+        // Timestamp at arrival, not completion — a large batch takes time to upsert,
+        // and the audit + stale-client math should reflect when the POST landed.
+        String receivedAt = PyJson.utcNowIso();
+        int byteSize = body == null ? 0 : body.getBytes(StandardCharsets.UTF_8).length;
+        String source = detectSource(client, userAgent);
         Object parsed;
         try {
             parsed = PyJson.loads(body == null ? "" : body);
         } catch (Exception e) {
             LOG.warn("Health ingest: malformed JSON body");
+            logIngest(receivedAt, current.idOrNull(), source, false, 0, 0, 0, 0, byteSize, userAgent, "invalid JSON");
             Map<String, Object> bad = new LinkedHashMap<>();
             bad.put("ok", false);
             bad.put("error", "invalid JSON");
@@ -155,11 +167,56 @@ public class HealthResource {
         parsedOut.put("records", r.records);
         parsedOut.put("unknown_metrics", r.unknownMetrics);
         parsedOut.put("bad_dates", r.badDates);
+        logIngest(receivedAt, current.idOrNull(), source, true, stored, r.records,
+                r.unknownMetrics.size(), r.badDates, byteSize, userAgent, null);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("days", stored);
         out.put("parsed", parsedOut);
         return out;
+    }
+
+    /** Which client posted: the native app sets X-Ingest-Client: native; a Health
+     * Auto Export automation can be configured with X-Ingest-Client: hae (its
+     * User-Agent is a best-effort fallback). Unknown otherwise. */
+    static String detectSource(String client, String userAgent) {
+        if (client != null) {
+            // Exact match on the documented header values — substring matching would
+            // misclassify "not-native"/"some-hae-client".
+            String c = client.trim().toLowerCase(Locale.ROOT);
+            if (c.equals("native")) return "native";
+            if (c.equals("hae")) return "hae";
+        }
+        // User-Agent stays a heuristic fallback (HAE sets its app name there).
+        if (userAgent != null && userAgent.toLowerCase(Locale.ROOT).contains("health auto export")) {
+            return "hae";
+        }
+        return "unknown";
+    }
+
+    /** Best-effort audit row (bean j05e). Its own tx; a logging failure must NEVER
+     * fail the ingest. error is truncated. */
+    private void logIngest(String receivedAt, Integer athleteId, String source, boolean ok, int daysStored,
+            int records, int unknownMetrics, int badDates, int byteSize, String userAgent, String error) {
+        try {
+            QuarkusTransaction.requiringNew().run(() -> {
+                HealthIngestLog row = new HealthIngestLog();
+                row.athleteId = athleteId;
+                row.source = source;
+                row.receivedAt = receivedAt;
+                row.ok = ok;
+                row.daysStored = daysStored;
+                row.records = records;
+                row.unknownMetrics = unknownMetrics;
+                row.badDates = badDates;
+                row.byteSize = byteSize;
+                row.userAgent = userAgent == null || userAgent.length() <= 200 ? userAgent : userAgent.substring(0, 200);
+                row.error = error == null || error.length() <= 500 ? error : error.substring(0, 500);
+                row.persist();
+            });
+        } catch (Exception e) {
+            LOG.warnf("health_ingest_log write failed (ingest itself unaffected): %s", e.toString());
+        }
     }
 
     /** upsert_daily_recovery: merge one day's fields, last-write-wins per field,
