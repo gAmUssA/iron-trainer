@@ -479,12 +479,14 @@ function fmt(ts: string | null): string {
   return ts.replace("T", " ").slice(0, 19);
 }
 
-/** Milliseconds → compact human duration (job p50/p95). */
+/** Milliseconds → compact human duration (job p50/p95). Round to whole seconds
+ * before splitting so boundaries don't render "1m60s" / "60.0s". */
 function fmtMs(ms: number | null): string {
   if (ms == null) return "—";
   if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`;
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(totalSec / 60)}m${totalSec % 60}s`;
 }
 
 // Silent-sync / stale-ingest detection (bean vcf4): a client is "stale" if its
