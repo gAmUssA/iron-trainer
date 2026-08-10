@@ -87,3 +87,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0062](0062-depython-drop-alembic-decruft-comments.md) | De-Python: drop alembic_version + de-parity comments | Accepted |
 | [0063](0063-health-body-composition.md) | Capture body fat % + BMI from Health Auto Export | Accepted |
 | [0064](0064-admin-job-duration-percentiles.md) | Admin: p50/p95 job durations per kind | Accepted |
+| [0065](0065-admin-daily-failure-trend.md) | Admin: per-day failure trend sparkline | Accepted |

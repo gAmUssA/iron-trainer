@@ -83,6 +83,17 @@ class AdminHealthResourceTest {
                 : "recent failures should include the in-window failed kind";
         assert failures.stream().noneMatch(f -> old.equals(f.get("kind")))
                 : "recent failures should exclude the out-of-window kind";
+
+        // Daily trend (bean 8vdj): today's bucket includes this run's 5 jobs / 2 failed;
+        // the ancient day is outside the window and absent.
+        String today = now.substring(0, 10);
+        String ancientDay = ancient.substring(0, 10);
+        Map<String, Object> todayPt = jp.getMap("daily.find { it.date == '" + today + "' }");
+        assert todayPt != null : "today should appear in the daily trend";
+        assert ((Number) todayPt.get("total")).intValue() >= 5 : "today total >= 5";
+        assert ((Number) todayPt.get("failed")).intValue() >= 2 : "today failed >= 2";
+        assert jp.getMap("daily.find { it.date == '" + ancientDay + "' }") == null
+                : "out-of-window day must not appear in the daily trend";
     }
 
     @Test

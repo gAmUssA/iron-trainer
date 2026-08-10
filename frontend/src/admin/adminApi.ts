@@ -67,11 +67,19 @@ export interface AdminRecentFailure {
   error: string | null;
 }
 
+export interface AdminDailyPoint {
+  date: string;
+  total: number;
+  failed: number;
+  failure_rate: number;
+}
+
 export interface AdminJobHealth {
   window_days: number;
   since: string;
   kinds: AdminKindHealth[];
   recent_failures: AdminRecentFailure[];
+  daily: AdminDailyPoint[];
 }
 
 export interface AdminIngest {
