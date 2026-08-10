@@ -84,4 +84,36 @@ class AdminHealthResourceTest {
         assert failures.stream().noneMatch(f -> old.equals(f.get("kind")))
                 : "recent failures should exclude the out-of-window kind";
     }
+
+    @Test
+    void durationPercentilesPerKind() {
+        // Four succeeded jobs of one kind with 1/2/3/4s spans → p50=2000ms, p95=4000ms.
+        String kind = "htdur_" + UUID.randomUUID().toString().substring(0, 8);
+        String now = PyJson.utcNowIso();
+        java.time.OffsetDateTime base = java.time.OffsetDateTime.parse(now);
+        QuarkusTransaction.requiringNew().run(() -> {
+            Athlete a = new Athlete();
+            a.name = "DurTest";
+            a.persist();
+            for (int s : new int[] {1, 2, 3, 4}) {
+                Job j = new Job();
+                j.athleteId = a.id;
+                j.kind = kind;
+                j.status = "succeeded";
+                j.createdAt = now;                         // in-window
+                j.startedAt = base.toString();
+                j.finishedAt = base.plusSeconds(s).toString();
+                j.persist();
+            }
+        });
+
+        Map<String, Object> k = given().header("Cookie", adminCookie())
+                .when().get("/api/admin/health/jobs?days=7")
+                .then().statusCode(200)
+                .extract().jsonPath().getMap("kinds.find { it.kind == '" + kind + "' }");
+        assert k != null : "duration kind missing";
+        assert ((Number) k.get("timed")).intValue() == 4 : "timed should be 4, got " + k.get("timed");
+        assert ((Number) k.get("p50_ms")).longValue() == 2000L : "p50 should be 2000, got " + k.get("p50_ms");
+        assert ((Number) k.get("p95_ms")).longValue() == 4000L : "p95 should be 4000, got " + k.get("p95_ms");
+    }
 }

@@ -86,3 +86,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0061](0061-depython-compact-json.md) | De-Python: compact JSON (retire PyJson byte-parity) | Accepted |
 | [0062](0062-depython-drop-alembic-decruft-comments.md) | De-Python: drop alembic_version + de-parity comments | Accepted |
 | [0063](0063-health-body-composition.md) | Capture body fat % + BMI from Health Auto Export | Accepted |
+| [0064](0064-admin-job-duration-percentiles.md) | Admin: p50/p95 job durations per kind | Accepted |

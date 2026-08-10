@@ -11,6 +11,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,9 +48,32 @@ public class AdminHealthResource {
             byKind.computeIfAbsent(kind, k -> new KindStats()).add(status, n);
         }
 
+        // Duration percentiles per kind (bean og06): load the jobs in the window
+        // that actually ran (both started_at + finished_at set) and compute p50/p95
+        // of finished-started in Java. Small table — fine to load. ponytail: if it
+        // grows, compute in Postgres, e.g.
+        //   percentile_cont(0.5) WITHIN GROUP (ORDER BY
+        //     EXTRACT(EPOCH FROM (finished_at::timestamptz - started_at::timestamptz)))
+        //   ... GROUP BY kind
+        Map<String, List<Long>> durationsByKind = new LinkedHashMap<>();
+        List<Job> timed = Job.<Job>find(
+                "createdAt >= ?1 and startedAt is not null and finishedAt is not null", since).list();
+        for (Job j : timed) {
+            Long ms = durationMs(j.startedAt, j.finishedAt);
+            if (ms != null) {
+                durationsByKind.computeIfAbsent(j.kind, k -> new ArrayList<>()).add(ms);
+            }
+        }
+        durationsByKind.values().forEach(java.util.Collections::sort);
+
         List<Map<String, Object>> kinds = new ArrayList<>();
         for (Map.Entry<String, KindStats> e : byKind.entrySet()) {
-            kinds.add(e.getValue().toMap(e.getKey()));
+            Map<String, Object> m = e.getValue().toMap(e.getKey());
+            List<Long> ds = durationsByKind.get(e.getKey());
+            m.put("p50_ms", percentile(ds, 50));
+            m.put("p95_ms", percentile(ds, 95));
+            m.put("timed", ds == null ? 0 : ds.size());
+            kinds.add(m);
         }
         // Worst first: highest failure rate, then most failures, then busiest.
         kinds.sort((a, b) -> {
@@ -177,6 +202,33 @@ public class AdminHealthResource {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /** finished - started in millis, or null if either can't be parsed or the span
+     * is negative (clock skew / bad data). Timestamps are ISO-8601 with offset.
+     * Compare instants first: MILLIS.between truncates toward zero, so a sub-ms
+     * negative span would otherwise slip through as 0. */
+    static Long durationMs(String started, String finished) {
+        try {
+            OffsetDateTime s = OffsetDateTime.parse(started);
+            OffsetDateTime f = OffsetDateTime.parse(finished);
+            if (f.isBefore(s)) {
+                return null;
+            }
+            return ChronoUnit.MILLIS.between(s, f);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Nearest-rank percentile of a pre-sorted list, or null if empty. */
+    static Long percentile(List<Long> sorted, double p) {
+        if (sorted == null || sorted.isEmpty()) {
+            return null;
+        }
+        int idx = (int) Math.ceil(p / 100.0 * sorted.size()) - 1;
+        idx = Math.max(0, Math.min(idx, sorted.size() - 1));
+        return sorted.get(idx);
     }
 
     /** Per-kind tally. "other" catches queued/anything non-terminal beyond the known set. */

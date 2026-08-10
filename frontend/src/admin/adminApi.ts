@@ -53,6 +53,9 @@ export interface AdminKindHealth {
   queued: number;
   other: number;
   failure_rate: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  timed: number;
 }
 
 export interface AdminRecentFailure {
