@@ -15,9 +15,19 @@ rows, not the cheap count group-by.
   `timed`, the sample count) of `finished_at − started_at`.
 - **Computed in Java:** load the window's jobs that actually ran (both `started_at`
   and `finished_at` set), bucket durations by kind, sort, nearest-rank percentile.
-  `durationMs` skips unparseable / negative spans (clock skew). The job table is
-  small, so loading is fine — `ponytail:` note points to Postgres
-  `percentile_cont(order by finished::ts − started::ts)` if it ever grows.
+  `durationMs` skips unparseable / negative spans (clock skew — compared as instants
+  before converting, so a sub-ms negative span can't truncate to 0). The job table
+  is small, so loading is fine — `ponytail:` note points to computing it in Postgres
+  if it ever grows:
+
+  ```sql
+  SELECT kind,
+         percentile_cont(0.5)  WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (finished_at::timestamptz - started_at::timestamptz))) AS p50_s,
+         percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (finished_at::timestamptz - started_at::timestamptz))) AS p95_s
+  FROM job
+  WHERE created_at >= :since AND started_at IS NOT NULL AND finished_at IS NOT NULL
+  GROUP BY kind;
+  ```
 - **Frontend:** two columns (`p50` / `p95`, human-formatted ms→s→m) on the Health
   tab's per-kind table, tooltip'd with the timed-run count.
 

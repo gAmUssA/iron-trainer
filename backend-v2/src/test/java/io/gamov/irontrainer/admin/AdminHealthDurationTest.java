@@ -15,6 +15,8 @@ class AdminHealthDurationTest {
                 "2026-08-09T10:00:00.000000+00:00", "2026-08-09T10:00:05.000000+00:00"));
         assertNull(AdminHealthResource.durationMs(   // negative span → null
                 "2026-08-09T10:00:05.000000+00:00", "2026-08-09T10:00:00.000000+00:00"));
+        assertNull(AdminHealthResource.durationMs(   // sub-ms negative must not truncate to 0
+                "2026-08-09T10:00:00.000500+00:00", "2026-08-09T10:00:00.000000+00:00"));
         assertNull(AdminHealthResource.durationMs("garbage", "2026-08-09T10:00:05+00:00"));
         assertNull(AdminHealthResource.durationMs(null, null));
     }
