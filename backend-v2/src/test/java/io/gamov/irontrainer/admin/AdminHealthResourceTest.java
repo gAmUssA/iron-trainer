@@ -94,11 +94,14 @@ class AdminHealthResourceTest {
         double dFailed = ((Number) todayPt.get("failed")).doubleValue();
         assert dTotal >= 5 : "today total >= 5";
         assert dFailed >= 2 : "today failed >= 2";
-        // failure_rate must be the rounded failed/total of the same bucket (the field
-        // the sparkline plots). Self-consistent so it holds despite shared test data.
-        double expectedRate = Math.round(dFailed / dTotal * 1000) / 1000.0;
-        assert Math.abs(((Number) todayPt.get("failure_rate")).doubleValue() - expectedRate) < 1e-9
-                : "failure_rate should equal round(failed/total, 3), got " + todayPt.get("failure_rate");
+        // failure_rate must be failed/total rounded to 3 decimals (the field the
+        // sparkline plots). Assert within the rounding band (±0.0005) rather than an
+        // exact double compare — the JSON number widens from a float, so an exact
+        // check is fragile. Self-consistent, so it holds despite shared test data.
+        double rate = ((Number) todayPt.get("failure_rate")).doubleValue();
+        double rawRatio = dFailed / dTotal;
+        assert Math.abs(rate - rawRatio) <= 0.0005 + 1e-6
+                : "failure_rate " + rate + " should be failed/total=" + rawRatio + " within 3-decimal rounding";
         assert jp.getMap("daily.find { it.date == '" + ancientDay + "' }") == null
                 : "out-of-window day must not appear in the daily trend";
     }
