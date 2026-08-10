@@ -249,7 +249,7 @@ function HealthView({ onLogout }: { onLogout: () => void }) {
       <h3 className="admin-subhead">Per-kind failure rate</h3>
       <table className="admin-table">
         <thead>
-          <tr><th>kind</th><th>failure rate</th><th>total</th><th>ok</th><th>failed</th><th>running</th><th>queued</th></tr>
+          <tr><th>kind</th><th>failure rate</th><th>total</th><th>ok</th><th>failed</th><th>running</th><th>queued</th><th>p50</th><th>p95</th></tr>
         </thead>
         <tbody>
           {(data?.kinds ?? []).map((k) => (
@@ -261,10 +261,12 @@ function HealthView({ onLogout }: { onLogout: () => void }) {
               <td className="mono">{k.failed > 0 ? <span className="pill pill-failed">{k.failed}</span> : "0"}</td>
               <td className="mono">{k.running}</td>
               <td className="mono">{k.queued}</td>
+              <td className="mono" title={k.timed ? `over ${k.timed} run(s)` : "no timed runs"}>{fmtMs(k.p50_ms)}</td>
+              <td className="mono" title={k.timed ? `over ${k.timed} run(s)` : "no timed runs"}>{fmtMs(k.p95_ms)}</td>
             </tr>
           ))}
-          {data && data.kinds.length === 0 && <tr><td colSpan={7} className="muted">No jobs in this window.</td></tr>}
-          {!data && !error && <tr><td colSpan={7} className="muted">Loading…</td></tr>}
+          {data && data.kinds.length === 0 && <tr><td colSpan={9} className="muted">No jobs in this window.</td></tr>}
+          {!data && !error && <tr><td colSpan={9} className="muted">Loading…</td></tr>}
         </tbody>
       </table>
 
@@ -475,6 +477,14 @@ function JobsView({ onLogout }: { onLogout: () => void }) {
 function fmt(ts: string | null): string {
   if (!ts) return "—";
   return ts.replace("T", " ").slice(0, 19);
+}
+
+/** Milliseconds → compact human duration (job p50/p95). */
+function fmtMs(ms: number | null): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`;
 }
 
 // Silent-sync / stale-ingest detection (bean vcf4): a client is "stale" if its
