@@ -90,8 +90,15 @@ class AdminHealthResourceTest {
         String ancientDay = ancient.substring(0, 10);
         Map<String, Object> todayPt = jp.getMap("daily.find { it.date == '" + today + "' }");
         assert todayPt != null : "today should appear in the daily trend";
-        assert ((Number) todayPt.get("total")).intValue() >= 5 : "today total >= 5";
-        assert ((Number) todayPt.get("failed")).intValue() >= 2 : "today failed >= 2";
+        double dTotal = ((Number) todayPt.get("total")).doubleValue();
+        double dFailed = ((Number) todayPt.get("failed")).doubleValue();
+        assert dTotal >= 5 : "today total >= 5";
+        assert dFailed >= 2 : "today failed >= 2";
+        // failure_rate must be the rounded failed/total of the same bucket (the field
+        // the sparkline plots). Self-consistent so it holds despite shared test data.
+        double expectedRate = Math.round(dFailed / dTotal * 1000) / 1000.0;
+        assert Math.abs(((Number) todayPt.get("failure_rate")).doubleValue() - expectedRate) < 1e-9
+                : "failure_rate should equal round(failed/total, 3), got " + todayPt.get("failure_rate");
         assert jp.getMap("daily.find { it.date == '" + ancientDay + "' }") == null
                 : "out-of-window day must not appear in the daily trend";
     }

@@ -279,7 +279,7 @@ function HealthView({ onLogout }: { onLogout: () => void }) {
               title="Failure rate"
               unit="%"
               color="#ef4444"
-              data={(data?.daily ?? []).map((d) => ({ x: d.date, v: Math.round(d.failure_rate * 100) }))}
+              data={(data?.daily ?? []).map((d) => ({ x: d.date, v: Math.round(d.failure_rate * 1000) / 10 }))}
             />
           </div>
         </>
