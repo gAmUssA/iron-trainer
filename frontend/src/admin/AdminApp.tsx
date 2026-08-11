@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { timeAgo } from "../api";
+import { MiniSpark } from "../components/Dashboards";
 import {
   adminApi,
   AdminUnauthorized,
@@ -269,6 +270,20 @@ function HealthView({ onLogout }: { onLogout: () => void }) {
           {!data && !error && <tr><td colSpan={9} className="muted">Loading…</td></tr>}
         </tbody>
       </table>
+
+      {(data?.daily?.length ?? 0) > 0 && (
+        <>
+          <h3 className="admin-subhead">Daily failure trend</h3>
+          <div className="card">
+            <MiniSpark
+              title="Failure rate"
+              unit="%"
+              color="#ef4444"
+              data={(data?.daily ?? []).map((d) => ({ x: d.date, v: Math.round(d.failure_rate * 1000) / 10 }))}
+            />
+          </div>
+        </>
+      )}
 
       <h3 className="admin-subhead">Recent failures</h3>
       <table className="admin-table">

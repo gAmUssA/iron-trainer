@@ -83,6 +83,27 @@ class AdminHealthResourceTest {
                 : "recent failures should include the in-window failed kind";
         assert failures.stream().noneMatch(f -> old.equals(f.get("kind")))
                 : "recent failures should exclude the out-of-window kind";
+
+        // Daily trend (bean 8vdj): today's bucket includes this run's 5 jobs / 2 failed;
+        // the ancient day is outside the window and absent.
+        String today = now.substring(0, 10);
+        String ancientDay = ancient.substring(0, 10);
+        Map<String, Object> todayPt = jp.getMap("daily.find { it.date == '" + today + "' }");
+        assert todayPt != null : "today should appear in the daily trend";
+        double dTotal = ((Number) todayPt.get("total")).doubleValue();
+        double dFailed = ((Number) todayPt.get("failed")).doubleValue();
+        assert dTotal >= 5 : "today total >= 5";
+        assert dFailed >= 2 : "today failed >= 2";
+        // failure_rate must be failed/total rounded to 3 decimals (the field the
+        // sparkline plots). Assert within the rounding band (±0.0005) rather than an
+        // exact double compare — the JSON number widens from a float, so an exact
+        // check is fragile. Self-consistent, so it holds despite shared test data.
+        double rate = ((Number) todayPt.get("failure_rate")).doubleValue();
+        double rawRatio = dFailed / dTotal;
+        assert Math.abs(rate - rawRatio) <= 0.0005 + 1e-6
+                : "failure_rate " + rate + " should be failed/total=" + rawRatio + " within 3-decimal rounding";
+        assert jp.getMap("daily.find { it.date == '" + ancientDay + "' }") == null
+                : "out-of-window day must not appear in the daily trend";
     }
 
     @Test

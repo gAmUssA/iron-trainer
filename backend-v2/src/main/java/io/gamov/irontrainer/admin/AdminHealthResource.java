@@ -102,7 +102,42 @@ public class AdminHealthResource {
         out.put("since", since);
         out.put("kinds", kinds);
         out.put("recent_failures", recentFailures);
+        out.put("daily", dailyTrend(since));
         return out;
+    }
+
+    /** Per-day failure trend (bean 8vdj): total/failed/failure_rate per calendar day
+     * in the window, oldest→newest, for a sparkline. Days with no jobs are omitted
+     * (sparse) — created_at is ISO, so its first 10 chars are the UTC date. */
+    private static List<Map<String, Object>> dailyTrend(String since) {
+        List<Object[]> rows = Job.getEntityManager()
+                .createQuery("select substring(j.createdAt, 1, 10), j.status, count(j) from Job j "
+                        + "where j.createdAt >= ?1 group by substring(j.createdAt, 1, 10), j.status", Object[].class)
+                .setParameter(1, since).getResultList();
+        // Fold the per-(day,status) rows into per-day total/failed.
+        Map<String, long[]> byDay = new java.util.TreeMap<>(); // sorted by date asc
+        for (Object[] r : rows) {
+            String day = (String) r[0];
+            String status = (String) r[1];
+            long n = ((Number) r[2]).longValue();
+            long[] tf = byDay.computeIfAbsent(day, d -> new long[2]);
+            tf[0] += n;
+            if ("failed".equals(status)) {
+                tf[1] += n;
+            }
+        }
+        List<Map<String, Object>> daily = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : byDay.entrySet()) {
+            long total = e.getValue()[0];
+            long failed = e.getValue()[1];
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("date", e.getKey());
+            m.put("total", total);
+            m.put("failed", failed);
+            m.put("failure_rate", total == 0 ? 0.0 : Math.round((double) failed / total * 1000) / 1000.0);
+            daily.add(m);
+        }
+        return daily;
     }
 
     /**
