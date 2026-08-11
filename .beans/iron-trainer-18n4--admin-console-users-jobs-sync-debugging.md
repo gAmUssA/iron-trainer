@@ -1,11 +1,11 @@
 ---
 # iron-trainer-18n4
 title: Admin console — users, jobs & sync debugging
-status: todo
+status: completed
 type: epic
 priority: high
 created_at: 2026-08-08T10:23:11Z
-updated_at: 2026-08-08T10:29:35Z
+updated_at: 2026-08-11T12:52:47Z
 ---
 
 An internal admin/ops UI so Viktor can see users, inspect background jobs (running + ran), and investigate sync failures (Strava, Apple Health, dedup, check-in, import). Debugging tool first, pretty second.
@@ -27,3 +27,6 @@ An internal admin/ops UI so Viktor can see users, inspect background jobs (runni
 
 ## Security
 Admin endpoints MUST 403 for non-admins (never rely on the UI hiding the nav). Don't leak other users' PII beyond what ops needs. Reuse the existing session/bearer auth; admin is an allowlist on top.
+
+## Summary
+All children shipped + live: foundation+Jobs (gfb3/#105), Users (y8b2/#106), sync-health (j41l/#107), p50/p95 durations (og06/#114), daily failure trend (8vdj/#115). Password-gated admin console at /admin with Health/Ingests/Users/Jobs tabs. ADRs 0056-0058, 0064-0065.
