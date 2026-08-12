@@ -59,7 +59,12 @@ jobs:
           java-version: 21
           cache: maven
       - name: Native image build (tests already ran in the test job)
-        run: ./mvnw -B package -Dnative -Dquarkus.native.container-build=true -DskipTests
+        # Pin the Mandrel builder image by DIGEST (bean 42u0) — the SAME image the
+        # Railway Dockerfile uses (jdk-25.0.4, Quarkus 3.37.3's default). Keeps
+        # "CI green ⇒ Railway-buildable" true. Bump both together on a Quarkus upgrade.
+        run: >-
+          ./mvnw -B package -Dnative -Dquarkus.native.container-build=true -DskipTests
+          -Dquarkus.native.builder-image=quay.io/quarkus/ubi9-quarkus-mandrel-builder-image@sha256:93bcce120e35460b44c57efe2586e1d913cbfe32ddb418f0a7375a86850b54f1
       - name: Smoke-run the binary against Postgres
         env:
           DATABASE_JDBC_URL: jdbc:postgresql://localhost:5432/iron
