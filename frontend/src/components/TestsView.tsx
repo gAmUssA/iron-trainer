@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   api,
   pace100,
+  type Profile,
   type TestProtocol,
   type TestResult,
   type TestPrefill,
@@ -60,10 +61,20 @@ function fmtMetric(field: string, v: number, distUnit: DistanceUnit): string {
   return String(v);
 }
 
-export function TestsView({ onChanged }: { onChanged: () => void }) {
+/** The profile fields a test can write, in catalog order. */
+const PROFILE_METRICS: { field: keyof Profile; label: string }[] = [
+  { field: "ftp", label: "ftp" },
+  { field: "threshold_hr", label: "threshold_hr" },
+  { field: "threshold_pace_run", label: "threshold_pace_run" },
+  { field: "css_swim", label: "css_swim" },
+];
+
+export function TestsView({ profile, onChanged }: { profile: Profile | null; onChanged: () => void }) {
   const { unit } = useUnits();
   const [protocols, setProtocols] = useState<TestProtocol[]>([]);
   const [results, setResults] = useState<TestResult[]>([]);
+  const [applyingId, setApplyingId] = useState<number | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const reload = async () => {
     const [t, r] = await Promise.all([api.tests(), api.testResults()]);
@@ -71,6 +82,26 @@ export function TestsView({ onChanged }: { onChanged: () => void }) {
     setResults(r.results);
   };
   useEffect(() => { reload().catch(() => {}); }, []);
+
+  // Apply a PREVIOUSLY recorded result. Without this, a computed test that was
+  // never applied in the same visit is orphaned — the Compute-time Apply button
+  // is the only one, and it disappears on reload/tab switch.
+  async function applyRecorded(id: number) {
+    setApplyingId(id);
+    setApplyError(null);
+    try {
+      await api.applyTest(id);
+      await reload();
+      onChanged();
+    } catch (e) {
+      setApplyError(`Couldn’t apply: ${e}`);
+    } finally {
+      setApplyingId(null);
+    }
+  }
+
+  // Newest first; only the ones that never made it onto the profile.
+  const unapplied = [...results].filter((r) => !r.applied).reverse();
 
   // History sparks: one per metric, oldest→newest.
   const metricSeries: Record<string, { x: string; v: number }[]> = {};
@@ -88,7 +119,53 @@ export function TestsView({ onChanged }: { onChanged: () => void }) {
           Perform a test to measure your thresholds, then apply them to set your zones.
           Re-test every 4–6 weeks. Add a test to your plan to schedule it (and sync it to Apple Watch).
         </div>
+        {/* Computing a test changes NOTHING until it's applied — show what the
+            profile actually holds right now so "did that stick?" is answerable
+            here instead of in Settings. */}
+        {profile && (
+          <div className="rd-splits" style={{ marginTop: 14 }}>
+            {PROFILE_METRICS.map(({ field, label }) => {
+              const v = profile[field] as number | null;
+              return (
+                <div className="rd-split" key={field}>
+                  <div className="k">{METRIC_LABEL[label] ?? label}</div>
+                  <div className="v" style={v == null ? { color: "var(--dim)" } : undefined}>
+                    {v == null ? "—" : fmtMetric(label, v, unit)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {unapplied.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-title">Recorded — not applied yet</div>
+          <div className="card-sub">
+            These tests were computed but never written to your thresholds, so they aren’t
+            driving your zones, TSS or workout targets.
+          </div>
+          {unapplied.map((r) => (
+            <div className="save-row" key={r.id}>
+              <span className="card-sub" style={{ flex: 1 }}>
+                {r.date} · {r.sport} ·{" "}
+                {Object.entries(r.result)
+                  .map(([f, v]) => `${METRIC_LABEL[f] ?? f} ${fmtMetric(f, v, unit)}`)
+                  .join(" · ")}
+              </span>
+              <button
+                className="btn primary"
+                disabled={applyingId != null}
+                onClick={() => applyRecorded(r.id)}
+              >
+                {applyingId === r.id ? "Applying…" : "Apply to thresholds"}
+              </button>
+            </div>
+          ))}
+          {applyError && <div className="hint">{applyError}</div>}
+        </div>
+      )}
 
       {protocols.map((p) => (
         <ProtocolCard key={p.slug} proto={p} onChanged={() => { reload(); onChanged(); }} />
@@ -161,11 +238,20 @@ function ProtocolCard({ proto, onChanged }: { proto: TestProtocol; onChanged: ()
   async function apply() {
     if (!recorded) return;
     setBusy(true);
+    setMsg(null);
     try {
-      await api.applyTest(recorded.id);
-      setMsg("Applied to your thresholds ✓");
+      const res = await api.applyTest(recorded.id);
+      // Without a catch a failed apply was completely silent: no message, the
+      // button just re-enabled and the thresholds never moved.
+      setMsg(
+        res.plan_weeks_refreshed
+          ? `Applied ✓ — zones, TSS and ${res.plan_weeks_refreshed} upcoming plan week(s) re-targeted`
+          : "Applied to your thresholds ✓"
+      );
       setRecorded(null);
       onChanged();
+    } catch (e) {
+      setMsg(`Couldn’t apply: ${e}`);
     } finally {
       setBusy(false);
     }

@@ -182,6 +182,7 @@ export function ReadinessCard({ readiness, raceName }: { readiness: Readiness; r
   const legs = readiness.legs;
   const incomplete = readiness.missing.length > 0;
   const missingLabels = readiness.missing.map((m) => MISSING_LABEL[m] ?? m).join(", ");
+  const thresholdMissing = readiness.missing.filter((m) => m !== "bike_speed_history");
   const finishCut = readiness.cutoffs.find((c) => c.checkpoint === "Finish");
   const scale = finishCut?.limit_s ?? 30600;
 
@@ -242,8 +243,21 @@ export function ReadinessCard({ readiness, raceName }: { readiness: Readiness; r
 
           {incomplete && (
             <div className="rd-missing">
-              ⚠ Missing <b>{missingLabels}</b> — set it in <b>Settings → Thresholds</b> to project the
-              {readiness.missing.includes("css_swim") ? " swim leg, " : " "}timeline and cut-offs.
+              ⚠ Missing <b>{missingLabels}</b> —{" "}
+              {/* bike_speed_history is NOT a threshold: the bike split comes from
+                  your own long-ride speed, so no Settings value can supply it. */}
+              {thresholdMissing.length > 0 && (
+                <>
+                  set {thresholdMissing.length > 1 ? "them" : "it"} in{" "}
+                  <b>Settings → Thresholds</b> (or run the test in <b>Tests</b>)
+                  {readiness.missing.includes("bike_speed_history") ? "; " : " "}
+                </>
+              )}
+              {readiness.missing.includes("bike_speed_history") && (
+                <>the bike split needs a ride of 1 h+ in the last 12 weeks — sync Strava{" "}
+                </>
+              )}
+              to project the timeline and cut-offs.
             </div>
           )}
 
