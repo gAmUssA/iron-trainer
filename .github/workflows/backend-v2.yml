@@ -60,8 +60,16 @@ jobs:
           cache: maven
       - name: Native image build (tests already ran in the test job)
         # Pin the Mandrel builder image by DIGEST (bean 42u0) — the SAME image the
-        # Railway Dockerfile uses (jdk-25.0.4, Quarkus 3.37.3's default). Keeps
-        # "CI green ⇒ Railway-buildable" true. Bump both together on a Quarkus upgrade.
+        # Railway Dockerfile uses (jdk-25.0.4, Quarkus 3.37.3's default). Bump both
+        # together on a Quarkus upgrade.
+        #
+        # SCOPE: this aligns the native-image COMPILER only. Maven and Quarkus
+        # augmentation run here on the runner's Temurin 21 (above); the Dockerfile
+        # runs them INSIDE the jdk-25 builder image, and CI never builds the
+        # Dockerfile at all (SPA injection, dependency:go-offline, runtime stage).
+        # So a JDK-25 augmentation failure or a Docker-stage failure still passes
+        # this job — "CI green ⇒ Railway-buildable" is NOT established here.
+        # Bean 6gcc (build + smoke-test the production Dockerfile in CI) closes that.
         run: >-
           ./mvnw -B package -Dnative -Dquarkus.native.container-build=true -DskipTests
           -Dquarkus.native.builder-image=quay.io/quarkus/ubi9-quarkus-mandrel-builder-image@sha256:93bcce120e35460b44c57efe2586e1d913cbfe32ddb418f0a7375a86850b54f1

@@ -28,7 +28,19 @@ default):
   `-Dquarkus.native.builder-image=…@sha256:93bcce120e…` (so container-build uses the
   identical image, not the floating `:jdk-25`).
 
-Now Railway and CI build with the byte-identical toolchain, and neither floats.
+Both paths now compile the native image with the byte-identical toolchain, and
+neither floats.
+
+**Scope — what this does NOT establish.** Only the containerized `native-image`
+step is identical. Railway runs `./mvnw package -Dnative` *inside* the pinned
+jdk-25 image, so Maven resolution and Quarkus augmentation run on JDK 25 there;
+CI runs those on the runner's Temurin 21 and containerizes only the compiler.
+CI also never builds `backend-v2/Dockerfile` — the SPA stage, the injection of
+`frontend/dist` into `META-INF/resources`, `dependency:go-offline` and the
+ubi9-minimal runtime stage are all unexercised. A JDK-25-only augmentation
+failure, or any Docker-stage failure, therefore still passes CI. This ADR closes
+the *builder-image drift* hole, not the general "CI green ⇒ deploy-buildable"
+gap; see Consequences.
 
 ## Alternatives considered
 
@@ -40,8 +52,14 @@ Now Railway and CI build with the byte-identical toolchain, and neither floats.
 
 ## Consequences
 
-- Moving Railway `jdk-21 → jdk-25` is a real toolchain bump, but CI's native job
-  already builds green on this exact image, so it's validated-buildable.
+- Moving Railway `jdk-21 → jdk-25` is a real toolchain bump. CI's native job builds
+  green on this exact image, so the *compiler* is validated — but CI augments on
+  Temurin 21, so JDK-25 augmentation on Railway is still first exercised at deploy
+  time. Post-merge deploy verification is not optional here.
+- **The invariant the bean set out to establish is still open.** Making CI actually
+  build and smoke-test `backend-v2/Dockerfile` is the only thing that would deliver
+  "CI green ⇒ Railway-buildable"; tracked as bean 6gcc rather than bundled here,
+  since it is a new (slow) CI job rather than a one-line pin.
 - **Upgrade discipline:** on a Quarkus bump, re-resolve `:jdk-NN` to its new digest
   and update **both** the Dockerfile and the CI arg together (comments say so).
 
