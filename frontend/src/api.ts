@@ -177,6 +177,8 @@ export const DEFAULT_CHART_DAYS = 180;
 export interface Leg {
   seconds: number;
   display: string;
+  /** Bike leg only: "measured_speed" | "measured_speed_ftp_scaled". */
+  basis?: string;
 }
 export interface CutoffCheck {
   checkpoint: string;

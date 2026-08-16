@@ -275,6 +275,15 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 }
 :root[data-theme="light"] .rd-missing b { color: var(--text); }
 
+/* Provenance caption under the splits — quieter than .rd-missing: it explains
+   the projection rather than warning about it. */
+.rd-basis {
+  margin-top: 12px;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* timeline */
 .timeline { margin-top: 22px; }
 .timeline-ends { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--dim); margin-bottom: 6px; font-family: var(--mono); }

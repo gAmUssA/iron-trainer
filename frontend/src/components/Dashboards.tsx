@@ -229,6 +229,17 @@ export function ReadinessCard({ readiness, raceName }: { readiness: Readiness; r
             </div>
           </div>
 
+          {/* Say what the bike split stands on. Unscaled means the projection is
+              at TRAINING intensity and reads slow — that's worth knowing before
+              you plan a race around it. */}
+          {legs.bike && (
+            <div className="rd-basis">
+              {legs.bike.basis === "measured_speed_ftp_scaled"
+                ? "Bike: your long-ride speed, scaled from ride power to race intensity."
+                : "Bike: raw long-ride speed — add FTP and ride with power to scale it to race intensity."}
+            </div>
+          )}
+
           {incomplete && (
             <div className="rd-missing">
               ⚠ Missing <b>{missingLabels}</b> — set it in <b>Settings → Thresholds</b> to project the
