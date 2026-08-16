@@ -5,7 +5,7 @@ status: completed
 type: feature
 priority: normal
 created_at: 2026-08-16T00:50:23Z
-updated_at: 2026-08-16T21:08:57Z
+updated_at: 2026-08-16T23:25:57Z
 ---
 
 RaceReadiness.raceReadiness derives the bike split ONLY from recentBikeSpeed() — mean avg_speed over rides >= 1h in the last 84 days. `ftp` is never read.
@@ -38,7 +38,7 @@ device name.
 
 Third FTP source already in the DB and deliberately parked:
 `daily_recovery.cycling_ftp_w` (Apple's own FTP estimate via Health Auto Export),
-see HealthResource.java:163 — deferred to bean mg1n pending a source-of-truth
+see HealthResource.ingest — deferred to bean 30m8 pending a source-of-truth
 policy. If that lands, three inputs write FTP (test-applied, manual, Apple
 estimate) and precedence must be decided first.
 
@@ -58,7 +58,7 @@ Implemented a **fourth option**, not one of the three listed above — ADR-0067.
 
 ## Deliberately not done
 
-No absolute FTP→speed model for the no-ride-history case — that is the one case needing guessed CdA/Crr. No run-leg change. No auto-seed of `Athlete.ftp` from `daily_recovery.cycling_ftp_w` (bean mg1n); if that lands, three writers contend for `Athlete.ftp` with no precedence rule — settle that first.
+No absolute FTP→speed model for the no-ride-history case — that is the one case needing guessed CdA/Crr. No run-leg change. No auto-seed of `Athlete.ftp` from `daily_recovery.cycling_ftp_w` (bean 30m8 — NOT mg1n, which shipped the capture; 30m8 is the auto-seed follow-up split out of it, and already documents the latest-by-timestamp / seed-bounds / delta-sync-clobber problems in detail).
 
 ## Correction after review (PR #117)
 

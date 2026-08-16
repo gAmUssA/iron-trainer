@@ -110,7 +110,9 @@ The second framing is the one that uses FTP for what it actually knows.
   information there.
 - **Auto-seeding `Athlete.ftp` from `daily_recovery.cycling_ftp_w`** (Apple's own FTP
   estimate, already ingested) — out of scope and still correctly parked at
-  `HealthResource.java:163` / bean `mg1n`. Note that if it lands, three sources write
+  `HealthResource.ingest` / bean `30m8`. (An earlier revision of this ADR cited
+  `mg1n`, copying a stale code comment; `mg1n` shipped the capture — `30m8` is the
+  open auto-seed follow-up split out of it.) Note that if it lands, three sources write
   `Athlete.ftp` (test-applied, manual edit, Apple estimate) with no precedence rule;
   that policy should be settled before adding the third writer.
 
