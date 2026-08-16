@@ -14,7 +14,12 @@ RUN npm run build
 
 # Stage 2: GraalVM (Mandrel) native build. Inject the SPA into static resources
 # (served at "/" + bundled into the native image) before packaging.
-FROM quay.io/quarkus/ubi9-quarkus-mandrel-builder-image:jdk-21 AS build
+# PINNED by DIGEST (bean 42u0): this is jdk-25.0.4 — the exact Mandrel image
+# Quarkus 3.37.3's container-build resolves to (:jdk-25), so Railway builds with the
+# SAME toolchain CI validates (see .github/workflows/backend-v2.yml). A floating tag
+# silently rolled once and broke the Railway native build while CI stayed green — a
+# digest can't. Bump this DELIBERATELY when upgrading Quarkus (re-resolve :jdk-NN).
+FROM quay.io/quarkus/ubi9-quarkus-mandrel-builder-image@sha256:93bcce120e35460b44c57efe2586e1d913cbfe32ddb418f0a7375a86850b54f1 AS build
 USER root
 WORKDIR /app
 COPY backend-v2/pom.xml backend-v2/mvnw ./
