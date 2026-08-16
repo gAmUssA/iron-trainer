@@ -143,7 +143,9 @@ struct PlanFile: Codable {
 }
 
 /// A fetched plan with its race metadata — what the app state machine carries.
-struct TrainingPlan: Equatable {
+/// Codable so PlanCache can persist it verbatim — both members are already
+/// Codable, so this is the whole cost of an offline-capable Today view.
+struct TrainingPlan: Equatable, Codable {
     let meta: PlanFile.PlanMeta?
     let workouts: [ItwWorkout]
 }

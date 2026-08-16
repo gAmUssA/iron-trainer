@@ -90,3 +90,4 @@ convention existed (the greenfield build + the two shipped feature PRs).
 | [0065](0065-admin-daily-failure-trend.md) | Admin: per-day failure trend sparkline | Accepted |
 | [0066](0066-pin-mandrel-builder-image.md) | Pin the Mandrel native-build image by digest | Accepted |
 | [0067](0067-race-predictor-ftp-intensity-correction.md) | Race predictor: FTP as an intensity correction on the bike leg | Accepted |
+| [0068](0068-ios-auto-load-plan-at-launch.md) | iOS: auto-load the plan at launch, with an offline cache | Accepted |
