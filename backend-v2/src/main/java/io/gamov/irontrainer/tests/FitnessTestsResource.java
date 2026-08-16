@@ -5,9 +5,11 @@ import io.gamov.irontrainer.activity.Activity;
 import io.gamov.irontrainer.auth.CurrentAthlete;
 import io.gamov.irontrainer.metrics.MetricsWrite;
 import io.gamov.irontrainer.plan.Plan;
+import io.gamov.irontrainer.plan.PlanTargets;
 import io.gamov.irontrainer.plan.PlannedWorkout;
 import io.gamov.irontrainer.util.Py;
 import io.gamov.irontrainer.util.PyJson;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
@@ -40,6 +42,9 @@ public class FitnessTestsResource {
 
     @Inject
     CurrentAthlete current;
+
+    @Inject
+    PlanTargets planTargets;
 
     public static class RecordRequest {
         @JsonProperty("test_slug")
@@ -227,21 +232,36 @@ public class FitnessTestsResource {
         return workout;
     }
 
+    /** Apply a recorded test's thresholds. NOT @Transactional: the threshold write
+     * must COMMIT before the plan-target refresh reads it back (refreshFuture opens
+     * its own transaction and would otherwise see the pre-apply athlete row). */
     @POST
     @Path("/result/{id}/apply")
-    @Transactional
     public Map<String, Object> applyResult(@PathParam("id") int resultId) {
         int aid = current.require();
-        FitnessTestResult row = FitnessTestResult.findById(resultId);
-        if (row == null || !row.athleteId.equals(aid)) {
-            throw new NotFoundException("Test result not found");
+        Map<String, Object> out = QuarkusTransaction.requiringNew().call(() -> {
+            FitnessTestResult row = FitnessTestResult.findById(resultId);
+            if (row == null || !row.athleteId.equals(aid)) {
+                throw new NotFoundException("Test result not found");
+            }
+            Map<String, Object> result = row.parsedResult();
+            if (!result.isEmpty()) {  // Python: if result — apply thresholds + cascade
+                MetricsWrite.applyResult(aid, result);
+            }
+            row.applied = true;  // managed entity — flushes at commit
+            return row.toRow();
+        });
+        // New thresholds must also reach FUTURE workout targets (bike watts off FTP,
+        // run/swim pace off threshold pace) — the same refresh the Settings profile
+        // edit runs. Best-effort: the apply is already committed, so a refresh
+        // failure must not turn a successful apply into a 500.
+        try {
+            out.put("plan_weeks_refreshed", planTargets.refreshFuture(aid, LocalDate.now()));
+        } catch (RuntimeException e) {
+            LOG.error("Future-target refresh failed after test apply.", e);
+            out.put("plan_weeks_refreshed", 0);
         }
-        Map<String, Object> result = row.parsedResult();
-        if (!result.isEmpty()) {  // Python: if result — apply thresholds + cascade
-            MetricsWrite.applyResult(aid, result);
-        }
-        row.applied = true;  // managed entity — flushes at commit
         LOG.infof("Fitness test applied: athlete=%d result=%d", aid, resultId);
-        return row.toRow();
+        return out;
     }
 }

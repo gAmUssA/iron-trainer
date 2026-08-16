@@ -375,7 +375,7 @@ export default function App() {
 
         {tab === "tests" && (
           <div className="tab-panel">
-            <TestsView onChanged={safeLoad} />
+            <TestsView profile={athlete?.profile ?? null} onChanged={safeLoad} />
           </div>
         )}
 

@@ -487,6 +487,8 @@ export interface TestResult {
   inputs: Record<string, number | null>;
   result: Record<string, number>;
   applied: boolean;
+  /** Only on the apply response: future plan weeks re-targeted from the new thresholds. */
+  plan_weeks_refreshed?: number;
 }
 export interface TestPrefill {
   activity_id: number;
