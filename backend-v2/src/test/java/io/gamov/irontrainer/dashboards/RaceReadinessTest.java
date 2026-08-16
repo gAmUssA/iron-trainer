@@ -70,4 +70,120 @@ class RaceReadinessTest {
         List<Map<String, Object>> cutoffs = (List<Map<String, Object>>) out.get("cutoffs");
         assertEquals(4200, cutoffs.get(0).get("limit_s"));   // Swim default 70*60
     }
+
+    // ── FTP intensity correction on the bike leg (bean m4vq) ──────────────────
+
+    /** A qualifying long ride: >= 1 h, inside the 84-day window, with speed. */
+    private static Activity ride(double avgSpeed, Double avgPower) {
+        Activity a = new Activity();
+        a.sport = "Bike";
+        a.startDate = LocalDate.now().minusDays(10) + "T08:00:00";
+        a.movingTime = 7200;
+        a.avgSpeed = avgSpeed;
+        a.avgPower = avgPower;
+        return a;
+    }
+
+    private static Thresholds ftp(Double w) {
+        return new Thresholds(w, null, null, null, null);
+    }
+
+    @Test
+    void noFtpKeepsTheRawObservedMean() {
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(
+                List.of(ride(8.0, 160.0), ride(6.0, null)), ftp(null), "70.3");
+        assertEquals(7.0, s.speedMs(), 1e-9);          // plain mean of both
+        assertEquals("measured_speed", s.basis());
+    }
+
+    @Test
+    void ftpScalesObservedSpeedByTheCubeRootOfThePowerRatio() {
+        // race power = 0.78 x 250 = 195 W against an observed 160 W.
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(
+                List.of(ride(8.0, 160.0)), ftp(250.0), "70.3");
+        assertEquals(8.0 * Math.cbrt(195.0 / 160.0), s.speedMs(), 1e-9);
+        assertEquals("measured_speed_ftp_scaled", s.basis());
+    }
+
+    @Test
+    void ridesRiddenHarderThanRacePaceScaleDown() {
+        // Observed 220 W > race 195 W — the projection must slow down, not speed
+        // up. Guards against an abs()/inverted-ratio slip.
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(
+                List.of(ride(8.0, 220.0)), ftp(250.0), "70.3");
+        assertEquals(8.0 * Math.cbrt(195.0 / 220.0), s.speedMs(), 1e-9);
+        org.junit.jupiter.api.Assertions.assertTrue(s.speedMs() < 8.0);
+    }
+
+    @Test
+    void powerlessRidesAreExcludedFromTheCorrection() {
+        // The 6.0 m/s ride has no power, so pairing its speed with the 160 W mean
+        // would invent a data point. Correction must come from the 8.0 ride alone.
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(
+                List.of(ride(8.0, 160.0), ride(6.0, null)), ftp(250.0), "70.3");
+        assertEquals(8.0 * Math.cbrt(195.0 / 160.0), s.speedMs(), 1e-9);
+    }
+
+    @Test
+    void fullDistanceUsesTheLowerRaceIntensity() {
+        // 140.6 is ridden at 0.70 x FTP, not 0.78.
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(
+                List.of(ride(8.0, 160.0)), ftp(250.0), "140.6");
+        assertEquals(8.0 * Math.cbrt(175.0 / 160.0), s.speedMs(), 1e-9);
+    }
+
+    @Test
+    void absurdRatiosAreClampedNotBelieved() {
+        // 0.78 x 400 = 312 W against 100 W observed → cbrt 1.46, clamped to 1.25.
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(
+                List.of(ride(8.0, 100.0)), ftp(400.0), "70.3");
+        assertEquals(10.0, s.speedMs(), 1e-9);
+    }
+
+    @Test
+    void normalizedPowerIsIgnoredInFavourOfAverage() {
+        // A variable interval ride: 160 W average, 220 W normalized. NP is a load
+        // metric, not the mean mechanical power behind avg_speed — using it would
+        // give cbrt(195/220) < 1 and slow the projection down, when the athlete
+        // actually averaged 160 W and should speed up. Pin the direction.
+        Activity a = ride(8.0, 160.0);
+        a.weightedPower = 220.0;
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(List.of(a), ftp(250.0), "70.3");
+        assertEquals(8.0 * Math.cbrt(195.0 / 160.0), s.speedMs(), 1e-9);
+        org.junit.jupiter.api.Assertions.assertTrue(s.speedMs() > 8.0, "must scale UP, not down");
+    }
+
+    @Test
+    void aRideWithOnlyNormalizedPowerSitsOutTheCorrection() {
+        // No avg_power → no usable mean-power term, so this ride contributes to the
+        // fallback mean only. Must NOT be silently corrected off its NP.
+        Activity a = ride(8.0, null);
+        a.weightedPower = 220.0;
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(List.of(a), ftp(250.0), "70.3");
+        assertEquals(8.0, s.speedMs(), 1e-9);
+        assertEquals("measured_speed", s.basis());
+    }
+
+    @Test
+    void noQualifyingRidesIsNull() {
+        Activity shortRide = ride(8.0, 200.0);
+        shortRide.movingTime = 1800;                    // under the 1 h floor
+        org.junit.jupiter.api.Assertions.assertNull(
+                RaceReadiness.recentBikeSpeed(List.of(shortRide), ftp(250.0), "70.3"));
+        org.junit.jupiter.api.Assertions.assertNull(
+                RaceReadiness.recentBikeSpeed(List.of(), ftp(250.0), "70.3"));
+    }
+
+    @Test
+    void bikeLegReportsItsBasis() {
+        Map<String, Object> out = RaceReadiness.raceReadiness(
+                List.of(ride(8.0, 160.0)), ftp(250.0), null, new HashMap<>(), "70.3");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> legs = (Map<String, Object>) out.get("legs");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> bike = (Map<String, Object>) legs.get("bike");
+        assertEquals("measured_speed_ftp_scaled", bike.get("basis"));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                ((String) out.get("note")).contains("78% of FTP"));
+    }
 }
