@@ -74,13 +74,13 @@ class RaceReadinessTest {
     // ── FTP intensity correction on the bike leg (bean m4vq) ──────────────────
 
     /** A qualifying long ride: >= 1 h, inside the 84-day window, with speed. */
-    private static Activity ride(double avgSpeed, Double power) {
+    private static Activity ride(double avgSpeed, Double avgPower) {
         Activity a = new Activity();
         a.sport = "Bike";
         a.startDate = LocalDate.now().minusDays(10) + "T08:00:00";
         a.movingTime = 7200;
         a.avgSpeed = avgSpeed;
-        a.weightedPower = power;
+        a.avgPower = avgPower;
         return a;
     }
 
@@ -138,6 +138,30 @@ class RaceReadinessTest {
         RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(
                 List.of(ride(8.0, 100.0)), ftp(400.0), "70.3");
         assertEquals(10.0, s.speedMs(), 1e-9);
+    }
+
+    @Test
+    void normalizedPowerIsIgnoredInFavourOfAverage() {
+        // A variable interval ride: 160 W average, 220 W normalized. NP is a load
+        // metric, not the mean mechanical power behind avg_speed — using it would
+        // give cbrt(195/220) < 1 and slow the projection down, when the athlete
+        // actually averaged 160 W and should speed up. Pin the direction.
+        Activity a = ride(8.0, 160.0);
+        a.weightedPower = 220.0;
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(List.of(a), ftp(250.0), "70.3");
+        assertEquals(8.0 * Math.cbrt(195.0 / 160.0), s.speedMs(), 1e-9);
+        org.junit.jupiter.api.Assertions.assertTrue(s.speedMs() > 8.0, "must scale UP, not down");
+    }
+
+    @Test
+    void aRideWithOnlyNormalizedPowerSitsOutTheCorrection() {
+        // No avg_power → no usable mean-power term, so this ride contributes to the
+        // fallback mean only. Must NOT be silently corrected off its NP.
+        Activity a = ride(8.0, null);
+        a.weightedPower = 220.0;
+        RaceReadiness.BikeSpeed s = RaceReadiness.recentBikeSpeed(List.of(a), ftp(250.0), "70.3");
+        assertEquals(8.0, s.speedMs(), 1e-9);
+        assertEquals("measured_speed", s.basis());
     }
 
     @Test

@@ -23,7 +23,14 @@ public final class RaceReadiness {
 
     /** Sustainable race-day bike intensity as a fraction of FTP. 70.3 is ridden
      * appreciably harder than a full — these are the conventional coaching
-     * targets for a strong age-grouper. */
+     * targets for a strong age-grouper.
+     *
+     * <p>These are quoted as NORMALIZED power (IF is defined NP/FTP) but are used
+     * below against an AVERAGE observed power. That is sound only because a
+     * well-paced race bike leg is ridden near-steady — variability index ~1.0, so
+     * NP ~ AP. It is an assumption about PACING, and it degrades in exactly one
+     * direction: a rider who surges over a hilly course has VI > 1, making the
+     * true average lower than this and the projection optimistic. */
     private static final Map<String, Double> RACE_IF = Map.of("70.3", 0.78, "140.6", 0.70);
 
     /** Ceiling on the intensity correction. The cube-root scaling is only sound
@@ -78,9 +85,15 @@ public final class RaceReadiness {
             }
             sum += a.avgSpeed;
             n++;
-            // Weighted (normalized) power first — it is the better stand-in for
-            // the steady race effort than a coasting-diluted average.
-            Double p = Py.truthy(a.weightedPower) ? a.weightedPower : a.avgPower;
+            // AVERAGE power, deliberately not weighted/normalized. NP is a
+            // physiological load metric, not the mean mechanical power that
+            // produced avg_speed — the speed relation P = a*v^3 + b*v is defined
+            // on means, and NP >= AP always. Pairing avg_speed with NP would
+            // understate P_race/P_observed and, on a variable ride (160 W avg /
+            // 220 W NP), can flip the correction from scaling up to scaling down.
+            // Coasting dilutes avg_speed and avg_power alike, so they stay a
+            // consistent pair.
+            Double p = a.avgPower;
             if (Py.truthy(p)) {
                 powSpeedSum += a.avgSpeed;
                 powSum += p;

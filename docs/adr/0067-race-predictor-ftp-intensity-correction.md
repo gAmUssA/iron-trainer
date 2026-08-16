@@ -35,33 +35,48 @@ The second framing is the one that uses FTP for what it actually knows.
 
    The **ratio form is the whole point**: CdA, Crr and mass cancel, so no physical
    constant is assumed anywhere. Only three numbers are needed, all already stored —
-   `avg_speed`, `weighted_power`/`avg_power` on the qualifying rides, and `ftp`.
+   `avg_speed`, `avg_power` on the qualifying rides, and `ftp`.
 
 2. **Cube root, deliberately conservative.** Cube root is the pure-aerodynamic
    relationship. Real power also carries a rolling term linear in `v`, so a given power
    increase buys slightly *more* speed than this predicts. The projection therefore errs
    slow, never fast — the right direction for a cut-off check.
 
-3. **Race intensity by distance:** 0.78 × FTP for 70.3, 0.70 × FTP for 140.6. Weighted
-   (normalized) power is preferred over average power as the observed term — it is the
-   better stand-in for a steady race effort than a coasting-diluted average.
+3. **Race intensity by distance:** 0.78 × FTP for 70.3, 0.70 × FTP for 140.6.
 
-4. **The correction is computed over the power-bearing subset only.** Mixing a
+4. **`P_observed` is AVERAGE power, never normalized.** An earlier draft preferred
+   `weightedPower`; that was wrong and Copilot caught it on #117. NP is a
+   *physiological load* metric, not the mean mechanical power that produced
+   `avg_speed`, and `NP ≥ AP` always. The relation `P = a·v³ + b·v` is defined on
+   means, so pairing `avg_speed` with NP understates `P_race / P_observed` — and on
+   a variable ride (160 W average, 220 W normalized) it can **flip the correction**
+   from scaling up to scaling down. Coasting dilutes `avg_speed` and `avg_power`
+   alike, so they remain a consistent pair. A ride carrying only NP sits out the
+   correction rather than being mis-scaled.
+
+   The mirror-image assumption is on the race side and is worth stating plainly:
+   `RACE_IF` is quoted as *normalized* power (IF ≡ NP/FTP) but compared against an
+   average. That holds only because a well-paced race bike leg is ridden near-steady
+   (VI ≈ 1.0). It is an assumption about **pacing**, and it degrades in one
+   direction — a rider surging over a hilly course has VI > 1, making their true
+   average lower than `RACE_IF × FTP` and the projection optimistic.
+
+5. **The correction is computed over the power-bearing subset only.** Mixing a
    powerless ride's speed into `v_observed` would pair it with a power it never had.
    Rides without power still count toward the uncorrected fallback mean.
 
-5. **Graceful degradation, no FTP-only fallback.** No FTP, or no ride carries power →
+6. **Graceful degradation, no FTP-only fallback.** No FTP, or no ride carries power →
    the previous uncorrected mean, unchanged. No qualifying rides at all → the leg stays
    missing. We deliberately did **not** add an absolute FTP→speed model for the
    no-history case: that is precisely the case that needs the guessed constants, and
    also the case where we know least about the rider.
 
-6. **The projection states what it stands on.** The bike leg carries
+7. **The projection states what it stands on.** The bike leg carries
    `basis: "measured_speed" | "measured_speed_ftp_scaled"`, the `note` names the race
    intensity used, and the card renders a caption. An unscaled split is a *training-pace*
    projection; the user should know that before planning a race around it.
 
-7. **Scale clamped to [0.85, 1.25].** Named ceiling, not a hidden magic number: the
+8. **Scale clamped to [0.85, 1.25].** Named ceiling, not a hidden magic number: the
    cube-root scaling is only sound while race power is near the observed range, and a
    projection claiming a 30%-faster ride than anything ever recorded is not credible
    whatever the arithmetic says. Clamped rather than dropped, so a rider who genuinely
@@ -101,8 +116,11 @@ The second framing is the one that uses FTP for what it actually knows.
 
 ## Verification
 
-`RaceReadinessTest` — 8 new cases: raw mean without FTP; exact cube-root scaling;
-harder-than-race rides scale **down** (guards an inverted-ratio slip); powerless rides
-excluded from the correction; 140.6 uses 0.70; absurd ratios clamp; no qualifying rides
-→ null; bike leg reports its basis and the note names the intensity. Full backend suite
-263 passed / 0 failed. Frontend typechecks and builds.
+`RaceReadinessTest` — 10 new cases: raw mean without FTP; exact cube-root scaling;
+harder-than-race rides scale **down** (guards an inverted-ratio slip); normalized power
+is ignored in favour of average and must still scale **up** (guards the decision-4
+regression directly); a ride carrying only NP sits out the correction; powerless rides
+excluded; 140.6 uses 0.70; absurd ratios clamp; no qualifying rides → null; bike leg
+reports its basis and the note names the intensity.
+
+Full backend suite **265 passed / 0 failed**. Frontend typechecks and builds.

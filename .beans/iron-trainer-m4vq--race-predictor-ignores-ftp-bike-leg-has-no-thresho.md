@@ -5,7 +5,7 @@ status: completed
 type: feature
 priority: normal
 created_at: 2026-08-16T00:50:23Z
-updated_at: 2026-08-16T19:03:20Z
+updated_at: 2026-08-16T21:08:57Z
 ---
 
 RaceReadiness.raceReadiness derives the bike split ONLY from recentBikeSpeed() — mean avg_speed over rides >= 1h in the last 84 days. `ftp` is never read.
@@ -44,9 +44,9 @@ estimate) and precedence must be decided first.
 
 ## Summary of Changes
 
-Implemented **option 3** (measured speed anchored, FTP as intensity correction) — ADR-0066. Built in worktree `ftp-race-intensity-correction`.
+Implemented a **fourth option**, not one of the three listed above — ADR-0067. None of the options as written was taken: option 1 was too little, and options 2 and 3 both rest on an absolute FTP→speed model needing guessed CdA/Crr. What shipped instead keeps measured speed as the anchor at ALL times and uses FTP only as an intensity RATIO, which cancels those constants outright. Built in worktree `ftp-race-intensity-correction`.
 
-**RaceReadiness.java** — `recentBikeSpeed(activities)` → `recentBikeSpeed(activities, th, distance)` returning a `BikeSpeed(speedMs, basis)` record. Scales observed long-ride speed by `cbrt(P_race / P_observed)` where `P_race = RACE_IF[distance] x ftp` (0.78 for 70.3, 0.70 for 140.6). The ratio form cancels CdA/Crr/mass — no physical constants assumed. Correction is computed over the power-bearing subset only; falls back to the previous uncorrected mean when FTP or ride power is absent. Scale clamped to [0.85, 1.25]. Bike leg gained `basis`; `note` names the race intensity.
+**RaceReadiness.java** — `recentBikeSpeed(activities)` → `recentBikeSpeed(activities, th, distance)` returning a `BikeSpeed(speedMs, basis)` record. Scales observed long-ride speed by `cbrt(P_race / P_observed)` using AVERAGE power (never normalized — see below) where `P_race = RACE_IF[distance] x ftp` (0.78 for 70.3, 0.70 for 140.6). The ratio form cancels CdA/Crr/mass — no physical constants assumed. Correction is computed over the power-bearing subset only; falls back to the previous uncorrected mean when FTP or ride power is absent. Scale clamped to [0.85, 1.25]. Bike leg gained `basis`; `note` names the race intensity.
 
 **Frontend** — `Leg.basis?`; `.rd-basis` caption under the splits saying whether the split is race-scaled or raw training pace.
 
@@ -59,3 +59,11 @@ Implemented **option 3** (measured speed anchored, FTP as intensity correction) 
 ## Deliberately not done
 
 No absolute FTP→speed model for the no-ride-history case — that is the one case needing guessed CdA/Crr. No run-leg change. No auto-seed of `Athlete.ftp` from `daily_recovery.cycling_ftp_w` (bean mg1n); if that lands, three writers contend for `Athlete.ftp` with no precedence rule — settle that first.
+
+## Correction after review (PR #117)
+
+Copilot caught a real bug in the first cut: it preferred `weightedPower` (normalized) over `avgPower` for `P_observed`. NP is a physiological load metric, not the mean mechanical power that produced `avg_speed`, and NP >= AP always — so on a variable ride (160 W avg / 220 W NP) the correction could FLIP from scaling up to scaling down. Now uses `avgPower` only; a ride carrying only NP sits out the correction rather than being mis-scaled.
+
+Related assumption now documented in code: `RACE_IF` is quoted as normalized power (IF = NP/FTP) but compared against an average, which holds only because a well-paced race leg has VI ~ 1.0. Degrades optimistic for a surging rider on a hilly course.
+
+Also from that review: `.rd-basis` moved from `--dim` to `--muted` (WCAG AA at 12px).
