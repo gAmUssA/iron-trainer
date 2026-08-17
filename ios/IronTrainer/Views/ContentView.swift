@@ -8,9 +8,6 @@ struct ContentView: View {
     @State private var showingPicker = false
     @State private var showingSettings = false
     @State private var path = NavigationPath()
-    /// Gates the scene-phase refresh so launch doesn't fetch twice: .task and
-    /// the .active transition both fire on a cold start.
-    @State private var didInitialLoad = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -56,19 +53,21 @@ struct ContentView: View {
                 // full-plan list lingering over the new screen.
                 path = NavigationPath()
             }
-            // Launch: the plan loads itself. ImportModel's init has already put
+            // The plan loads itself: once at launch, and again on every return to
+            // the foreground so a phone left backgrounded overnight isn't still
+            // showing yesterday as "today". ImportModel's init has already put
             // any cached plan on screen, so this is the refresh behind it.
-            .task {
-                guard !didInitialLoad else { return }
-                didInitialLoad = true
+            //
+            // ONE scene-phase-driven task rather than .task + .onChange. A bool
+            // gate does not work here: .task would set it before its first
+            // suspension point, so a cold-start .active transition arriving after
+            // that still passes the guard and fires a second, superseding GET.
+            // Keying the task on scenePhase makes "active" the single trigger —
+            // SwiftUI cancels and restarts it on each transition, so each
+            // activation runs exactly one load.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
                 await autoLoadPlan()
-            }
-            // Foreground: re-fetch so a phone that sat backgrounded overnight
-            // isn't still showing yesterday as "today". Gated on the launch load
-            // having run, because a cold start fires both.
-            .onChange(of: scenePhase) { _, phase in
-                guard phase == .active, didInitialLoad else { return }
-                Task { await autoLoadPlan() }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

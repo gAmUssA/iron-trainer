@@ -60,13 +60,38 @@ Two separate problems hide in "load it automatically":
    `autoLoadPlan`, `refreshPlanQuietly`); without a single path the cache would
    silently drift out of sync with the screen.
 
-7. **Refresh on foreground, not just launch.** A phone backgrounded overnight would
-   otherwise still show yesterday as "today", which defeats the goal. Gated on the
-   launch load having run, because a cold start fires both `.task` and the `.active`
-   transition.
+7. **Refresh on foreground, not just launch — via one `.task(id: scenePhase)`.**
+   A phone backgrounded overnight would otherwise still show yesterday as "today".
+   The first cut used `.task` for launch plus `.onChange(of: scenePhase)` for
+   foreground, gated on a `didInitialLoad` bool. That gate does not work: `.task`
+   sets the flag before its first suspension point, so a cold-start `.active`
+   transition arriving afterwards passes the guard and fires a second, superseding
+   GET. Keying a single task on `scenePhase` makes activation the only trigger —
+   SwiftUI cancels and restarts it per transition, so each activation runs exactly
+   one load. (Copilot, #120.)
 
-8. **Sign-out clears the cache.** Now that a plan survives on disk and auto-restores,
-   not clearing it would show one athlete's plan to whoever pairs the device next.
+8. **Sign-out AND re-pair clear every local copy, not just the disk cache.**
+   Persisting the plan created a data-lifetime problem that did not exist when it
+   only lived in memory. `adopt` writes three things — the plan cache, the App
+   Group widget snapshot, and scheduled morning-brief notifications — so
+   `forgetPlan` has to undo all three, plus bump both generation counters so an
+   in-flight fetch or readiness write against the old session cannot repopulate
+   them afterwards. The widget snapshot matters most: it is readable with no
+   authentication, so leaving it would keep one athlete's workouts on the home
+   screen for whoever pairs next.
+
+   Re-pairing counts. `IronTrainerApp.pair` replaces credentials without going
+   through sign-out, including a same-server re-pair, so it calls `forgetPlan`
+   before fetching. Without that, a pair whose first fetch fails leaves the
+   previous athlete's plan to reappear on the next offline launch under the new
+   session. (Found by Copilot on #120.)
+
+9. **An empty plan from the server discards the local copies, on every path.**
+   `discardPlan` is the mirror of `adopt`. The manual `loadPlan` originally left
+   the cache intact in its empty branch, so a manual refresh that learned the plan
+   was deleted would still restore the old workouts at next launch; and
+   `refreshPlanQuietly` conflated "fetch failed" (keep what we have) with "plan is
+   empty" (drop it) in a single `guard`. Both fixed. (Copilot, #120.)
 
 ## Consequences
 
@@ -95,18 +120,29 @@ Two separate problems hide in "load it automatically":
 
 ## Verification
 
-13 new unit tests. `PlanCacheTests` (8): round-trip, absent cache, clear,
+15 new unit tests. `PlanCacheTests` (9): round-trip, absent cache, clear,
 **corrupt cache degrades to "no cache" rather than trapping**, init restores,
 init stays empty without a cache, an empty cached plan is ignored, forget clears
-screen and disk.
+screen and disk, **forget also clears the App Group widget snapshot**.
 
-`AutoLoadPlanTests` (5), against a stubbed `URLProtocol`: the plan appears with no
+`AutoLoadPlanTests` (6), against a stubbed `URLProtocol`: the plan appears with no
 user action and seeds the cache; offline with nothing cached falls back to `.empty`
 **with a reason instead of an error screen**; offline with a cached plan keeps it
-and stays silent; an opened `.itw` is not clobbered by the launch load; an empty
-server plan explains itself and clears the stale cache.
+and stays silent; an empty server plan explains itself and clears the stale cache;
+and the `onOpenURL` collision from both sides — a workout already on screen
+(pre-flight guard) and one opened while the fetch is **still in flight**
+(post-response guard).
 
-Full iOS suite **29 passed / 0 failed** (was 16). Builds clean for iOS Simulator.
+Full iOS suite **31 passed / 0 failed** (was 16). Builds clean for iOS Simulator.
+
+The race test earns specific mention because its first version did not test the
+race: it awaited `importFrom` to completion and only then started the auto-load,
+exercising the cheap pre-flight guard and never the post-response one that the
+actual `onOpenURL` collision needs. It now blocks the stubbed response mid-flight,
+imports a workout while the request is outstanding, then releases it. Verified to
+discriminate: deleting the post-response `isAutoReplaceable` check fails it with
+"the in-flight auto-load clobbered the previewed workout", while the pre-flight
+test keeps passing.
 
 **Not verified:** end-to-end launch against a live paired server on a device — the
 network path is covered only by the stub. Worth one manual pass on the next

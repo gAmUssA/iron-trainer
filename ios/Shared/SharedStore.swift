@@ -28,4 +28,12 @@ enum SharedStore {
         guard let url, let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(WidgetSnapshot.self, from: data)
     }
+
+    /// Drop the snapshot on sign-out / re-pair. The App Group file is readable
+    /// with no authentication, so leaving one athlete's workouts in it would
+    /// keep them on the home screen for whoever pairs the device next.
+    static func clear() {
+        guard let url else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
 }

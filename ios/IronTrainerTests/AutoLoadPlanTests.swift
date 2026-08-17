@@ -129,17 +129,52 @@ final class AutoLoadPlanTests: XCTestCase {
 
     // MARK: must not hijack the user's context
 
-    func testAutoLoadLeavesAnOpenedWorkoutFileAlone() async {
-        // A .itw arriving via onOpenURL races the launch load. Whoever the user
-        // is actually looking at wins — being yanked into the plan mid-preview
-        // would be worse than a slow load.
-        serve(planJSON(["Long ride"]))
+    func testAutoLoadAlreadyInFlightDoesNotClobberAWorkoutOpenedMeanwhile() async {
+        // THE actual race: a .itw arrives via onOpenURL *while* the launch fetch
+        // is outstanding. The pre-flight guard cannot help — it already passed —
+        // so this only holds if the guard is re-checked after the response lands.
+        // Whoever the user is looking at wins; being yanked into the plan
+        // mid-preview is worse than a slow load.
+        let release = XCTestExpectation(description: "response released")
+        let inFlight = XCTestExpectation(description: "request started")
+        let body = planJSON(["Long ride"])
+        StubURLProtocol.handler = { req in
+            inFlight.fulfill()
+            // Block the URLProtocol worker thread until the test says go.
+            _ = XCTWaiter().wait(for: [release], timeout: 5)
+            return (HTTPURLResponse(url: req.url!, statusCode: 200,
+                                    httpVersion: nil, headerFields: nil)!, body)
+        }
+
         let model = ImportModel()
+        async let auto: Void = model.autoLoadPlan(from: source)
+        await fulfillment(of: [inFlight], timeout: 5)
+
+        // The user opens a file while the plan request is still outstanding.
         await model.importFrom(StubWorkoutSource(workout: itw("Opened file")))
         guard case .loaded = model.state else { return XCTFail("setup: expected .loaded") }
 
-        await model.autoLoadPlan(from: source)
+        release.fulfill()
+        await auto
 
+        guard case let .loaded(w) = model.state else {
+            return XCTFail("the in-flight auto-load clobbered the previewed workout: \(model.state)")
+        }
+        XCTAssertEqual(w.title, "Opened file")
+    }
+
+    func testAutoLoadSkipsEntirelyWhenAWorkoutIsAlreadyOnScreen() {
+        // The cheaper pre-flight guard, kept separate so a regression in either
+        // one is unambiguous.
+        serve(planJSON(["Long ride"]))
+        let model = ImportModel()
+        let exp = expectation(description: "done")
+        Task {
+            await model.importFrom(StubWorkoutSource(workout: self.itw("Opened file")))
+            await model.autoLoadPlan(from: self.source)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 5)
         guard case let .loaded(w) = model.state else {
             return XCTFail("auto-load clobbered the previewed workout: \(model.state)")
         }

@@ -99,4 +99,18 @@ final class PlanCacheTests: XCTestCase {
         XCTAssertNil(PlanCache.read())
         XCTAssertNil(model.lastPlan)
     }
+
+    @MainActor
+    func testForgetPlanAlsoClearsTheAppGroupWidgetSnapshot() {
+        // The snapshot lives in the App Group and is readable with no auth, so
+        // leaving it behind keeps the previous athlete's workouts on the home
+        // screen after sign-out — the plan cache alone is not the whole story.
+        SharedStore.write(WidgetSnapshot.build(from: plan(["Long ride"]), readiness: nil))
+        XCTAssertNotNil(SharedStore.read(), "setup: snapshot should exist")
+
+        ImportModel().forgetPlan()
+
+        XCTAssertNil(SharedStore.read(),
+                     "sign-out must not leave plan data in the shared container")
+    }
 }

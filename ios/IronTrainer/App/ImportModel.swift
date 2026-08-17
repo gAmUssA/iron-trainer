@@ -52,6 +52,18 @@ final class ImportModel: ObservableObject {
         }
     }
 
+    /// The server has no plan for us any more. Drop the local copies so a later
+    /// launch can't resurrect workouts that no longer exist — the mirror of
+    /// `adopt`, minus the screen state, which each caller reports differently.
+    private func discardPlan() {
+        writeGen += 1                     // strand an in-flight readiness write
+        lastPlan = nil
+        PlanCache.clear()
+        SharedStore.clear()
+        WidgetCenter.shared.reloadAllTimelines()
+        Task { await Notifications.cancelMorningBriefs() }
+    }
+
     /// Single path for "we have a fresh plan": state, cache, widgets, briefs.
     /// Everything that fetches a plan goes through here so the cache can't drift
     /// out of sync with what the UI is showing.
@@ -88,8 +100,11 @@ final class ImportModel: ObservableObject {
         do {
             let plan = try await source.loadPlan()
             guard gen == planLoadGen else { return }   // superseded
-            lastPlan = plan
             if plan.workouts.isEmpty {
+                // The server says there is no plan — the cache is now a lie, and
+                // keeping it would restore the deleted workouts on next launch.
+                // Same disposal as the automatic path; only the reporting differs.
+                discardPlan()
                 state = .failed("No plan yet — generate one in the web app first.")
             } else {
                 adopt(plan, from: source)
@@ -122,8 +137,7 @@ final class ImportModel: ObservableObject {
             guard gen == planLoadGen, isAutoReplaceable else { return }
             if plan.workouts.isEmpty {
                 // Not an error: a signed-in athlete who hasn't generated a plan.
-                lastPlan = nil
-                PlanCache.clear()
+                discardPlan()
                 autoLoadNotice = "No plan yet — generate one in the web app, then refresh."
                 state = .empty
             } else {
@@ -143,9 +157,17 @@ final class ImportModel: ObservableObject {
     func refreshPlanQuietly(from source: PlanNetworkSource) async {
         planLoadGen += 1
         let gen = planLoadGen
-        guard let plan = try? await source.loadPlan(), !plan.workouts.isEmpty else { return }
+        // A FAILED fetch and an EMPTY plan are different answers and must not
+        // share a branch: the first means "keep what we have", the second means
+        // the plan is gone and the local copies are now stale.
+        guard let plan = try? await source.loadPlan() else { return }
         guard gen == planLoadGen else { return }
-        adopt(plan, from: source)
+        if plan.workouts.isEmpty {
+            discardPlan()
+            state = .empty
+        } else {
+            adopt(plan, from: source)
+        }
     }
 
     /// Bumped on every snapshot write so a slow readiness fetch from a superseded
@@ -222,12 +244,18 @@ final class ImportModel: ObservableObject {
         autoLoadNotice = nil
     }
 
-    /// Sign-out: a plan is athlete-specific and must not survive the session
-    /// that fetched it, on screen or on disk.
+    /// Drop every trace of the current athlete's plan. Must undo everything
+    /// `adopt` writes, not just the disk cache — the widget snapshot lives in the
+    /// App Group and is readable with no authentication, and morning briefs are
+    /// already queued with the OS. Called on sign-out AND on re-pair (a new
+    /// pairing is a new athlete even when the server URL is unchanged).
+    ///
+    /// Both generation counters are bumped so a plan fetch or a readiness write
+    /// still in flight against the OLD session can't repopulate anything after
+    /// this returns.
     func forgetPlan() {
-        PlanCache.clear()
-        lastPlan = nil
-        planLoadGen += 1   // strand any load in flight against the old session
+        planLoadGen += 1   // strand a plan fetch in flight against the old session
+        discardPlan()
         reset()
     }
 }
