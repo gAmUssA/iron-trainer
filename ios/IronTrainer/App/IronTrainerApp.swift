@@ -79,6 +79,12 @@ struct IronTrainerApp: App {
             pairingError = error.localizedDescription
             return
         }
+        // A new pairing is a new session — and possibly a new athlete, even on
+        // the SAME server. The plan is now cached on disk and auto-restored at
+        // launch, so it has to be dropped here: without this, a pair whose first
+        // fetch fails leaves the previous athlete's plan to reappear on the next
+        // offline launch, under the new session.
+        model.forgetPlan()
         if let s = auth.serverURL, let b = auth.bearer {
             await model.loadPlan(from: PlanNetworkSource(baseURL: s, bearer: b))
         }

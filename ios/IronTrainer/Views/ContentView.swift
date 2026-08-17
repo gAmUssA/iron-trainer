@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @EnvironmentObject private var model: ImportModel
     @EnvironmentObject private var auth: AuthModel
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showingPicker = false
     @State private var showingSettings = false
     @State private var path = NavigationPath()
@@ -14,6 +15,7 @@ struct ContentView: View {
                 switch model.state {
                 case .empty:
                     EmptyState(signedIn: auth.isSignedIn,
+                               notice: model.autoLoadNotice,
                                onLoadPlan: loadPlan,
                                onImport: { showingPicker = true },
                                onConnect: { showingSettings = true })
@@ -51,6 +53,22 @@ struct ContentView: View {
                 // full-plan list lingering over the new screen.
                 path = NavigationPath()
             }
+            // The plan loads itself: once at launch, and again on every return to
+            // the foreground so a phone left backgrounded overnight isn't still
+            // showing yesterday as "today". ImportModel's init has already put
+            // any cached plan on screen, so this is the refresh behind it.
+            //
+            // ONE scene-phase-driven task rather than .task + .onChange. A bool
+            // gate does not work here: .task would set it before its first
+            // suspension point, so a cold-start .active transition arriving after
+            // that still passes the guard and fires a second, superseding GET.
+            // Keying the task on scenePhase makes "active" the single trigger —
+            // SwiftUI cancels and restarts it on each transition, so each
+            // activation runs exactly one load.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                await autoLoadPlan()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
@@ -77,16 +95,31 @@ struct ContentView: View {
     }
 
     private func loadPlan() {
-        guard let server = auth.serverURL, let bearer = auth.bearer else {
+        guard let source = planSource() else {
             showingSettings = true
             return
         }
-        Task { await model.loadPlan(from: PlanNetworkSource(baseURL: server, bearer: bearer)) }
+        Task { await model.loadPlan(from: source) }
+    }
+
+    /// The unattended load. Silent when not signed in — an automatic action must
+    /// never pop Settings in the user's face on launch.
+    private func autoLoadPlan() async {
+        guard let source = planSource() else { return }
+        await model.autoLoadPlan(from: source)
+    }
+
+    private func planSource() -> PlanNetworkSource? {
+        guard let server = auth.serverURL, let bearer = auth.bearer else { return nil }
+        return PlanNetworkSource(baseURL: server, bearer: bearer)
     }
 }
 
 private struct EmptyState: View {
     let signedIn: Bool
+    /// Why the automatic load produced nothing. Present only when the app tried
+    /// and came up empty — otherwise this really is a first run.
+    let notice: String?
     let onLoadPlan: () -> Void
     let onImport: () -> Void
     let onConnect: () -> Void
@@ -95,9 +128,9 @@ private struct EmptyState: View {
         ContentUnavailableView {
             Label("No workout yet", systemImage: "figure.run")
         } description: {
-            Text(signedIn
+            Text(notice ?? (signedIn
                  ? "Load your training plan from Iron Trainer, or open a .itw file."
-                 : "Connect to Iron Trainer to sync your plan, or open a .itw file (Files, Mail, AirDrop).")
+                 : "Connect to Iron Trainer to sync your plan, or open a .itw file (Files, Mail, AirDrop)."))
         } actions: {
             if signedIn {
                 Button("Load my plan", action: onLoadPlan).buttonStyle(.borderedProminent)

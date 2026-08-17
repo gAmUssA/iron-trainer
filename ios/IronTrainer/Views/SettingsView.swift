@@ -35,7 +35,14 @@ struct SettingsView: View {
                         // Widget-data diagnostic: pinpoints whether a blank widget
                         // means "app never wrote the snapshot" or a widget-side issue.
                         LabeledContent("Widget data", value: widgetDataStatus)
-                        Button("Sign out", role: .destructive) { auth.signOut() }
+                        // forgetPlan before signOut: the plan is now cached on
+                        // disk and auto-restored at launch, so signing out has to
+                        // drop it or the next launch shows the previous athlete's
+                        // plan to whoever pairs next.
+                        Button("Sign out", role: .destructive) {
+                            model.forgetPlan()
+                            auth.signOut()
+                        }
                     }
                 } else {
                     Section {
