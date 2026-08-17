@@ -1,14 +1,18 @@
-Added — Native Apple Health sync is live
-• The app now reads your recovery data (sleep stages, HRV, resting HR, respiratory rate, wrist temperature, body mass, VO₂ max) straight from Apple Health and sends it to Iron Trainer — no more Health Auto Export needed. It syncs when you open the app, hourly in the background, and on demand.
+Added — Your plan is just there when you open the app
+
+• No more tapping "Load my plan". The Today view loads itself at launch, and again every time you bring the app back to the foreground, so it's never showing yesterday's session after the phone has sat overnight.
+• It also works with no signal. The last plan is stored on the device, so Today is on screen instantly at launch — before the network answers, and even in airplane mode.
+• "Load my plan" is still there for the genuine first-run case and as a manual retry.
 
 Test on device
-1. Settings → "Apple Health" → if you haven't already, tap "Connect Apple Health" and grant the 7 metrics.
-2. Tap "Sync now" → the button shows "Syncing…" then returns; "Last native sync" should update to "just now". No "Server stored no data" error (if you see that, your sign-in expired — re-pair in Settings).
-3. Give it a moment, then check the Dashboard / Recovery tab (or the web app) — your latest sleep, HRV and resting-HR should be present and match what Apple Health shows.
-4. Background: leave the app, wait, reopen later — "Last native sync" should have advanced on its own (foreground catch-up), and ideally between opens (hourly background delivery).
-5. Sanity: the numbers should match your existing Health Auto Export data (both run in parallel during migration — keep HAE set up for now).
+1. Cold start: force-quit the app, reopen it. Today should appear immediately — no "No workout yet", no tap, no visible spinner if you already had a plan.
+2. AIRPLANE MODE (the important one): turn on airplane mode, force-quit, reopen. Today should still show your plan. You should NOT get an error screen — if the app can't reach the server and has nothing stored, you get the normal empty screen with a short reason on it, never a dead end.
+3. Overnight: leave the app backgrounded overnight, then reopen tomorrow. Today should have rolled over to the new day's session on its own.
+4. Opening a .itw file (Files / Mail / AirDrop) while the app launches should keep you on that workout — the automatic load must not yank you into the plan mid-preview.
+5. Sign out (Settings → Sign out). Your plan should disappear from the app AND from the Home/Lock Screen widgets, and morning briefs should stop. Re-pair and it should come back.
+6. Re-pair to the same server without signing out first (scan a fresh QR) — you should end up on your own current plan, never a stale one.
 
 Notes
-• HRV needs an Apple Watch — Garmin doesn't write HRV to Apple Health, so it may stay blank if you only wear a Garmin.
-• The old "Health Auto Export (legacy)" section still works and stays for now; we'll retire it once native sync is confirmed on your device.
-• Also still testable from the previous build: the Readiness widget (Home / Lock Screen / StandBy).
+• Applying a fitness test on the web now re-targets your upcoming workouts too, so a new FTP should show up in the bike power targets on this build's plan — previously it only changed your thresholds.
+• The app makes one extra plan fetch each time it comes to the foreground. If you notice any battery or data oddity, say so.
+• Still testable from previous builds: native Apple Health sync (Settings → Apple Health) and the Readiness widget.
