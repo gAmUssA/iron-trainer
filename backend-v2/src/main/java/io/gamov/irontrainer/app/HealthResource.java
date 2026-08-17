@@ -163,8 +163,11 @@ public class HealthResource {
         // NOTE: cycling_ftp_w is captured into daily_recovery (trend), but we do
         // NOT auto-seed Athlete.ftp / bike zones here — that needs latest-by-
         // timestamp (not the daily mean), bounds matching the profile validator,
-        // and a delta-sync-safe source-of-truth policy. Deferred to bean mg1n's
-        // FTP→zones follow-up.
+        // and a delta-sync-safe source-of-truth policy. Deferred to bean 30m8
+        // ("FTP to bike zones: auto-seed from HealthKit done right"), which was
+        // split OUT of mg1n during review — mg1n itself shipped and only captures
+        // the column. Cite 30m8, not mg1n, or the trail dead-ends at a completed
+        // bean.
         Map<String, Object> parsedOut = new LinkedHashMap<>();
         parsedOut.put("records", r.records);
         parsedOut.put("unknown_metrics", r.unknownMetrics);
