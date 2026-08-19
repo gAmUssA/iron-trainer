@@ -102,10 +102,13 @@ docker compose pull
 docker compose up -d
 ```
 
-Database migrations run automatically at startup and are not reversible. The compose
-file currently tracks `latest`, so a pull can bring a larger change than you expect;
-every build also publishes a `sha-xxxxxxx` tag, and you can pin `image:` to one to
-freeze on a known-good version.
+Database migrations run automatically at startup and are **not reversible**, which is
+why the compose file pins `ghcr.io/gamussa/iron-trainer:0.1` rather than `latest`.
+
+`0.1` tracks 0.1.x patch releases, so `docker compose pull` brings bug fixes but never
+a larger change. Moving to a new release line (0.2, 1.0, …) is a deliberate edit of
+that one line — check the release notes first, and back up. To freeze completely, pin
+the exact version (`:0.1.0`) or a specific build (`:sha-xxxxxxx`).
 
 ## When something is wrong
 

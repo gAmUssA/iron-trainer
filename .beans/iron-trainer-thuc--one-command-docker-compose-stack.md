@@ -36,9 +36,11 @@ to connect (see the local-mode epic).
       commented with what breaks if it is absent
 - [ ] Fix `strava.redirect-uri` default: `localhost:8000` -> the actual serving port.
       Leftover from the decommissioned FastAPI service; wrong for exactly this case
-- [ ] Pin image tags in the published compose file (never `:latest` for a user-facing
-      file — a surprise major upgrade on `docker compose pull` is how self-hosters
-      lose data)
+- [x] Pinned to `ghcr.io/gamussa/iron-trainer:0.1` once v0.1.0 existed to pin to.
+      `0.1` tracks 0.1.x patches only, so a pull brings fixes but never a breaking
+      change (pre-1.0 the minor is where breaks live). Exact `:0.1.0` and
+      `:sha-xxxxxxx` are published too, for harder freezes. Verified the pinned file
+      boots: health 200, running image `ghcr.io/gamussa/iron-trainer:0.1`.
 - [ ] Confirm the SPA is served from the same origin so no CORS setup is needed
 - [ ] Test the full flow on a machine with no repo checkout
 

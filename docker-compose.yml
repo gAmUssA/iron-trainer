@@ -30,12 +30,14 @@ services:
     restart: unless-stopped
 
   app:
-    # NOTE: `latest` is deliberate ONLY until the first tagged release exists — a
-    # published compose file should pin, because `docker compose pull` can otherwise
-    # apply an unreviewed schema migration with no rollback anchor. Every build also
-    # publishes a `sha-xxxxxxx` tag; pin to one if you want to freeze. Switching this
-    # to a version tag is tracked in bean thuc.
-    image: ghcr.io/gamussa/iron-trainer:latest
+    # PINNED, not `latest`. Database migrations run automatically at startup and are
+    # not reversible, so `docker compose pull` on a floating tag could apply an
+    # unreviewed schema change with nothing to roll back to. `0.1` tracks 0.1.x
+    # patch releases only — bug fixes reach you, a 0.2 release does not until you
+    # change this line deliberately. (Pre-1.0, the minor is where breaking changes
+    # live.) Every build also publishes an exact `0.1.0` and a `sha-xxxxxxx` tag if
+    # you want to freeze harder.
+    image: ghcr.io/gamussa/iron-trainer:0.1
     depends_on:
       db:
         # Not just "started" — Quarkus runs Flyway at boot and would race an
