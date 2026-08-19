@@ -1,0 +1,104 @@
+name: publish-image
+
+# Ships the SELF-HOST image (bean bjuq). Without a published image the only way to
+# run Iron Trainer is a ~10-minute GraalVM native build, which is not something to
+# ask an athlete to do.
+#
+# This is the JVM variant, deliberately: it is architecture-independent, so one
+# buildx run covers amd64 + arm64. The native image (backend-v2/Dockerfile) stays
+# the Railway artifact and cannot cross-compile.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "backend-v2/**"
+      - "frontend/**"
+      - ".github/workflows/publish-image.yml"
+  # Manual runs, for testing the pipeline without a code change.
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # QEMU only has to emulate the final JRE stage — the Maven and npm stages are
+      # pinned to $BUILDPLATFORM in the Dockerfile and run natively.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # :latest tracks main. Semver tags come from v* releases. The sha tag is
+          # always written so a self-hoster who hits a bug can pin to the exact
+          # build and roll back — `latest` alone gives them nowhere to go.
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+
+      - uses: docker/build-push-action@v6
+        with:
+          # Repo root: the Dockerfile needs the frontend/ sibling in context.
+          context: .
+          file: backend-v2/Dockerfile.jvm
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # A pushed image nobody started is not a verified image. Pull the amd64
+      # manifest back from the registry and boot it against a real Postgres, so a
+      # broken publish fails here rather than on an athlete's laptop.
+      - name: Smoke-test the published image
+        run: |
+          set -eu
+          TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$(git rev-parse --short HEAD)"
+          docker network create smoke
+          docker run -d --name db --network smoke \
+            -e POSTGRES_USER=iron -e POSTGRES_PASSWORD=iron -e POSTGRES_DB=iron \
+            postgres:17
+          until docker exec db pg_isready -U iron -d iron; do sleep 2; done
+          docker run -d --name app --network smoke \
+            -e DATABASE_URL=postgres://iron:iron@db:5432/iron \
+            -e SESSION_SECRET=ci-smoke \
+            -p 8080:8080 "$TAG"
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/q/health > /dev/null; then
+              echo "healthy after ${i} attempts"
+              curl -s http://localhost:8080/q/health
+              # The SPA must be baked in — an API-only image would still pass a
+              # health check and be useless to a self-hoster.
+              curl -sf http://localhost:8080/ | grep -q "assets/index-" \
+                || { echo "FAIL: SPA missing from image"; exit 1; }
+              echo "SPA served OK"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "FAIL: never became healthy"; docker logs app; exit 1
+
+      - if: always()
+        run: docker rm -f app db 2>/dev/null; docker network rm smoke 2>/dev/null; true

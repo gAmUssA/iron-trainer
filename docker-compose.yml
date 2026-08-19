@@ -1,0 +1,78 @@
+# Run Iron Trainer on your own machine.
+#
+#   docker compose up
+#
+# then open http://localhost:8080 — that is the whole install. Nothing here needs
+# editing to get started: no Strava key, no AI key, no account. Connecting Strava
+# and enabling AI plan generation are optional and explained in docs/self-host.md.
+
+# Fixes the project name so the volume is literally `iron-data`. Without this,
+# Compose prefixes volumes with the directory name (`myfolder_iron-data`), and every
+# backup instruction that names the volume would be wrong on someone else's machine.
+name: irontrainer
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: iron
+      POSTGRES_PASSWORD: iron
+      POSTGRES_DB: iron
+    volumes:
+      # This is your training history. `docker compose down` keeps it;
+      # `docker compose down -v` DELETES it. Back up before upgrading.
+      - iron-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iron -d iron"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    # NOTE: `latest` is deliberate ONLY until the first tagged release exists — a
+    # published compose file should pin, because `docker compose pull` can otherwise
+    # apply an unreviewed schema migration with no rollback anchor. Every build also
+    # publishes a `sha-xxxxxxx` tag; pin to one if you want to freeze. Switching this
+    # to a version tag is tracked in bean thuc.
+    image: ghcr.io/gamussa/iron-trainer:latest
+    depends_on:
+      db:
+        # Not just "started" — Quarkus runs Flyway at boot and would race an
+        # unready database on the very first `up`, which is the one run a new
+        # user judges the project on.
+        condition: service_healthy
+    environment:
+      # start.sh splits this into the JDBC url + credentials Quarkus wants.
+      DATABASE_URL: postgres://iron:iron@db:5432/iron
+      # Cookie signing. Fixed local value: the app binds to loopback only (see
+      # `ports` below) and single-user mode has no login to forge. Change it if you
+      # deliberately expose this beyond your own machine.
+      SESSION_SECRET: local-single-user-not-a-secret
+      # The app's built-in defaults point at :8000 and :5173 — leftovers from the
+      # decommissioned FastAPI service and the Vite dev server. This stack serves
+      # everything on 8080, so without these two the Strava authorize URL sends the
+      # browser to a dead port and the callback redirects away from the packaged SPA.
+      STRAVA_REDIRECT_URI: http://localhost:8080/api/strava/callback
+      CORS_ORIGINS: http://localhost:8080
+      # Optional — see docs/self-host.md. Absent is a supported state:
+      #   STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET  -> live Strava sync
+      #   ANTHROPIC_API_KEY                        -> AI plan adaptation
+      # Without them the app still runs: import your Strava/WHOOP archives and
+      # the deterministic planner builds your plan.
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      # Bound to 127.0.0.1 ON PURPOSE. This stack runs with no login (single-user
+      # mode), so publishing on 0.0.0.0 — Compose's default for a bare "8080:8080" —
+      # would let anyone on the same Wi-Fi read and modify your training data. Only
+      # widen this if you understand that, e.g. for pairing the iPhone app over your
+      # LAN; docs/self-host.md explains the tradeoff.
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+
+volumes:
+  iron-data:
+    # Explicit name so backup/restore instructions can refer to it literally.
+    name: iron-data

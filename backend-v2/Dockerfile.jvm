@@ -1,0 +1,83 @@
+# JVM production image — the SELF-HOST artifact (bean bjuq, milestone sgfg).
+#
+# Why a second Dockerfile instead of a flag on the native one: the two builds have
+# genuinely different shapes. Native (Dockerfile) is what Railway runs — ~60 MB at
+# rest, instant start, but a ~10 minute compile that CANNOT cross-compile, so
+# multi-arch would need one CI runner per architecture. Self-hosters are on arm64
+# Macs and amd64 Linux/Windows, so multi-arch is mandatory; JVM gets it from a
+# single buildx run because the jar is architecture-independent and only the base
+# image differs. A laptop can spare the ~300 MB and 2 s of startup.
+#
+# Built from the REPO ROOT (the frontend/ sibling must be in context):
+#   docker build -f backend-v2/Dockerfile.jvm -t iron-trainer .
+
+# --platform=$BUILDPLATFORM on both build stages: their outputs (a JS bundle and a
+# JVM jar) are architecture-independent, so they run NATIVELY on the CI runner and
+# only the tiny final stage is emulated per target arch. Without this, buildx runs
+# the whole Dockerfile under QEMU for linux/arm64 and an emulated Maven build takes
+# the better part of an hour for a byte-identical jar.
+#
+# Stage 1: the React SPA. Identical to the native image's stage 1 — the web UI is
+# baked in so the container serves API and app on one origin and needs no CORS setup.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Quarkus JVM build. Dependencies resolve in their own layer so a source
+# change doesn't re-download the world on every rebuild.
+#
+# `unzip` is not optional here. mvnw picks its download format at mvnw:178-182:
+#
+#     if ! command -v unzip >/dev/null; then
+#       distributionUrl="${distributionUrl%.zip}.tar.gz"
+#
+# but .mvn/wrapper/maven-wrapper.properties pins the checksum of the .zip. With no
+# unzip the wrapper fetches the .tar.gz and checks it against the .zip sum, and dies
+# with "Maven distribution might be compromised" — a supply-chain-shaped message for
+# a plain format mismatch. eclipse-temurin ships without unzip, so this one apt line
+# is what makes the wrapper usable. Tracked as bean qpec; the wrapper itself is still
+# wrong and the native Dockerfile is exposed to the same trap if its base ever loses
+# unzip.
+#
+# Using ./mvnw rather than a maven:* image keeps the Maven version pinned by the
+# committed wrapper (3.9.16), identical to local and CI builds. Build stage only —
+# nothing here reaches the runtime image.
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk AS build
+RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY backend-v2/pom.xml backend-v2/mvnw ./
+COPY backend-v2/.mvn .mvn
+RUN ./mvnw -B -q dependency:go-offline
+COPY backend-v2/src ./src
+COPY --from=frontend /app/frontend/dist ./src/main/resources/META-INF/resources/
+RUN ./mvnw -B package -DskipTests
+
+# Stage 3: JRE runtime. eclipse-temurin publishes both amd64 and arm64, which is
+# the whole reason this variant exists.
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+# The quarkus-app fast-jar layout is four directories, not one jar — copied
+# most-stable-first so app/ and quarkus/ churn without invalidating lib/.
+COPY --from=build /app/target/quarkus-app/lib/ ./lib/
+COPY --from=build /app/target/quarkus-app/quarkus-run.jar ./quarkus-run.jar
+COPY --from=build /app/target/quarkus-app/app/ ./app/
+COPY --from=build /app/target/quarkus-app/quarkus/ ./quarkus/
+COPY backend-v2/start.sh /start.sh
+RUN chmod +x /start.sh
+# start.sh already handles this case: no /app/application binary means it falls
+# through to `exec java -jar quarkus-run.jar`. It also splits a postgres:// style
+# DATABASE_URL into the JDBC url + credentials Quarkus needs, which is what lets
+# the compose stack point at the db service with one variable.
+ENV QUARKUS_HTTP_PORT=8080
+# 0.0.0.0 so the container is reachable from the host; Quarkus defaults to it in
+# prod but state it rather than rely on the default.
+ENV QUARKUS_HTTP_HOST=0.0.0.0
+EXPOSE 8080
+# Don't run as root: this image is aimed at other people's laptops.
+RUN useradd --uid 10001 --create-home appuser && chown -R appuser /app
+USER appuser
+CMD ["/start.sh"]
