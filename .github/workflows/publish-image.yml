@@ -32,6 +32,12 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tags are needed to work out which release the upgrade test should
+          # upgrade FROM. checkout does a shallow clone without tags by default,
+          # which would leave `git tag -l` empty and make the gate silently skip
+          # on every run — a gate that never runs is worse than no gate.
+          fetch-depth: 0
 
       # QEMU only has to emulate the final JRE stage — the Maven and npm stages are
       # pinned to $BUILDPLATFORM in the Dockerfile and run natively.
@@ -107,3 +113,35 @@ jobs:
 
       - if: always()
         run: docker rm -f app db 2>/dev/null; docker network rm smoke 2>/dev/null; true
+
+      # Upgrade gate (bean yijb). Everything else in the self-host milestone fails
+      # cheaply; a bad migration destroys someone's training history and they find
+      # out long after the backup they never took. Runs the PREVIOUS published
+      # release against a real Postgres, seeds data through the real API, then boots
+      # the image we just pushed against that same database and proves the rows are
+      # still there AND still readable.
+      #
+      # Deliberately asserts on DATA, not just health: a destructive migration can
+      # complete successfully, bump the schema version, and leave a perfectly
+      # healthy app serving an empty database. Verified that failure mode locally
+      # with a throwaway `DROP TABLE` migration — health passed, the row-count
+      # assertion caught it.
+      #
+      # Skipped when there is no previous release to upgrade FROM (the very first
+      # tag), rather than failing the publish.
+      - name: Upgrade test from the previous release
+        run: |
+          set -eu
+          IMAGE_LC=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          NEW="${{ env.REGISTRY }}/${IMAGE_LC}:sha-$(git rev-parse --short HEAD)"
+          # Most recent v* tag that is not the commit we are building.
+          PREV_TAG=$(git tag -l 'v*' --sort=-v:refname \
+            | grep -v "^$(git describe --tags --exact-match HEAD 2>/dev/null || echo __none__)$" \
+            | head -1)
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous release tag — nothing to upgrade from. Skipping."
+            exit 0
+          fi
+          OLD="${{ env.REGISTRY }}/${IMAGE_LC}:${PREV_TAG#v}"
+          echo "upgrading $OLD -> $NEW"
+          bash backend-v2/scripts/upgrade-test.sh "$OLD" "$NEW"
