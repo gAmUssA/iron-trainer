@@ -75,7 +75,12 @@ jobs:
       - name: Smoke-test the published image
         run: |
           set -eu
-          TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$(git rev-parse --short HEAD)"
+          # github.repository preserves the owner's capitalisation (gAmUssA/...),
+          # but Docker refs must be lowercase. metadata-action lowercases it for the
+          # push, which is why the publish above succeeds and only this hand-rolled
+          # tag broke with "repository name must be lowercase".
+          IMAGE_LC=$(echo "${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          TAG="${{ env.REGISTRY }}/${IMAGE_LC}:sha-$(git rev-parse --short HEAD)"
           docker network create smoke
           docker run -d --name db --network smoke \
             -e POSTGRES_USER=iron -e POSTGRES_PASSWORD=iron -e POSTGRES_DB=iron \
