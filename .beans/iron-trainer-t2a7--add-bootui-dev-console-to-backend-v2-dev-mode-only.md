@@ -5,7 +5,7 @@ status: completed
 type: task
 priority: normal
 created_at: 2026-08-18T16:16:40Z
-updated_at: 2026-08-18T17:42:38Z
+updated_at: 2026-08-19T06:01:53Z
 ---
 
 Add BootUI (https://www.julien-dubois.com/boot-ui/setup) as a development console
@@ -85,6 +85,8 @@ dark at runtime.
 ## Remaining (low priority, not blocking)
 - [ ] The four BootUI jars ride along in the packaged app — dead weight in the
       production image, no known exposure. Measure the size before deciding it matters
-- [ ] Licensing is still unstated on the vendor's site. Worth resolving for a
-      dependency that is now shipping inside our production artifact
+- [x] Licensing: **Apache License 2.0** (confirmed 2026-08-19 against the
+      jdubois/boot-ui README — badge, explicit statement and LICENSE link; no
+      dual-licensing and no commercial-use restriction). Permissive, fine to ship
+      inside the production artifact.
 - [ ] 1.12.0 -> 1.14.0 is available if we want the newer panels

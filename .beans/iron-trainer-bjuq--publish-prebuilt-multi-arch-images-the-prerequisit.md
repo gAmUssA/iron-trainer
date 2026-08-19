@@ -5,7 +5,7 @@ status: todo
 type: epic
 priority: high
 created_at: 2026-08-18T16:09:34Z
-updated_at: 2026-08-18T16:09:34Z
+updated_at: 2026-08-19T06:01:46Z
 parent: iron-trainer-sgfg
 ---
 
@@ -29,7 +29,7 @@ matrix and removing the cross-compile problem is worth more. Revisit if anyone
 tries to run this on a Raspberry Pi.
 
 ## Todo
-- [ ] Decide native vs JVM (recommendation above — needs a call, it sets the CI shape)
+- [x] Decide native vs JVM — **JVM, decided 2026-08-19**. Native stays for Railway; the self-host image is JVM. Removes the cross-compile problem entirely (one buildx run covers amd64+arm64) and cuts CI from ~10 min/arch to ~1 min.
 - [ ] Add a JVM Dockerfile (or a build-arg branch in the existing one) that reuses the
       existing stage-1 SPA build so the web UI is still baked in
 - [ ] GH workflow: build + push to ghcr.io/gamussa/iron-trainer on push to main and on tag
