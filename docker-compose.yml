@@ -1,0 +1,54 @@
+# Run Iron Trainer on your own machine.
+#
+#   docker compose up
+#
+# then open http://localhost:8080 — that is the whole install. Nothing here needs
+# editing to get started: no Strava key, no AI key, no account. Connecting Strava
+# and enabling AI plan generation are optional and explained in docs/self-host.md.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: iron
+      POSTGRES_PASSWORD: iron
+      POSTGRES_DB: iron
+    volumes:
+      # Named volume = your training history. `docker compose down` keeps it;
+      # `docker compose down -v` DELETES it. Back up before upgrading.
+      - iron-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iron -d iron"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    image: ghcr.io/gamussa/iron-trainer:latest
+    depends_on:
+      db:
+        # Not just "started" — Quarkus runs Flyway at boot and would race an
+        # unready database on the very first `up`, which is the one run a new
+        # user judges the project on.
+        condition: service_healthy
+    environment:
+      # start.sh splits this into the JDBC url + credentials Quarkus wants.
+      DATABASE_URL: postgres://iron:iron@db:5432/iron
+      # Cookie signing. Compose has no secret generation, so this is a fixed
+      # local-only value; it never leaves your machine and there is no login to
+      # forge in single-user mode. Change it if you expose this beyond localhost.
+      SESSION_SECRET: local-single-user-not-a-secret
+      # Optional — see docs/self-host.md. Absent is a supported state:
+      #   STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET  -> live Strava sync
+      #   ANTHROPIC_API_KEY                        -> AI plan adaptation
+      # Without them the app still runs: import your Strava/WHOOP archives and
+      # the deterministic planner builds your plan.
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  iron-data:
