@@ -1,11 +1,11 @@
 ---
 # iron-trainer-bjuq
 title: Publish prebuilt multi-arch images (the prerequisite)
-status: in-progress
+status: completed
 type: epic
 priority: high
 created_at: 2026-08-18T16:09:34Z
-updated_at: 2026-08-19T06:12:29Z
+updated_at: 2026-08-19T13:36:35Z
 parent: iron-trainer-sgfg
 ---
 
@@ -94,11 +94,23 @@ wrapper-pinned Maven 3.9.16 still applies. Filed as bean qpec.
 selected right before the failure — adjacency, not causation. Disproved by experiment:
 an image with wget AND unzip runs `./mvnw -version` fine. Caught in review on #121.)
 
+### Published 2026-08-19 — v0.1.0
+
+- [x] First publish run. The merge of #121 pushed a good image and then failed its
+      OWN smoke test: `github.repository` keeps the owner's capitalisation
+      (`gAmUssA/...`) and Docker refs must be lowercase. metadata-action lowercases
+      it for the push, the hand-rolled tag in the smoke step did not. Fixed in #122;
+      re-run green ("healthy after 3 attempts", "SPA served OK").
+- [x] GHCR package is public — **no manual step needed**, it inherited visibility
+      from the public repo. Verified with an anonymous registry token: HTTP 200 on
+      the manifest with no credentials.
+- [x] Pull-and-run without a repo checkout: in an empty directory, `curl -O` the raw
+      docker-compose.yml and `docker compose up` gives health 200, the SPA at
+      `assets/index-B_SUdrSP.js`, and `auth_required:false authenticated:true`.
+      (Still from this machine — a foreign box with a cold Docker cache is untested.)
+- [x] Tagged **v0.1.0**; `:0.1.0`, `:0.1` and `:latest` all published multi-arch
+      (linux/amd64 + linux/arm64). The compose file now pins `:0.1` (bean thuc).
+
 ### Still open
-- [ ] Make the GHCR package public so `docker pull` needs no auth (must be done in
-      the repo's package settings after the first publish — cannot be set from the
-      workflow)
-- [ ] Verify pull-and-run on a clean machine with no repo checkout. The workflow's
-      smoke test covers pull-and-boot in CI, but not "a human with only Docker
-      Desktop and a compose file"
-- [ ] First real publish run — the workflow has never executed
+- [ ] Test on a genuinely foreign machine — cold Docker cache, no local images, ideally
+      amd64 since everything so far was verified on arm64
