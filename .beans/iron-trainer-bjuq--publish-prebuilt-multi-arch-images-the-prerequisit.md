@@ -70,24 +70,29 @@ The container result above is the honest one.)
 
 ### Landmine found on the way — worth its own bean
 
-`backend-v2/mvnw` is **broken on any image that has wget**. The wrapper rewrites the
-download to `apache-maven-3.9.16-bin.tar.gz` but validates it against the `.zip`
-checksum in `.mvn/wrapper/maven-wrapper.properties`, so it always fails with:
+`backend-v2/mvnw` is **broken on any image without `unzip`**. The wrapper chooses its
+download FORMAT from whether unzip exists (mvnw:178-182) and its download TOOL later
+and independently (mvnw:194-199). With no unzip it fetches
+`apache-maven-3.9.16-bin.tar.gz` while still validating against the `.zip` checksum in
+`.mvn/wrapper/maven-wrapper.properties`, failing with:
 
 ```
 Error: Failed to validate Maven distribution SHA-256, your Maven distribution
 might be compromised.
 ```
 
-which reads like a supply-chain compromise and is really a URL/checksum mismatch. I
-confirmed the pinned checksum is correct for the `.zip` (downloaded it independently
-and it matched), and traced the failure with `sh -x`.
+which reads like a supply-chain compromise and is really a format mismatch. I
+confirmed the pinned checksum is correct for the `.zip` by downloading it
+independently.
 
-The native Dockerfile gets away with it only because its Mandrel/UBI9 base has curl
-and no wget, so it takes the curl branch and fetches the `.zip` the checksum
-describes. **If Railway's builder base ever gains wget, the production native build
-breaks the same way.** `Dockerfile.jvm` sidesteps it by using the `maven:*` image's
-own `mvn`, but the wrapper itself is still wrong.
+The native Dockerfile escapes it only because its Mandrel/UBI9 base ships unzip.
+**If Railway's builder base ever drops unzip, the production native build breaks the
+same way.** `Dockerfile.jvm` installs unzip and keeps using `./mvnw`, so the
+wrapper-pinned Maven 3.9.16 still applies. Filed as bean qpec.
+
+(Correction: I first blamed the presence of `wget`, because `sh -x` showed wget being
+selected right before the failure — adjacency, not causation. Disproved by experiment:
+an image with wget AND unzip runs `./mvnw -version` fine. Caught in review on #121.)
 
 ### Still open
 - [ ] Make the GHCR package public so `docker pull` needs no auth (must be done in

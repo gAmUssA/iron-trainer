@@ -29,26 +29,32 @@ RUN npm run build
 # Stage 2: Quarkus JVM build. Dependencies resolve in their own layer so a source
 # change doesn't re-download the world on every rebuild.
 #
-# `mvn`, NOT `./mvnw`, and that is deliberate. The committed wrapper is broken on
-# any image that has wget: it rewrites the download to
-# apache-maven-3.9.16-bin.tar.gz but still checks it against the .zip checksum in
-# .mvn/wrapper/maven-wrapper.properties, so validation always fails with
-# "Maven distribution might be compromised" — a supply-chain-shaped error message
-# for a plain URL/checksum mismatch. The native Dockerfile gets away with it only
-# because its Mandrel/UBI9 base has curl and no wget, so it takes the curl branch
-# and fetches the .zip that the checksum actually describes.
+# `unzip` is not optional here. mvnw picks its download format at mvnw:178-182:
 #
-# Using the maven:* image sidesteps the wrapper: Maven is preinstalled and pinned
-# by the image tag. Filed separately — if Railway's builder base ever gains wget,
-# the native build breaks the same way, and fixing the wrapper properties is a
-# shared-tooling change rather than something to smuggle into this image.
-FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS build
+#     if ! command -v unzip >/dev/null; then
+#       distributionUrl="${distributionUrl%.zip}.tar.gz"
+#
+# but .mvn/wrapper/maven-wrapper.properties pins the checksum of the .zip. With no
+# unzip the wrapper fetches the .tar.gz and checks it against the .zip sum, and dies
+# with "Maven distribution might be compromised" — a supply-chain-shaped message for
+# a plain format mismatch. eclipse-temurin ships without unzip, so this one apt line
+# is what makes the wrapper usable. Tracked as bean qpec; the wrapper itself is still
+# wrong and the native Dockerfile is exposed to the same trap if its base ever loses
+# unzip.
+#
+# Using ./mvnw rather than a maven:* image keeps the Maven version pinned by the
+# committed wrapper (3.9.16), identical to local and CI builds. Build stage only —
+# nothing here reaches the runtime image.
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk AS build
+RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY backend-v2/pom.xml ./
-RUN mvn -B -q dependency:go-offline
+COPY backend-v2/pom.xml backend-v2/mvnw ./
+COPY backend-v2/.mvn .mvn
+RUN ./mvnw -B -q dependency:go-offline
 COPY backend-v2/src ./src
 COPY --from=frontend /app/frontend/dist ./src/main/resources/META-INF/resources/
-RUN mvn -B package -DskipTests
+RUN ./mvnw -B package -DskipTests
 
 # Stage 3: JRE runtime. eclipse-temurin publishes both amd64 and arm64, which is
 # the whole reason this variant exists.

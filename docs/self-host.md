@@ -69,26 +69,43 @@ It lives in a Docker volume called `iron-data`, not in a file you can see.
 | `docker compose down` | stops everything, **keeps** your data |
 | `docker compose down -v` | stops everything and **deletes your training history** |
 
-Back up before upgrading:
+### Back up
 
 ```bash
-docker compose exec -T db pg_dump -U iron iron > iron-backup-$(date +%F).sql
+docker compose exec -T db pg_dump -U iron --clean --if-exists iron > iron-backup-$(date +%F).sql
 ```
 
-Restore:
+`--clean --if-exists` matters: it makes the dump able to replace an existing
+database. A plain `pg_dump` replayed into a database that already has tables fails
+with `relation already exists` and leaves you half-restored.
+
+### Restore
+
+Stop the app first so nothing writes while the schema is being replaced, and make
+psql stop at the first error instead of ploughing on:
 
 ```bash
-docker compose exec -T db psql -U iron -d iron < iron-backup-2026-08-19.sql
+docker compose stop app
+docker compose exec -T db psql -U iron -d iron -v ON_ERROR_STOP=1 < iron-backup-2026-08-19.sql
+docker compose start app
 ```
+
+If it reports an error, your database is in a partial state — restore again from a
+good dump rather than starting the app.
 
 ## Updating
+
+**Back up first** (above), then:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-Database migrations run automatically at startup. Take a backup first anyway.
+Database migrations run automatically at startup and are not reversible. The compose
+file currently tracks `latest`, so a pull can bring a larger change than you expect;
+every build also publishes a `sha-xxxxxxx` tag, and you can pin `image:` to one to
+freeze on a known-good version.
 
 ## When something is wrong
 
@@ -109,8 +126,21 @@ from the Training Plan tab.
 **Everything is broken and I want to start over** — `docker compose down -v` then
 `docker compose up`. This deletes your data; export a backup first if you want it.
 
-## The iPhone app
+## The iPhone app, and opening this up beyond your laptop
 
-The iOS app pairs to a server over the network. Pointing it at a laptop install means the
-phone must be on the same Wi-Fi and able to reach your machine's LAN address — it will not
-work as smoothly as the hosted version, and it will stop working when your laptop sleeps.
+By default the app is reachable **only from the computer it runs on**
+(`127.0.0.1:8080` in `docker-compose.yml`). That is deliberate: this stack has no
+login — it assumes one athlete, you — so anything that can reach the port can read
+and change your training data.
+
+The iOS app pairs to a server over the network, so using it against a laptop install
+means widening that. If you choose to:
+
+```yaml
+    ports:
+      - "8080:8080"      # now reachable by anything on your network
+```
+
+Only do this on a network you trust, understand that there is no password in front
+of it, and change `SESSION_SECRET` to something private. It will also stop working
+whenever your laptop sleeps. The hosted version is the better route for phone use.
