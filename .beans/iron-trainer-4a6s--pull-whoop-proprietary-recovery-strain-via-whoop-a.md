@@ -5,7 +5,7 @@ status: todo
 type: feature
 priority: normal
 created_at: 2026-07-29T20:38:25Z
-updated_at: 2026-08-21T02:40:21Z
+updated_at: 2026-08-21T04:00:18Z
 parent: iron-trainer-ids6
 blocked_by:
     - iron-trainer-mfm9
@@ -132,3 +132,26 @@ touch `cycle_start`/`cycle_end` at all.
 
 Bean **mfm9** — three unknowns (localhost redirect URI acceptability, historical reach,
 sleep→cycle direction). Do that first; two of the three change the design.
+
+## Goal set by Viktor 2026-08-21
+
+- **Batch (export ZIP) = initial import.** Stays permanently — it is also the only
+  source of journal entries (the API has no journal endpoint), so it is not merely a
+  bootstrap.
+- **API = incremental job, daily at 10:00.** Not hourly. Recovery is scored once each
+  morning, so a single 10:00 run costs ~4 requests/day and catches the day's data.
+  Confirms the research's "skip webhooks" recommendation with even more margin.
+
+### Probe status
+- **Q1 ANSWERED: localhost redirect URIs are accepted.** Verified in the WHOOP
+  developer dashboard on 2026-08-21 — `http://localhost:8080/api/whoop/callback`
+  passed form validation (the only errors raised were Privacy Policy URL and Contact,
+  both since supplied). Self-hosters can therefore do a normal OAuth round-trip; the
+  paste-the-URL-back fallback is NOT needed.
+- The app is registered with scopes `read:recovery`, `read:cycles`, `read:sleep`.
+  Credentials are in `.env` as `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET`.
+- Q2 (historical reach) and Q3 (sleep -> cycle direction) still open; both need a live
+  token, so they are answered during Phase 2 shadow-mode rather than before Phase 1.
+
+### Privacy policy
+Published at https://irontrainer.app/privacy (PR #126) — required for the WHOOP app.
