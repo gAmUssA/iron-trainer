@@ -95,4 +95,22 @@ public class Athlete extends PanacheEntityBase {
 
     @Column(name = "strava_token_expires_at")
     public Long stravaTokenExpiresAt;
+
+    // WHOOP OAuth (bean 4a6s). Same shape as the Strava trio, but the refresh
+    // token is SINGLE-USE and rotates on every refresh — see WhoopTokens for why
+    // losing it locks the athlete out rather than merely inconveniencing them.
+    @Column(name = "whoop_refresh_token")
+    public String whoopRefreshToken;
+
+    @Column(name = "whoop_access_token")
+    public String whoopAccessToken;
+
+    @Column(name = "whoop_token_expires_at")
+    public Long whoopTokenExpiresAt;
+
+    /** The WHOOP member this connection belongs to. Stamped at connect so that
+     * reconnecting to a DIFFERENT member is detectable, instead of silently
+     * blending two people's recovery data into one athlete's history. */
+    @Column(name = "whoop_user_id")
+    public Long whoopUserId;
 }
