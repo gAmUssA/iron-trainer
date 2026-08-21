@@ -129,10 +129,11 @@ export function WhoopView() {
     const q = new URLSearchParams(window.location.search);
     const ok = q.get("whoop_connected");
     const err = q.get("whoop_error");
-    // The callback runs the first import BEFORE redirecting, so by the time this
-    // renders it has already finished or already failed — nothing is in flight.
-    // The panel's "newest synced day" line reports which, so do not narrate it.
-    if (ok) setMsg("WHOOP connected.");
+    // Accurate again: the callback now QUEUES the first import and redirects
+    // immediately, because running it inline blew through Cloudflare's 100s edge
+    // timeout and handed the athlete a 524 on a connection that had actually
+    // succeeded. The poll below follows the job to completion.
+    if (ok) setMsg("WHOOP connected. Importing your history in the background…");
     if (err) setMsg(`WHOOP connection failed: ${WHOOP_OAUTH_ERRORS[err] ?? err}`);
     if (ok || err) window.history.replaceState({}, "", window.location.pathname);
   }, []);
@@ -140,6 +141,20 @@ export function WhoopView() {
   useEffect(() => {
     loadStatus();
   }, []);
+
+  // While a sync is in flight — the one queued at connect, or the daily job
+  // landing while the page is open — keep the panel honest rather than leaving it
+  // reading "No day has synced yet" until the athlete thinks to refresh. Stops as
+  // soon as the job reaches a terminal state, so an idle page does no polling.
+  const syncRunning =
+    status?.last_sync?.status === "running" || status?.last_sync?.status === "queued";
+  useEffect(() => {
+    if (!syncRunning) return;
+    const t = window.setInterval(() => {
+      loadStatus().then(() => load(days));
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [syncRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function doSync(full: boolean) {
     setSyncing(true);
@@ -252,7 +267,7 @@ export function WhoopView() {
     lastSync?.status === "failed"
       ? `Last sync failed: ${lastSync.error ?? "unknown error"}.`
       : lastSync?.status === "running" || lastSync?.status === "queued"
-        ? "A sync is running now."
+        ? "Importing now — a first full history sync takes a few minutes."
         : null;
 
   // Read from config, never assumed: WHOOP_SYNC_CRON can be retimed or switched

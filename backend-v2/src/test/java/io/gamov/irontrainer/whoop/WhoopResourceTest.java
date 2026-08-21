@@ -1,20 +1,32 @@
 package io.gamov.irontrainer.whoop;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gamov.irontrainer.athlete.Athlete;
 import io.quarkus.narayana.jta.QuarkusTransaction;
+import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 /** POST /api/whoop/import (multipart ZIP → per-day upsert) + GET /api/whoop/cycles.
  * Dedicated default athlete (7001) — same isolation trick as StravaImportEndpointTest. */
@@ -23,6 +35,13 @@ import org.junit.jupiter.api.Test;
 class WhoopResourceTest {
 
     static final int AID = 7001;
+
+    @InjectMock
+    @org.eclipse.microprofile.rest.client.inject.RestClient
+    WhoopApi whoopApi;
+
+    @jakarta.inject.Inject
+    WhoopSync whoopSync;
 
     public static class Profile implements QuarkusTestProfile {
         @Override
@@ -219,5 +238,117 @@ class WhoopResourceTest {
                 .then().statusCode(200)
                 .body("sync_cron", is("0 0 10 * * ?"))
                 .body("sync_hour", is(10));
+    }
+
+    @Test
+    void callbackDoesNotRunTheBackfillInsideTheRequest() throws Exception {
+        // The first sync is a FULL backfill — ~180 paged requests at 700ms pacing,
+        // so ~128s of sleeping before any network time. Inline it cannot fit inside
+        // an HTTP request: Cloudflare cuts the connection at 100s and the athlete
+        // gets a 524 on a connection that actually SUCCEEDED. Production did exactly
+        // that — backend 200 and Cloudflare 524, both at 18:30:13.
+        //
+        // So the assertion is wall-clock, because the bug was wall-clock. The WHOOP
+        // client is mocked to BLOCK on the first data call: if the sync still runs
+        // inline the callback cannot return, and this fails by timing out rather
+        // than by a subtle wrong value.
+        CountDownLatch syncStarted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+
+        Mockito.when(whoopApi.exchangeCode(Mockito.any(), Mockito.any(), Mockito.any(),
+                        Mockito.any(), Mockito.any()))
+                .thenReturn(Map.of("access_token", "at", "refresh_token", "rt",
+                        "expires_in", 3600));
+        Mockito.when(whoopApi.cycles(Mockito.any(), Mockito.any(), Mockito.any(),
+                        Mockito.anyInt(), Mockito.any()))
+                .thenAnswer(inv -> {
+                    syncStarted.countDown();
+                    release.await(30, TimeUnit.SECONDS);   // hold the sync open
+                    return Map.of("records", List.of());
+                });
+
+        // A state the CSRF check will accept, so the handler reaches the sync.
+        String state = "smoke-state-value";
+        QuarkusTransaction.requiringNew().run(() -> {
+            Athlete a = Athlete.findById(AID);
+            a.whoopOauthState = state;
+        });
+
+        try {
+            long start = System.nanoTime();
+            given().redirects().follow(false)
+                    .when().get("/api/whoop/callback?code=abc&state=" + state)
+                    .then().statusCode(anyOf(is(302), is(303), is(307)));
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+            assertTrue(syncStarted.await(10, TimeUnit.SECONDS),
+                    "the initial sync should have been queued and started");
+            assertTrue(elapsedMs < 5_000,
+                    "callback must redirect without waiting for the backfill, took "
+                            + elapsedMs + "ms");
+        } finally {
+            release.countDown();
+        }
+    }
+
+
+    @Test
+    void catchUpStartsFromTheNewestStoredDayNotFiveYearsBack() throws Exception {
+        // The point of the whole change: an athlete who already uploaded the export
+        // ZIP has years of days on disk, and re-fetching them costs ~180 paged
+        // requests and minutes of pacing to rewrite rows that were already right.
+        // The ZIP row seeded by the import tests above is what makes this concrete —
+        // source does not matter, a stored day is a covered day.
+        // Its own athlete, seeded here. Sharing the default one meant either
+        // depending on whichever test ran first (a silent skip, which tests
+        // nothing) or clearing its rows (which broke the import test's counts).
+        final int gapAid = 7002;
+        String seeded = LocalDate.now(ZoneOffset.UTC).minusDays(40).toString();
+        QuarkusTransaction.requiringNew().run(() -> {
+            if (Athlete.findById(gapAid) == null) {
+                Athlete.getEntityManager()
+                        .createNativeQuery("INSERT INTO athlete (id) VALUES (" + gapAid + ")")
+                        .executeUpdate();
+            }
+            WhoopCycle.delete("athleteId", gapAid);
+            WhoopCycle row = new WhoopCycle();
+            row.athleteId = gapAid;
+            row.date = seeded;
+            row.source = "zip";
+            row.persist();
+        });
+
+        AtomicReference<String> requestedStart = new AtomicReference<>();
+        Mockito.when(whoopApi.cycles(Mockito.any(), Mockito.any(), Mockito.any(),
+                        Mockito.anyInt(), Mockito.any()))
+                .thenAnswer(inv -> {
+                    requestedStart.compareAndSet(null, (String) inv.getArgument(1));
+                    return Map.of("records", List.of());
+                });
+        Mockito.when(whoopApi.recovery(Mockito.any(), Mockito.any(), Mockito.any(),
+                        Mockito.anyInt(), Mockito.any())).thenReturn(Map.of("records", List.of()));
+        Mockito.when(whoopApi.sleep(Mockito.any(), Mockito.any(), Mockito.any(),
+                        Mockito.anyInt(), Mockito.any())).thenReturn(Map.of("records", List.of()));
+
+        QuarkusTransaction.requiringNew().run(() -> {
+            Athlete a = Athlete.findById(gapAid);
+            a.whoopRefreshToken = "rt";
+            a.whoopAccessToken = "at";
+            a.whoopTokenExpiresAt = Instant.now().getEpochSecond() + 3600;
+        });
+
+        whoopSync.runCatchUp(gapAid);
+
+        String start = requestedStart.get();
+        org.junit.jupiter.api.Assertions.assertNotNull(start, "cycles should have been fetched");
+        LocalDate asked = Instant.parse(start).atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate expected = LocalDate.parse(seeded).minusDays(3);   // the overlap
+        assertEquals(expected, asked,
+                "catch-up must start just before the newest stored day, not years back");
+
+        // And the bound that stops one ancient row causing an unbounded walk still
+        // holds: the request is never earlier than the full window would be.
+        assertTrue(!asked.isBefore(LocalDate.now(ZoneOffset.UTC).minusYears(50)),
+                "catch-up must stay inside the configured history window");
     }
 }

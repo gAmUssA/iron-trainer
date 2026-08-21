@@ -106,6 +106,52 @@ public class WhoopSync {
         }
     }
 
+    /** Fill the gap between what is already stored and now — the right default
+     * when connecting, and usually seconds rather than minutes.
+     *
+     * <p>The blunt alternative, a five-year full walk on every connect, ignores the
+     * fact that most athletes arrive here having ALREADY uploaded the export ZIP.
+     * Re-fetching years of days that are already on disk costs ~180 paged requests
+     * and, at the 700ms pacing WHOOP's rate limit forces, minutes of wall clock —
+     * to rewrite rows that were already correct.
+     *
+     * <p>So the start date comes from the newest row on file for this athlete,
+     * regardless of source: a ZIP-imported day counts as covered. Two bounds on it:
+     * <ul>
+     *   <li>Nothing on file at all → there is no gap to fill, only a history to
+     *       fetch, so fall back to the full window.</li>
+     *   <li>Never reach back further than the full window would, so an athlete with
+     *       one ancient row does not trigger an unbounded walk.</li>
+     * </ul>
+     *
+     * <p>The overlap re-reads the last few days deliberately. WHOOP scores recovery
+     * the morning after, sleep can be edited, and an export ZIP's final day is
+     * frequently partial — without it the newest stored day stays stale forever,
+     * because a gap fill that starts strictly after it never looks at it again.
+     * Re-reading is free: the upsert is idempotent and skips unchanged rows. */
+    public Result runCatchUp(int aid) {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate earliest = today.minusYears(historyYears);
+        String newest = io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().call(() ->
+                WhoopCycle.<WhoopCycle>find("athleteId = ?1 order by date desc", aid)
+                        .firstResultOptional().map(c -> c.date).orElse(null));
+        LocalDate from = earliest;
+        if (newest != null) {
+            try {
+                LocalDate gapStart = LocalDate.parse(newest).minusDays(INCREMENTAL_LOOKBACK_DAYS);
+                from = gapStart.isAfter(earliest) ? gapStart : earliest;
+            } catch (RuntimeException e) {
+                // An unparseable stored date is not worth failing the sync over;
+                // the full window is always a correct, if slower, answer.
+                LOG.warnf("Unparseable newest whoop_cycles date %s for athlete %d — "
+                        + "falling back to the full window.", newest, aid);
+            }
+        }
+        LOG.infof("WHOOP catch-up for athlete %d from %s (newest stored day: %s).",
+                aid, from, newest == null ? "none" : newest);
+        return sync(aid, from.atStartOfDay().toInstant(ZoneOffset.UTC).toString(), null);
+    }
+
     /** Full backfill or incremental catch-up. */
     public Result runSync(int aid, boolean full) {
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
