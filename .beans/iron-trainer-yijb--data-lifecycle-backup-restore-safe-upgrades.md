@@ -15,13 +15,26 @@ On SaaS, upgrades and backups are our problem. On a laptop they become the athle
 problem, and they will not think about either until something is already lost.
 
 ## Todo
-- [ ] Backup: a documented one-liner (`docker compose exec db pg_dump ...`) and
-      ideally a button in the admin console that streams a dump to the browser
-- [ ] Restore: the matching path, tested — a backup nobody has restored is not a backup
-- [ ] **Upgrade test in CI**: boot the N-1 published image, seed data, pull N, assert
-      Flyway migrates cleanly and the data survives. This is the single most valuable
-      test in the milestone; every other bug costs an hour, a bad migration costs an
-      athlete their training history
+- [x] Backup + restore documented in docs/self-host.md and TESTED end to end (the
+      commands as written): `pg_dump --clean --if-exists` produces 16 DROP guards,
+      and restoring into an ALREADY-INITIALISED database with `ON_ERROR_STOP=1`
+      exits 0 with zero errors and a healthy app afterwards. The first draft was
+      broken exactly as a reviewer predicted (`relation already exists`, partial
+      restore); a backup nobody has restored is not a backup.
+- [ ] Admin-console button that streams a dump to the browser (the CLI path works;
+      this is the non-technical-user version)
+- [x] **Upgrade test in CI** — `backend-v2/scripts/upgrade-test.sh`, wired into
+      publish-image.yml after the push. Boots the previous release against a real
+      Postgres, seeds a fitness-test result through the real API, then boots the
+      newly pushed image against that same database and asserts the rows survived
+      AND are still readable through the API (a migration can leave a table intact
+      and still break the mapping).
+
+      **Verified it actually gates**, with a throwaway `DROP TABLE` V10: the
+      migration SUCCEEDED, the schema advanced 9 -> 10, and the app came up
+      HEALTHY — a health check alone would have passed it. Only the row-count
+      assertion caught it: `row count changed across the upgrade: 1 -> 0`, exit 1.
+      That is the whole argument for asserting on data rather than on liveness.
 - [ ] Document where the data actually lives (named volume) and that
       `docker compose down -v` destroys it — the `-v` flag is a foot-gun
 - [ ] Decide the retention/pruning story for a local install (the SaaS prunes old
