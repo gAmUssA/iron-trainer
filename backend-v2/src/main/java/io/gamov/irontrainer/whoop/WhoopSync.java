@@ -45,6 +45,18 @@ public class WhoopSync {
     /** WHOOP caps page size at 25; asking for more is rejected, not clamped. */
     private static final int PAGE = 25;
 
+    /** Pause between pages. WHOOP allows 100 requests/minute = one per 600 ms;
+     * 700 ms leaves headroom for the three collections a sync walks plus any
+     * token refresh. A five-year backfill is ~230 requests, so this costs about
+     * three minutes — acceptable for something that runs once at connect and then
+     * only on a 3-day incremental window. */
+    private static final long PAGE_PAUSE_MS = 700;
+
+    /** 429 handling: escalating backoff, a few attempts, then give up and let the
+     * caller report it. The daily job will try again tomorrow. */
+    private static final int RATE_LIMIT_RETRIES = 4;
+    private static final long RATE_LIMIT_BACKOFF_MS = 5_000;
+
     /** Hard stop on pagination. A cursor bug that never returns null would
      * otherwise spin until the daily rate limit is gone. 500 pages x 25 = 12,500
      * cycles ≈ 34 years, far past any real history. */
@@ -165,20 +177,69 @@ public class WhoopSync {
         Map<String, Object> get(String nextToken);
     }
 
-    /** Walk a cursor-paginated collection to the end. */
+    /** Walk a cursor-paginated collection to the end, paced under the rate limit
+     * and retrying a 429.
+     *
+     * <p>Found by running a real backfill: WHOOP allows 100 requests/minute and a
+     * five-year walk is ~230 requests, so firing them as fast as the client can go
+     * earns a 429 partway through — for us, on the SECOND collection, after the
+     * cycles walk had already spent the budget. Unpaced, a full backfill can never
+     * complete. */
     private static List<Map<String, Object>> page(Pager pager) {
         List<Map<String, Object>> all = new ArrayList<>();
         String token = null;
         for (int i = 0; i < MAX_PAGES; i++) {
-            Map<String, Object> resp = pager.get(token);
+            Map<String, Object> resp = withRetry(pager, token);
             all.addAll(WhoopApi.records(resp));
             token = WhoopApi.nextToken(resp);
             if (token == null) {
                 return all;
             }
+            throttle(PAGE_PAUSE_MS);
         }
         LOG.warnf("WHOOP pagination hit the %d-page cap — results may be truncated.", MAX_PAGES);
         return all;
+    }
+
+    /** One page, retrying on 429 with escalating backoff.
+     *
+     * <p>WHOOP publishes no backoff guidance and it is unconfirmed whether it sends
+     * Retry-After, so this uses fixed escalating waits rather than pretending to
+     * honour a header that may not be there. Anything other than 429 propagates
+     * immediately — a 401 or 404 is not going to fix itself by waiting. */
+    private static Map<String, Object> withRetry(Pager pager, String token) {
+        RuntimeException last = null;
+        for (int attempt = 0; attempt < RATE_LIMIT_RETRIES; attempt++) {
+            try {
+                return pager.get(token);
+            } catch (RuntimeException e) {
+                if (!isRateLimited(e)) {
+                    throw e;
+                }
+                last = e;
+                long wait = RATE_LIMIT_BACKOFF_MS * (attempt + 1L);
+                LOG.warnf("WHOOP rate-limited (429); backing off %d ms (attempt %d/%d).",
+                        wait, attempt + 1, RATE_LIMIT_RETRIES);
+                throttle(wait);
+            }
+        }
+        throw last;
+    }
+
+    /** The REST client wraps the status in the message rather than exposing a typed
+     * 429, so match on the status code text. Narrow, but it is what the client gives us. */
+    private static boolean isRateLimited(RuntimeException e) {
+        String msg = e.getMessage();
+        return msg != null && msg.contains("429");
+    }
+
+    private static void throttle(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("WHOOP sync interrupted", e);
+        }
     }
 
     private static Map<Long, Map<String, Object>> indexBy(List<Map<String, Object>> rows, String key) {

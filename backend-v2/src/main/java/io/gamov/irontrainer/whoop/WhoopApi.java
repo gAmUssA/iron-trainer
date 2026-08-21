@@ -19,6 +19,13 @@ import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
  * <p>v2 only. v1 is unsupported (its webhooks were removed 2025-11-01) and no v1
  * REST sunset date has been published, so there is nothing to fall back to.
  *
+ * <p><b>Data endpoints live under /developer/v2/…, OAuth does not.</b> The docs
+ * present the endpoint as "get/v2/cycle" while the real URL is
+ * https://api.prod.whoop.com/developer/v2/cycle — an easy prefix to miss, and the
+ * failure is asymmetric and confusing: the token exchange succeeds (it really is
+ * at /oauth/oauth2/token, no prefix), so the connection looks healthy and only the
+ * first data call 404s. Confirmed against a live account 2026-08-21.
+ *
  * <p>Collection semantics that shape every call here:
  * <ul>
  *   <li>{@code limit} maxes out at <b>25</b> — not a suggestion, the API rejects more.</li>
@@ -62,7 +69,7 @@ public interface WhoopApi {
 
     /** GET /v2/cycle — physiological cycles (day strain, kilojoules, heart rate). */
     @GET
-    @Path("/v2/cycle")
+    @Path("/developer/v2/cycle")
     Map<String, Object> cycles(@HeaderParam("Authorization") String authorization,
                                @QueryParam("start") String start,
                                @QueryParam("end") String end,
@@ -72,7 +79,7 @@ public interface WhoopApi {
     /** GET /v2/recovery — recovery score, HRV, RHR, SpO2, skin temperature.
      * Each row carries cycle_id and sleep_id, which is how it joins the rest. */
     @GET
-    @Path("/v2/recovery")
+    @Path("/developer/v2/recovery")
     Map<String, Object> recovery(@HeaderParam("Authorization") String authorization,
                                  @QueryParam("start") String start,
                                  @QueryParam("end") String end,
@@ -85,7 +92,7 @@ public interface WhoopApi {
      * per-cycle route /v2/cycle/{id}/sleep returns the same data one cycle at a
      * time — ~1,800 extra requests on a five-year backfill for nothing. */
     @GET
-    @Path("/v2/activity/sleep")
+    @Path("/developer/v2/activity/sleep")
     Map<String, Object> sleep(@HeaderParam("Authorization") String authorization,
                               @QueryParam("start") String start,
                               @QueryParam("end") String end,
@@ -97,7 +104,7 @@ public interface WhoopApi {
      * to a DIFFERENT member is detectable rather than silently blending two
      * people's data into one athlete. */
     @GET
-    @Path("/v2/user/profile/basic")
+    @Path("/developer/v2/user/profile/basic")
     Map<String, Object> profile(@HeaderParam("Authorization") String authorization);
 
     /** A collection response is {records: [...], next_token: "..."} — this pulls
