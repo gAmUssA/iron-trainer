@@ -197,13 +197,17 @@ public class WhoopSync {
             }
         }
 
-        List<WhoopCycle> rows = new ArrayList<>();
+        List<WhoopCycle> mapped = new ArrayList<>();
         for (Map<String, Object> cycle : cycles) {
             WhoopCycle row = toRow(cycle, recoveryByCycle, sleepByCycle);
             if (row != null) {
-                rows.add(row);
+                mapped.add(row);
             }
         }
+        // Same collapse the ZIP path applies. Without it the two sources can keep
+        // DIFFERENT cycles for a two-cycle date and a re-sync silently changes the
+        // day's recovery — see WhoopCycle.dedupeByDate (bean 80i2).
+        final List<WhoopCycle> rows = WhoopCycle.dedupeByDate(mapped);
 
         // Stamp the WHOOP member from data we already have, so a reconnect as a
         // DIFFERENT member is visible instead of silently blending two people's
