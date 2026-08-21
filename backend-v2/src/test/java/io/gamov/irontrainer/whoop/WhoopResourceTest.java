@@ -193,4 +193,31 @@ class WhoopResourceTest {
                 .body("connected", is(false))
                 .body("reconnect_required", is(false));
     }
+
+    @Test
+    void asyncSyncReturnsTheSharedJobEnvelope() {
+        // The frontend's viaJob()/whoopSync() destructure `.job`. This endpoint
+        // originally returned the job dict BARE, so every async caller read
+        // undefined and threw while the job ran on regardless — invisible from the
+        // backend, which had done nothing wrong. Pin the shape.
+        //
+        // No WHOOP credentials in this profile, so the job itself fails; the
+        // envelope is what is under test, and it is present either way.
+        given().when().post("/api/whoop/sync?async=1")
+                .then().statusCode(200)
+                .body("job.kind", is("whoop_sync"))
+                .body("job.id", org.hamcrest.Matchers.notNullValue());
+    }
+
+    @Test
+    void statusReportsTheEffectiveScheduleRatherThanAssumingOne() {
+        // whoop.sync-cron is configurable and can be switched off. The UI renders
+        // "Syncing daily at HH:00" from sync_hour, so a deployment that retimed or
+        // disabled the job must not still be described as syncing at 10:00.
+        // The default cron applies here, so both fields are populated.
+        given().when().get("/api/whoop/status")
+                .then().statusCode(200)
+                .body("sync_cron", is("0 0 10 * * ?"))
+                .body("sync_hour", is(10));
+    }
 }

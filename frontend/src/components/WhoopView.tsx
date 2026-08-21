@@ -129,7 +129,10 @@ export function WhoopView() {
     const q = new URLSearchParams(window.location.search);
     const ok = q.get("whoop_connected");
     const err = q.get("whoop_error");
-    if (ok) setMsg("WHOOP connected. Your history is importing in the background.");
+    // The callback runs the first import BEFORE redirecting, so by the time this
+    // renders it has already finished or already failed — nothing is in flight.
+    // The panel's "newest synced day" line reports which, so do not narrate it.
+    if (ok) setMsg("WHOOP connected.");
     if (err) setMsg(`WHOOP connection failed: ${WHOOP_OAUTH_ERRORS[err] ?? err}`);
     if (ok || err) window.history.replaceState({}, "", window.location.pathname);
   }, []);
@@ -142,8 +145,14 @@ export function WhoopView() {
     setSyncing(true);
     setMsg(full ? "Re-walking your full WHOOP history…" : "Syncing WHOOP…");
     try {
-      const r = await api.whoopSync(full);
-      setMsg(`Synced ${r.written} of ${r.cycles} days (${r.skipped} already current).`);
+      const { result, alreadyRunning } = await api.whoopSync(full);
+      if (alreadyRunning) {
+        setMsg("A sync is already running — the full re-sync was not started. "
+          + "Try again once it finishes.");
+      } else if (result) {
+        setMsg(`Synced ${result.written} of ${result.cycles} days `
+          + `(${result.skipped} already current).`);
+      }
       load(days);
       loadStatus();
     } catch (err) {
@@ -246,6 +255,15 @@ export function WhoopView() {
         ? "A sync is running now."
         : null;
 
+  // Read from config, never assumed: WHOOP_SYNC_CRON can be retimed or switched
+  // off, and promising a daily sync that a deployment has disabled is worse than
+  // saying nothing. An unrecognised cron is shown verbatim rather than described.
+  const scheduleLine = !status?.sync_cron
+    ? "Automatic syncing is off — use Sync now."
+    : status.sync_hour != null
+      ? `Syncing daily at ${String(status.sync_hour).padStart(2, "0")}:00.`
+      : `Automatic sync: ${status.sync_cron}.`;
+
   const rows = merge(whoop, apple, pmc);
   const hasWhoop = whoop.length > 0;
   const behaviors = insights?.behaviors ?? [];
@@ -278,11 +296,22 @@ export function WhoopView() {
               </>
             ) : status.reconnect_required ? (
               <>
+                {/* Deliberately hedged. The flag is raised for ANY rejected refresh,
+                    including a WHOOP outage or a network blip, so asserting the
+                    sign-in has expired would tell people to redo a connection that
+                    is fine. Retry first — a success clears the flag by itself — and
+                    offer Reconnect as the fix when it does not. */}
                 <div className="card-sub warn">
-                  WHOOP sign-in has expired, so syncing has stopped. Reconnect to resume —
-                  nothing already imported is lost.
+                  WHOOP refused the last token refresh, so syncing has stopped. This is
+                  usually an expired sign-in, but a WHOOP outage looks the same — try
+                  syncing first, and reconnect if that fails. Nothing already imported
+                  is lost.
                 </div>
                 <div className="btn-row">
+                  <button type="button" className="btn" disabled={syncing}
+                          onClick={() => doSync(false)}>
+                    {syncing ? "Retrying…" : "Retry sync"}
+                  </button>
                   <a className="btn primary" href="/api/whoop/connect">Reconnect WHOOP</a>
                   <button type="button" className="btn" disabled={syncing}
                           onClick={doDisconnect}>Disconnect</button>
@@ -291,7 +320,7 @@ export function WhoopView() {
             ) : (
               <>
                 <div className="card-sub">
-                  Connected. Syncing daily at 10:00.{" "}
+                  Connected. {scheduleLine}{" "}
                   {status.latest_api_date
                     ? `Newest synced day: ${status.latest_api_date}.`
                     : "No day has synced yet."}

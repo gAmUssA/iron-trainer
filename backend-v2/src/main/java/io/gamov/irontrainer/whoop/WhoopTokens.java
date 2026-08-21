@@ -178,9 +178,19 @@ public class WhoopTokens {
     /** Forget the connection locally (disconnect). WHOOP has no documented
      * revoke endpoint in v2, so this is local-only and the user should also revoke
      * in their WHOOP account settings — the UI says so rather than implying we
-     * severed it at their end. */
+     * severed it at their end.
+     *
+     * <p>synchronized, on the same monitor as {@link #validAccessToken}, and that
+     * matters: {@code refreshAndPersist} does its HTTP call and its write inside
+     * that monitor, so without this a disconnect landing in the gap between the two
+     * is undone — saveTokens repopulates the freshly-cleared credentials and the
+     * athlete stays connected while the UI reports success. Serialising the two
+     * makes the last writer the one the user actually asked for.
+     *
+     * <p>Process-local, like every other guard in this class; bean gcuv tracks what
+     * that costs if this ever runs on more than one instance. */
     @Transactional
-    public void disconnect(int aid) {
+    public synchronized void disconnect(int aid) {
         Athlete a = Athlete.findById(aid);
         if (a == null) {
             return;
