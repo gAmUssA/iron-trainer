@@ -84,8 +84,12 @@ echo "  schema version after old boot: ${OLD_SCHEMA:-none}"
 # DEFAULT_ATHLETE_ID=1 points at a row that was never inserted, so every write 500s
 # on a foreign key. That is a real bug (bean zvc2, under the local-mode epic) — but
 # it is not what THIS test is for, so create the row directly and carry on testing
-# migrations. Delete these two lines once zvc2 lands; if the test still passes, the
-# app is creating its own athlete as it should.
+# migrations.
+#
+# zvc2 is fixed as of the next release, but this seeding must STAY until the
+# PREVIOUS release — the OLD image booted below — also contains the fix. Remove it
+# only once the release being upgraded FROM creates its own athlete; if the test
+# still passes then, the bootstrap is doing its job.
 docker exec "$DB" psql -U iron -d iron -q -c \
   "insert into athlete (id, name) values (1, 'Upgrade Test') on conflict (id) do nothing" \
   || fail "could not seed the athlete row"
