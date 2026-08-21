@@ -135,11 +135,24 @@ public class WhoopSync {
         String newest = io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().call(() ->
                 WhoopCycle.<WhoopCycle>find("athleteId = ?1 order by date desc", aid)
                         .firstResultOptional().map(c -> c.date).orElse(null));
+        // The ceiling matters as much as the floor. Stored dates come from a
+        // user-supplied export and are NOT bounded to today — one row dated 2099
+        // would push the start into the future, so every request would ask WHOOP
+        // for an empty window and the athlete would never sync again, silently and
+        // permanently. Clamping to the ordinary incremental start means the worst a
+        // bogus future row can do is degrade catch-up to a normal daily sync.
+        LocalDate latestSensibleStart = today.minusDays(INCREMENTAL_LOOKBACK_DAYS);
         LocalDate from = earliest;
         if (newest != null) {
             try {
                 LocalDate gapStart = LocalDate.parse(newest).minusDays(INCREMENTAL_LOOKBACK_DAYS);
-                from = gapStart.isAfter(earliest) ? gapStart : earliest;
+                if (gapStart.isBefore(earliest)) {
+                    gapStart = earliest;
+                }
+                if (gapStart.isAfter(latestSensibleStart)) {
+                    gapStart = latestSensibleStart;
+                }
+                from = gapStart;
             } catch (RuntimeException e) {
                 // An unparseable stored date is not worth failing the sync over;
                 // the full window is always a correct, if slower, answer.

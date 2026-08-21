@@ -129,11 +129,13 @@ export function WhoopView() {
     const q = new URLSearchParams(window.location.search);
     const ok = q.get("whoop_connected");
     const err = q.get("whoop_error");
-    // Accurate again: the callback now QUEUES the first import and redirects
-    // immediately, because running it inline blew through Cloudflare's 100s edge
-    // timeout and handed the athlete a 524 on a connection that had actually
-    // succeeded. The poll below follows the job to completion.
-    if (ok) setMsg("WHOOP connected. Importing your history in the background…");
+    // Connection-only, deliberately. This param confirms the TOKENS were stored,
+    // nothing more: the callback catches a failed jobs.submit and still redirects
+    // with whoop_connected=1, so claiming an import is running can be wrong from
+    // the first render and would never correct itself — with no job there is no
+    // last_sync, so the poll never starts to contradict it. The panel reports an
+    // actual import from last_sync instead, which cannot claim what is not there.
+    if (ok) setMsg("WHOOP connected.");
     if (err) setMsg(`WHOOP connection failed: ${WHOOP_OAUTH_ERRORS[err] ?? err}`);
     if (ok || err) window.history.replaceState({}, "", window.location.pathname);
   }, []);

@@ -66,6 +66,17 @@ class WhoopResourceTest {
                         .createNativeQuery("INSERT INTO athlete (id) VALUES (" + AID + ")")
                         .executeUpdate();
             }
+            // Reset the WHOOP connection every time. The callback test connects
+            // this athlete for real — saveTokens persists a refresh token — and a
+            // later test asserting connected=false then passes or fails on ordering
+            // alone. Three separate ordering bugs in this file have already come
+            // from tests inheriting each other's state; start from a known one.
+            Athlete a = Athlete.findById(AID);
+            a.whoopRefreshToken = null;
+            a.whoopAccessToken = null;
+            a.whoopTokenExpiresAt = null;
+            a.whoopReconnectRequired = null;
+            a.whoopOauthState = null;
         });
     }
 
@@ -288,6 +299,28 @@ class WhoopResourceTest {
                             + elapsedMs + "ms");
         } finally {
             release.countDown();
+            // Let the worker actually finish. Releasing the latch only unblocks it;
+            // returning here would leave it writing while the next test runs.
+            awaitNoRunningSync(AID);
+        }
+    }
+
+    /** Block until this athlete has no queued/running whoop_sync job left. */
+    private static void awaitNoRunningSync(int aid) {
+        for (int i = 0; i < 100; i++) {
+            long active = QuarkusTransaction.requiringNew().call(() ->
+                    io.gamov.irontrainer.jobs.Job.count(
+                            "athleteId = ?1 and kind = ?2 and status in ?3",
+                            aid, "whoop_sync", List.of("queued", "running")));
+            if (active == 0) {
+                return;
+            }
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
     }
 
@@ -346,9 +379,63 @@ class WhoopResourceTest {
         assertEquals(expected, asked,
                 "catch-up must start just before the newest stored day, not years back");
 
-        // And the bound that stops one ancient row causing an unbounded walk still
-        // holds: the request is never earlier than the full window would be.
-        assertTrue(!asked.isBefore(LocalDate.now(ZoneOffset.UTC).minusYears(50)),
-                "catch-up must stay inside the configured history window");
+    }
+
+    @Test
+    void catchUpIsBoundedByTheHistoryWindowAndNeverStartsInTheFuture() {
+        // Two bounds, both previously untested — the original assertion allowed
+        // anything newer than 50 years and so would have passed with no clamp at
+        // all. historyYears defaults to 5.
+        final int boundAid = 7003;
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        AtomicReference<String> requestedStart = new AtomicReference<>();
+        Mockito.when(whoopApi.cycles(Mockito.any(), Mockito.any(), Mockito.any(),
+                        Mockito.anyInt(), Mockito.any()))
+                .thenAnswer(inv -> {
+                    requestedStart.set((String) inv.getArgument(1));
+                    return Map.of("records", List.of());
+                });
+        Mockito.when(whoopApi.recovery(Mockito.any(), Mockito.any(), Mockito.any(),
+                        Mockito.anyInt(), Mockito.any())).thenReturn(Map.of("records", List.of()));
+        Mockito.when(whoopApi.sleep(Mockito.any(), Mockito.any(), Mockito.any(),
+                        Mockito.anyInt(), Mockito.any())).thenReturn(Map.of("records", List.of()));
+
+        // (a) A row far OLDER than the window must not trigger an unbounded walk.
+        seedCycle(boundAid, today.minusYears(12).toString());
+        whoopSync.runCatchUp(boundAid);
+        assertEquals(today.minusYears(5),
+                Instant.parse(requestedStart.get()).atZone(ZoneOffset.UTC).toLocalDate(),
+                "a pre-window row must clamp to the history window, not walk 12 years");
+
+        // (b) A FUTURE-dated row — export timestamps are user data and not bounded
+        // to today — must not push the start forward. Unclamped it would request an
+        // empty future window on every run and the athlete would never sync again.
+        requestedStart.set(null);
+        seedCycle(boundAid, today.plusYears(70).toString());
+        whoopSync.runCatchUp(boundAid);
+        assertEquals(today.minusDays(3),
+                Instant.parse(requestedStart.get()).atZone(ZoneOffset.UTC).toLocalDate(),
+                "a future-dated row must degrade to a normal incremental start");
+    }
+
+    /** Replace this athlete's WHOOP rows with a single day, and connect them. */
+    private static void seedCycle(int aid, String date) {
+        QuarkusTransaction.requiringNew().run(() -> {
+            if (Athlete.findById(aid) == null) {
+                Athlete.getEntityManager()
+                        .createNativeQuery("INSERT INTO athlete (id) VALUES (" + aid + ")")
+                        .executeUpdate();
+            }
+            WhoopCycle.delete("athleteId", aid);
+            WhoopCycle row = new WhoopCycle();
+            row.athleteId = aid;
+            row.date = date;
+            row.source = "zip";
+            row.persist();
+            Athlete a = Athlete.findById(aid);
+            a.whoopRefreshToken = "rt";
+            a.whoopAccessToken = "at";
+            a.whoopTokenExpiresAt = Instant.now().getEpochSecond() + 3600;
+        });
     }
 }
