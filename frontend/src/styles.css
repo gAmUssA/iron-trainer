@@ -785,3 +785,14 @@ code { font-family: var(--mono); background: var(--panel-2); padding: 1px 5px; b
 .admin-drawer { position: fixed; right: 0; top: 0; bottom: 0; width: min(560px, 92vw); background: var(--bg, #fff); border-left: 1px solid var(--border, #ccc); box-shadow: -8px 0 24px rgba(0,0,0,0.15); padding: 16px; overflow: auto; z-index: 50; }
 .admin-drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .admin-json { font-family: var(--mono, monospace); font-size: 12px; white-space: pre-wrap; word-break: break-word; background: rgba(128,128,128,0.06); padding: 12px; border-radius: 8px; }
+
+/* ── WHOOP connection panel (bean si52) ──────────────────────────────────────
+   The API connection and the export-ZIP upload live in one card because they
+   are alternatives to each other; the rule separates them without implying the
+   second is a lesser section. */
+.whoop-conn .card-sub.warn { color: var(--bad); }
+.whoop-conn-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0 14px;
+}

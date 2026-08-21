@@ -256,6 +256,33 @@ export interface WhoopDay {
   asleep_h: number | null;
 }
 
+export interface WhoopStatus {
+  /** Does this DEPLOYMENT have WHOOP credentials? Distinct from `connected`:
+   * a self-host install with no credentials should be offered the export-ZIP
+   * path and no Connect button, rather than a control that 400s. */
+  configured: boolean;
+  connected: boolean;
+  /** Connected, but the last token refresh was rejected — data has silently
+   * stopped updating and only a human reconnect fixes it. */
+  reconnect_required: boolean;
+  whoop_user_id: number | null;
+  last_sync: JobInfo | null;
+  /** Newest API-written day on file. Null = connected but never synced. */
+  latest_api_date: string | null;
+  /** Effective schedule. Null when automatic syncing is switched off — the UI
+   * must not promise a daily sync a deployment has disabled. */
+  sync_cron: string | null;
+  /** Hour of a plain daily cron, when it is one; null for anything fancier. */
+  sync_hour: number | null;
+}
+
+export interface WhoopSyncResult {
+  cycles: number;
+  written: number;
+  skipped: number;
+  from: string | null;
+}
+
 export interface WhoopImportResult {
   cycles: number;
   journal_answers: number;
@@ -652,6 +679,23 @@ export const api = {
   whoopAnalyze: () =>
     viaJob<{ text: string; created_at: string }>(() =>
       send("/api/whoop/insights/analyze?async=1", "POST")),
+  whoopStatus: () => getJSON<WhoopStatus>("/api/whoop/status"),
+  /** Resolves `{ result }` normally, or `{ alreadyRunning: true }` when a full
+   * re-sync was requested while a sync is already in flight. JobRunner dedupes on
+   * (athlete, "whoop_sync") alone, so the submit would return the ALREADY RUNNING
+   * incremental job and the full history walk would never happen — reporting its
+   * result as the full re-sync's would be a plain lie. Plain "Sync now" has no such
+   * problem: joining an in-flight sync is exactly what was asked for. */
+  whoopSync: async (
+    full = false,
+  ): Promise<{ result: WhoopSyncResult | null; alreadyRunning: boolean }> => {
+    const { job } = await send<{ job: JobInfo }>(
+      `/api/whoop/sync?async=1${full ? "&full=1" : ""}`, "POST");
+    if (full && job.already_running) return { result: null, alreadyRunning: true };
+    return { result: await pollJob<WhoopSyncResult>(job.id), alreadyRunning: false };
+  },
+  whoopDisconnect: () =>
+    send<{ disconnected: boolean; message: string }>("/api/whoop/disconnect", "POST"),
   importWhoop: async (file: File): Promise<WhoopImportResult> => {
     const fd = new FormData();
     fd.append("file", file);

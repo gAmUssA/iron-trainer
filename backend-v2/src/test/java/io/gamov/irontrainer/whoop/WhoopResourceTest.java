@@ -27,7 +27,15 @@ class WhoopResourceTest {
     public static class Profile implements QuarkusTestProfile {
         @Override
         public Map<String, String> getConfigOverrides() {
-            return Map.of("irontrainer.default-athlete-id", String.valueOf(AID));
+            // WHOOP credentials are pinned EMPTY, not left to config. They default
+            // to ${WHOOP_CLIENT_ID:} — so on a developer machine that has real ones
+            // exported, /status reports configured=true and any assertion about it
+            // passes locally and fails in CI. Pinning makes the test mean the same
+            // thing everywhere, and models the self-host install that has no
+            // credentials at all.
+            return Map.of("irontrainer.default-athlete-id", String.valueOf(AID),
+                    "whoop.client-id", "",
+                    "whoop.client-secret", "");
         }
     }
 
@@ -141,5 +149,75 @@ class WhoopResourceTest {
             z.closeEntry();
         }
         return bos.toByteArray();
+    }
+
+    // ── GET /api/whoop/status (bean si52) ────────────────────────────────────
+
+    @Test
+    void statusSeparatesDeploymentConfigFromAthleteConnection() {
+        // Credentials pinned empty by the profile: this models a self-host install
+        // that never set them. The UI keys the Connect button off `configured`, and
+        // if this reported true that user would get a button that 400s.
+        given().when().get("/api/whoop/status")
+                .then().statusCode(200)
+                .body("configured", is(false))
+                .body("connected", is(false))
+                .body("reconnect_required", is(false));
+    }
+
+    @Test
+    void reconnectRequiredIsReportedOnlyWhileStillConnected() {
+        // The state that matters: a spent refresh token leaves the athlete LOOKING
+        // connected while data silently stops updating. The flag has to survive
+        // alongside a populated token — clearing the token instead would destroy a
+        // working credential whenever WHOOP merely had a bad minute.
+        QuarkusTransaction.requiringNew().run(() -> {
+            Athlete a = Athlete.findById(AID);
+            a.whoopRefreshToken = "still-here";
+            a.whoopReconnectRequired = true;
+        });
+        given().when().get("/api/whoop/status")
+                .then().statusCode(200)
+                .body("connected", is(true))
+                .body("reconnect_required", is(true));
+
+        // ...and once disconnected it must go quiet rather than nagging about a
+        // connection the athlete deliberately removed.
+        QuarkusTransaction.requiringNew().run(() -> {
+            Athlete a = Athlete.findById(AID);
+            a.whoopRefreshToken = null;
+            a.whoopReconnectRequired = true;   // stale flag left behind on purpose
+        });
+        given().when().get("/api/whoop/status")
+                .then().statusCode(200)
+                .body("connected", is(false))
+                .body("reconnect_required", is(false));
+    }
+
+    @Test
+    void asyncSyncReturnsTheSharedJobEnvelope() {
+        // The frontend's viaJob()/whoopSync() destructure `.job`. This endpoint
+        // originally returned the job dict BARE, so every async caller read
+        // undefined and threw while the job ran on regardless — invisible from the
+        // backend, which had done nothing wrong. Pin the shape.
+        //
+        // No WHOOP credentials in this profile, so the job itself fails; the
+        // envelope is what is under test, and it is present either way.
+        given().when().post("/api/whoop/sync?async=1")
+                .then().statusCode(200)
+                .body("job.kind", is("whoop_sync"))
+                .body("job.id", org.hamcrest.Matchers.notNullValue());
+    }
+
+    @Test
+    void statusReportsTheEffectiveScheduleRatherThanAssumingOne() {
+        // whoop.sync-cron is configurable and can be switched off. The UI renders
+        // "Syncing daily at HH:00" from sync_hour, so a deployment that retimed or
+        // disabled the job must not still be described as syncing at 10:00.
+        // The default cron applies here, so both fields are populated.
+        given().when().get("/api/whoop/status")
+                .then().statusCode(200)
+                .body("sync_cron", is("0 0 10 * * ?"))
+                .body("sync_hour", is(10));
     }
 }

@@ -119,4 +119,10 @@ public class Athlete extends PanacheEntityBase {
      * works from the iOS app, which has no browser cookie jar. */
     @Column(name = "whoop_oauth_state")
     public String whoopOauthState;
+
+    /** Raised when a WHOOP token refresh is rejected, cleared on the next success.
+     * Advisory: the refresh token is deliberately NOT wiped, so a transient WHOOP
+     * outage heals itself instead of costing the athlete a manual reconnect. */
+    @Column(name = "whoop_reconnect_required")
+    public Boolean whoopReconnectRequired;
 }

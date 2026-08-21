@@ -120,6 +120,16 @@ public class WhoopTokens {
             // revoked at WHOOP, or expired from disuse. Say so plainly, because the
             // only fix is a human reconnecting — retrying will not help.
             LOG.errorf(e, "WHOOP refresh failed for athlete %d — reconnect required.", aid);
+            // Record it so the UI can say so. The refresh token is deliberately
+            // left in place: this catch also sees transient WHOOP 5xx and network
+            // faults, and wiping a working credential over one of those would cost
+            // a manual reconnect for nothing. A later success clears the flag.
+            io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().run(() -> {
+                Athlete a = Athlete.findById(aid);
+                if (a != null) {
+                    a.whoopReconnectRequired = true;
+                }
+            });
             throw new WebApplicationException(
                     "WHOOP sign-in has expired. Reconnect WHOOP in Settings.", 409);
         }
@@ -152,6 +162,8 @@ public class WhoopTokens {
         if (token.get("expires_in") instanceof Number n) {
             a.whoopTokenExpiresAt = Instant.now().getEpochSecond() + n.longValue();
         }
+        // Any successful exchange or refresh means the connection is alive again.
+        a.whoopReconnectRequired = null;
         a.updatedAt = PyJson.utcNowIso();
     }
 
@@ -166,9 +178,19 @@ public class WhoopTokens {
     /** Forget the connection locally (disconnect). WHOOP has no documented
      * revoke endpoint in v2, so this is local-only and the user should also revoke
      * in their WHOOP account settings — the UI says so rather than implying we
-     * severed it at their end. */
+     * severed it at their end.
+     *
+     * <p>synchronized, on the same monitor as {@link #validAccessToken}, and that
+     * matters: {@code refreshAndPersist} does its HTTP call and its write inside
+     * that monitor, so without this a disconnect landing in the gap between the two
+     * is undone — saveTokens repopulates the freshly-cleared credentials and the
+     * athlete stays connected while the UI reports success. Serialising the two
+     * makes the last writer the one the user actually asked for.
+     *
+     * <p>Process-local, like every other guard in this class; bean gcuv tracks what
+     * that costs if this ever runs on more than one instance. */
     @Transactional
-    public void disconnect(int aid) {
+    public synchronized void disconnect(int aid) {
         Athlete a = Athlete.findById(aid);
         if (a == null) {
             return;
@@ -176,6 +198,8 @@ public class WhoopTokens {
         a.whoopAccessToken = null;
         a.whoopRefreshToken = null;
         a.whoopTokenExpiresAt = null;
+        // Not "reconnect required" — the athlete asked for this.
+        a.whoopReconnectRequired = null;
         a.updatedAt = PyJson.utcNowIso();
         LOG.infof("WHOOP disconnected locally for athlete %d.", aid);
     }
