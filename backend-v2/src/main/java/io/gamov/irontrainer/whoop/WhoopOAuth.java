@@ -2,10 +2,9 @@ package io.gamov.irontrainer.whoop;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.Optional;
 import jakarta.enterprise.context.ApplicationScoped;
+import io.gamov.irontrainer.util.SecureTokens;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /** WHOOP OAuth URL construction and CSRF state (bean 4a6s).
@@ -18,8 +17,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  */
 @ApplicationScoped
 public class WhoopOAuth {
-
-    private static final SecureRandom RANDOM = new SecureRandom();
 
     @ConfigProperty(name = "whoop.client-id")
     Optional<String> clientId;
@@ -40,12 +37,18 @@ public class WhoopOAuth {
     }
 
     /** WHOOP requires the state parameter to be at least 8 characters — a shorter
-     * one is rejected outright, so this is sized well past that rather than
-     * assuming a UUID-ish default would do. */
+     * one is rejected outright, so 24 bytes is sized well past that.
+     *
+     * <p>Via SecureTokens, which makes a fresh SecureRandom per call. A
+     * {@code static final SecureRandom} is initialized at BUILD time and baked
+     * into the native image heap with a cached seed, so every deployment of the
+     * image would emit the same sequence of CSRF states. GraalVM rejects it
+     * outright (UnsupportedFeatureException: "Detected an instance of
+     * Random/SplittableRandom class in the image heap") — which is the build
+     * catching a security bug, not being fussy. StravaOAuth.newState does the
+     * same thing for the same reason. */
     public static String newState() {
-        byte[] buf = new byte[24];
-        RANDOM.nextBytes(buf);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
+        return SecureTokens.urlsafe(24);
     }
 
     /** The consent-screen URL.
