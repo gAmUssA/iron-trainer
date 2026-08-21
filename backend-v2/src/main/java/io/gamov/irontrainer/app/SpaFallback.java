@@ -39,6 +39,17 @@ public class SpaFallback implements ExceptionMapper<NotFoundException> {
 
     @Override
     public Response toResponse(NotFoundException e) {
+        // /privacy must NOT fall through to the SPA. It is a legal document linked
+        // from OAuth consent screens and opened cold by app reviewers, and the SPA
+        // shows a LOGIN SCREEN when auth is required — the worst possible thing to
+        // serve at that URL. Redirect to the static file, which is readable
+        // unauthenticated. Extensionless /privacy is the URL worth publishing;
+        // privacy.html is what actually exists on disk.
+        if (isPrivacyRoute()) {
+            return Response.status(Response.Status.MOVED_PERMANENTLY)
+                    .location(java.net.URI.create("/privacy.html"))
+                    .build();
+        }
         if (isClientRoute()) {
             byte[] html = index();
             if (html != null) {
@@ -52,6 +63,19 @@ public class SpaFallback implements ExceptionMapper<NotFoundException> {
         // pass the original 404 through untouched — exact parity with the
         // no-mapper default, including any entity the endpoint attached.
         return e.getResponse();
+    }
+
+    /** GET/HEAD to exactly "privacy" (no extension) — see toResponse. */
+    private boolean isPrivacyRoute() {
+        String method = request.getMethod();
+        if (!"GET".equals(method) && !"HEAD".equals(method)) {
+            return false;
+        }
+        String path = uriInfo.getPath();
+        if (path.startsWith("/")) {
+            path = path.substring(1);
+        }
+        return "privacy".equals(path);
     }
 
     /**

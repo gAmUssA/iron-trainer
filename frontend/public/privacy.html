@@ -1,0 +1,212 @@
+<!doctype html>
+<!--
+  Static page, deliberately NOT a React route. It lives in frontend/public/ so Vite
+  copies it verbatim into dist/, which the backend bakes into the image and serves
+  as a plain file at /privacy.html.
+
+  Why static: the hosted deployment runs with AUTH_REQUIRED=true, so the SPA shows a
+  login screen first. A privacy policy has to be readable by someone who is NOT
+  signed in — an OAuth consent screen links to it, and a reviewer will open it cold.
+  A React route behind the login gate would be useless for exactly the audience it
+  exists for.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Iron Trainer</title>
+<style>
+  :root { color-scheme: dark light; }
+  body {
+    margin: 0 auto; padding: 40px 20px 80px; max-width: 46rem;
+    background: #0f1115; color: #d7dae0;
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; color: #fff; }
+  h2 { font-size: 1.15rem; margin: 2.2rem 0 .6rem; color: #fff; }
+  .sub { color: #9aa0ac; margin: 0 0 2rem; font-size: .95rem; }
+  table { border-collapse: collapse; width: 100%; margin: .8rem 0; font-size: .93rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #262a33; vertical-align: top; }
+  th { color: #fff; font-weight: 600; }
+  code { background: #1a1d24; padding: 1px 5px; border-radius: 4px; font-size: .88em; }
+  a { color: #6ee7a8; }
+  .callout {
+    border-left: 3px solid #ff5d3b; background: #17191f;
+    padding: 12px 16px; margin: 1.2rem 0; border-radius: 0 6px 6px 0;
+  }
+  ul { padding-left: 1.2rem; }
+  li { margin: .35rem 0; }
+  footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid #262a33; color: #7b8290; font-size: .9rem; }
+  @media (prefers-color-scheme: light) {
+    body { background: #fff; color: #23262c; }
+    h1, h2, th { color: #000; }
+    .sub, footer { color: #5b6270; }
+    code, .callout { background: #f3f4f6; }
+    th, td, footer { border-color: #e3e5e9; }
+    a { color: #0a7c48; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Iron Trainer — Privacy Policy</h1>
+<p class="sub">Last updated 21 August 2026</p>
+
+<p>
+  Iron Trainer is a personal triathlon training tool. It pulls your training and recovery
+  data together, computes training load, and builds an adaptive plan. This page describes
+  what it stores, where that data goes, and what it never does.
+</p>
+
+<div class="callout">
+  <strong>Two different situations, and they matter.</strong> Iron Trainer can be
+  <em>self-hosted</em> — you run it on your own computer with Docker, and your data never
+  leaves that machine except for the API calls you explicitly configure. It is also run as
+  a hosted service at <code>irontrainer.app</code>. Where the answers differ, this policy
+  says so.
+</div>
+
+<h2>What is stored</h2>
+
+<table>
+  <tr><th>Data</th><th>Where it comes from</th><th>Why</th></tr>
+  <tr>
+    <td>Activities — date, sport, duration, distance, heart rate, power, speed</td>
+    <td>Strava, if you connect it; or a Strava data-export file you upload</td>
+    <td>Training load (TSS/CTL/ATL/TSB), trends, personal records</td>
+  </tr>
+  <tr>
+    <td>Recovery — sleep stages, HRV, resting heart rate, respiratory rate, SpO₂, wrist
+        temperature, VO₂ max, body mass, body fat, BMI</td>
+    <td>Apple Health, via the Health Auto Export app or the Iron Trainer iOS app</td>
+    <td>Daily readiness and recovery trends</td>
+  </tr>
+  <tr>
+    <td>WHOOP — recovery score, day strain, sleep performance, journal entries</td>
+    <td>A WHOOP data-export file you upload</td>
+    <td>Recovery overlay and behaviour correlations</td>
+  </tr>
+  <tr>
+    <td>Profile — your name, training thresholds (FTP, LTHR, paces), body weight,
+        nutrition preferences, target race and date</td>
+    <td>Entered by you, or inferred from your history</td>
+    <td>Training zones, workout targets, fuelling, race projection</td>
+  </tr>
+  <tr>
+    <td>Access tokens for services you connect, and a session cookie</td>
+    <td>Created when you sign in or connect an integration</td>
+    <td>Keeping you signed in and syncing on your behalf</td>
+  </tr>
+</table>
+
+<h2>Where your data goes</h2>
+
+<p>
+  Iron Trainer sends data to exactly three kinds of destination, and nothing else:
+</p>
+
+<ul>
+  <li>
+    <strong>Services you connect</strong> — Strava (to read your activities), and Apple
+    Health via your own device. These only ever happen after you authorise them, and only
+    for reading your own data.
+  </li>
+  <li>
+    <strong>Anthropic's Claude API</strong>, and only when an AI feature is enabled and you
+    trigger it (generating or adapting a plan, the weekly check-in, race-day nutrition, or
+    the WHOOP analysis). See the next section for exactly what is sent.
+  </li>
+  <li>
+    <strong>The database</strong> the application runs against — on your own machine if you
+    self-host, or the hosted service's database if you use <code>irontrainer.app</code>.
+  </li>
+</ul>
+
+<p>
+  Your data is <strong>not</strong> sold, rented, shared with advertisers, used to train any
+  model, or used to build a profile of you for any purpose other than producing your own
+  training plan. There is no analytics or tracking script on this site.
+</p>
+
+<h2>What is sent to the AI, specifically</h2>
+
+<p>
+  This is worth being precise about, because "we use AI" usually is not. When an AI feature
+  runs, the request contains:
+</p>
+
+<ul>
+  <li>Your training thresholds and heart-rate zones</li>
+  <li>Aggregate fitness numbers — chronic and acute load, form, weekly volume</li>
+  <li>The plan skeleton being adapted</li>
+  <li>For the WHOOP analysis: computed insights plus up to 90 days of daily figures
+      (recovery %, HRV, resting HR, strain, hours slept, sleep performance)</li>
+</ul>
+
+<p>
+  It does <strong>not</strong> contain your name, your email address, your access tokens, or
+  your individual activity records. Anthropic's handling of API data is governed by
+  <a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">their
+  privacy policy</a>.
+</p>
+
+<p>
+  If no AI key is configured, these features fall back to a deterministic planner and
+  <strong>nothing is sent anywhere</strong>. Self-hosted installations have no AI key by
+  default — you have to add your own.
+</p>
+
+<h2>WHOOP data</h2>
+
+<p>
+  Iron Trainer reads WHOOP recovery, strain, sleep and journal data either from an export
+  file you upload or, if you connect it, through the WHOOP API using scopes you approve on
+  WHOOP's own consent screen (<code>read:recovery</code>, <code>read:cycles</code>,
+  <code>read:sleep</code>). It is used only to display your recovery alongside your training
+  load and to compute your own behaviour correlations. It is never shared onward, and you can
+  disconnect at any time from WHOOP's account settings or from within Iron Trainer.
+</p>
+
+<h2>How long it is kept, and how to delete it</h2>
+
+<ul>
+  <li>
+    <strong>Self-hosted:</strong> data lives in a database on your machine and is kept until
+    you delete it. <code>docker compose down -v</code> destroys it permanently.
+  </li>
+  <li>
+    <strong>Hosted:</strong> data is kept while your account exists. Disconnecting Strava
+    deletes your synced activities and everything derived from them, and revokes Iron
+    Trainer's access to your Strava account. To delete everything, contact the address below.
+  </li>
+</ul>
+
+<h2>Security</h2>
+
+<p>
+  Tokens are stored server-side and never exposed to the browser. Session cookies are signed.
+  The hosted service is served over HTTPS. A self-hosted install binds to your own machine
+  only by default and is not reachable from your network unless you deliberately change that.
+</p>
+
+<p>
+  Iron Trainer is open source. If you want to check any of the above rather than take it on
+  trust, the code is at
+  <a href="https://github.com/gAmUssA/iron-trainer" target="_blank" rel="noopener">github.com/gAmUssA/iron-trainer</a>.
+</p>
+
+<h2>Contact</h2>
+
+<p>
+  Questions, or a deletion request:
+  <a href="mailto:viktor@gamov.io">viktor@gamov.io</a>.
+</p>
+
+<footer>
+  Iron Trainer is an independent personal project. It is not affiliated with, endorsed by,
+  or sponsored by Strava, WHOOP, Apple, IRONMAN or Anthropic.
+  <a href="/">Back to Iron Trainer</a>
+</footer>
+
+</body>
+</html>
