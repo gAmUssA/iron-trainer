@@ -61,6 +61,9 @@ public class WhoopTokens {
     @ConfigProperty(name = "whoop.client-secret")
     Optional<String> clientSecret;
 
+    @ConfigProperty(name = "whoop.redirect-uri")
+    String redirectUri;
+
     /** True when this deployment has WHOOP credentials at all — the UI uses it to
      * decide whether to offer a Connect button rather than letting the user click
      * into a guaranteed failure. */
@@ -132,6 +135,19 @@ public class WhoopTokens {
             a.whoopTokenExpiresAt = Instant.now().getEpochSecond() + n.longValue();
         }
         a.updatedAt = PyJson.utcNowIso();
+    }
+
+    /** Exchange an authorization code for the first token pair. The redirect_uri
+     * must match the one sent to the authorize endpoint AND the one registered in
+     * the WHOOP dashboard — WHOOP compares all three. */
+    public Map<String, Object> exchange(String code) {
+        return whoop.exchangeCode(clientId.orElse(""), clientSecret.orElse(""),
+                code, "authorization_code", redirectUri);
+    }
+
+    /** Who this token belongs to. Used once at connect to stamp whoop_user_id. */
+    public Map<String, Object> profile(String accessToken) {
+        return whoop.profile("Bearer " + accessToken);
     }
 
     /** Forget the connection locally (disconnect). WHOOP has no documented

@@ -57,6 +57,25 @@ public class WhoopCycle extends PanacheEntityBase {
     @Column(name = "updated_at")
     public String updatedAt;
 
+    /** 'zip' (member data export) or 'api' (live WHOOP API). Drives precedence in
+     * WhoopSync.upsert — an 'api' row is never overwritten by a 'zip' row, so
+     * re-uploading an old export cannot undo fresher live data. */
+    @Column(name = "source")
+    public String source;
+
+    /** The API's own updated_at for this cycle. Within source='api', the newer one
+     * wins; a re-fetch of unchanged data is a no-op. Null for ZIP rows, which carry
+     * no per-row modification time — which is exactly why precedence ranks by
+     * SOURCE first and only then by timestamp. */
+    @Column(name = "api_updated_at")
+    public String apiUpdatedAt;
+
+    /** WHOOP's own cycle id, for traceability back to the API. Not a key here:
+     * the table is keyed by (athlete, local wake date) so ZIP and API rows for the
+     * same physiological day collapse onto one row. */
+    @Column(name = "whoop_cycle_id")
+    public Long whoopCycleId;
+
     public Map<String, Object> toRow() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("date", date);

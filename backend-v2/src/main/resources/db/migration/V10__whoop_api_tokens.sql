@@ -11,3 +11,6 @@ ALTER TABLE "public"."athlete"
     ADD COLUMN IF NOT EXISTS "whoop_access_token" character varying,
     ADD COLUMN IF NOT EXISTS "whoop_token_expires_at" bigint,
     ADD COLUMN IF NOT EXISTS "whoop_user_id" bigint;
+
+ALTER TABLE "public"."athlete"
+    ADD COLUMN IF NOT EXISTS "whoop_oauth_state" character varying;

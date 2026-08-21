@@ -52,6 +52,11 @@
              versions that treat an incomplete classpath as a hard error — which is
              what Railway's builder image hit. Declaring the exact Tink version nimbus
              9.40 expects makes the classes resolvable so the native build succeeds. -->
+        <!-- Cron scheduling for the daily WHOOP catch-up (bean 4a6s). -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.google.crypto.tink</groupId>
             <artifactId>tink</artifactId>

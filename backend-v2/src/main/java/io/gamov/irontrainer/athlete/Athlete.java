@@ -113,4 +113,10 @@ public class Athlete extends PanacheEntityBase {
      * blending two people's recovery data into one athlete's history. */
     @Column(name = "whoop_user_id")
     public Long whoopUserId;
+
+    /** CSRF state for an in-flight WHOOP OAuth round-trip, consumed by the
+     * callback. Stored on the athlete rather than in a cookie so the same flow
+     * works from the iOS app, which has no browser cookie jar. */
+    @Column(name = "whoop_oauth_state")
+    public String whoopOauthState;
 }
