@@ -120,6 +120,16 @@ public class WhoopTokens {
             // revoked at WHOOP, or expired from disuse. Say so plainly, because the
             // only fix is a human reconnecting — retrying will not help.
             LOG.errorf(e, "WHOOP refresh failed for athlete %d — reconnect required.", aid);
+            // Record it so the UI can say so. The refresh token is deliberately
+            // left in place: this catch also sees transient WHOOP 5xx and network
+            // faults, and wiping a working credential over one of those would cost
+            // a manual reconnect for nothing. A later success clears the flag.
+            io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().run(() -> {
+                Athlete a = Athlete.findById(aid);
+                if (a != null) {
+                    a.whoopReconnectRequired = true;
+                }
+            });
             throw new WebApplicationException(
                     "WHOOP sign-in has expired. Reconnect WHOOP in Settings.", 409);
         }
@@ -152,6 +162,8 @@ public class WhoopTokens {
         if (token.get("expires_in") instanceof Number n) {
             a.whoopTokenExpiresAt = Instant.now().getEpochSecond() + n.longValue();
         }
+        // Any successful exchange or refresh means the connection is alive again.
+        a.whoopReconnectRequired = null;
         a.updatedAt = PyJson.utcNowIso();
     }
 
@@ -176,6 +188,8 @@ public class WhoopTokens {
         a.whoopAccessToken = null;
         a.whoopRefreshToken = null;
         a.whoopTokenExpiresAt = null;
+        // Not "reconnect required" — the athlete asked for this.
+        a.whoopReconnectRequired = null;
         a.updatedAt = PyJson.utcNowIso();
         LOG.infof("WHOOP disconnected locally for athlete %d.", aid);
     }

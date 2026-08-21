@@ -17,6 +17,7 @@ import {
   type RecoveryDay,
   type WhoopDay,
   type WhoopInsightsData,
+  type WhoopStatus,
 } from "../api";
 import { useChart } from "../chartTheme";
 import { RangePicker } from "./RangePicker";
@@ -30,6 +31,15 @@ const C = {
   appleRhr: "#f87171",    // rose — matches Recovery tab RHR
   strain: "#a78bfa",
   tss: "#ffb454",
+};
+
+// Codes the backend callback sets on the redirect. Anything unmapped is shown
+// raw rather than swallowed — an unknown code is a bug worth seeing.
+const WHOOP_OAUTH_ERRORS: Record<string, string> = {
+  access_denied: "you declined access at WHOOP.",
+  no_code: "WHOOP did not return an authorization code.",
+  invalid_state: "the security check failed. Start the connection again.",
+  exchange_failed: "WHOOP rejected the authorization code.",
 };
 
 const DAY_MS = 86_400_000;
@@ -104,7 +114,62 @@ export function WhoopView() {
   const [busy, setBusy] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [status, setStatus] = useState<WhoopStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const req = useRef(0);
+
+  const loadStatus = () =>
+    // Never blanks the page: a self-host install with no WHOOP credentials is a
+    // supported configuration, not an error, and the ZIP path below still works.
+    api.whoopStatus().then(setStatus).catch(() => setStatus(null));
+
+  // Consume the callback's outcome, then clean the URL so a refresh does not
+  // re-announce a connection that happened minutes ago.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const ok = q.get("whoop_connected");
+    const err = q.get("whoop_error");
+    if (ok) setMsg("WHOOP connected. Your history is importing in the background.");
+    if (err) setMsg(`WHOOP connection failed: ${WHOOP_OAUTH_ERRORS[err] ?? err}`);
+    if (ok || err) window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
+  useEffect(() => {
+    loadStatus();
+  }, []);
+
+  async function doSync(full: boolean) {
+    setSyncing(true);
+    setMsg(full ? "Re-walking your full WHOOP history…" : "Syncing WHOOP…");
+    try {
+      const r = await api.whoopSync(full);
+      setMsg(`Synced ${r.written} of ${r.cycles} days (${r.skipped} already current).`);
+      load(days);
+      loadStatus();
+    } catch (err) {
+      setMsg(`Sync failed: ${err}`);
+      loadStatus();   // a 409 here means the token died — refresh the panel to say so
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function doDisconnect() {
+    if (!window.confirm(
+      "Disconnect WHOOP? Daily syncing stops and reconnecting means signing in "
+      + "at WHOOP again. Data already imported is kept.",
+    )) return;
+    setSyncing(true);
+    try {
+      const r = await api.whoopDisconnect();
+      setMsg(r.message);
+      loadStatus();
+    } catch (err) {
+      setMsg(`Disconnect failed: ${err}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   function load(range: number) {
     const seq = ++req.current;
@@ -171,6 +236,16 @@ export function WhoopView() {
     }
   }
 
+  // Only worth showing when it FAILED or is still running — a succeeded job
+  // adds nothing over "newest synced day", which the athlete actually cares about.
+  const lastSync = status?.last_sync;
+  const lastSyncLine =
+    lastSync?.status === "failed"
+      ? `Last sync failed: ${lastSync.error ?? "unknown error"}.`
+      : lastSync?.status === "running" || lastSync?.status === "queued"
+        ? "A sync is running now."
+        : null;
+
   const rows = merge(whoop, apple, pmc);
   const hasWhoop = whoop.length > 0;
   const behaviors = insights?.behaviors ?? [];
@@ -188,9 +263,64 @@ export function WhoopView() {
     <>
       <div className="card">
         <div className="card-title">WHOOP Data</div>
+
+        {status?.configured && (
+          <div className="whoop-conn">
+            {!status.connected ? (
+              <>
+                <div className="card-sub">
+                  Connect WHOOP to sync recovery, strain and sleep automatically every
+                  morning. Your history is imported once on connect.
+                </div>
+                <div className="btn-row">
+                  <a className="btn primary" href="/api/whoop/connect">Connect WHOOP</a>
+                </div>
+              </>
+            ) : status.reconnect_required ? (
+              <>
+                <div className="card-sub warn">
+                  WHOOP sign-in has expired, so syncing has stopped. Reconnect to resume —
+                  nothing already imported is lost.
+                </div>
+                <div className="btn-row">
+                  <a className="btn primary" href="/api/whoop/connect">Reconnect WHOOP</a>
+                  <button type="button" className="btn" disabled={syncing}
+                          onClick={doDisconnect}>Disconnect</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="card-sub">
+                  Connected. Syncing daily at 10:00.{" "}
+                  {status.latest_api_date
+                    ? `Newest synced day: ${status.latest_api_date}.`
+                    : "No day has synced yet."}
+                  {lastSyncLine && <> {lastSyncLine}</>}
+                </div>
+                <div className="btn-row">
+                  <button type="button" className="btn" disabled={syncing}
+                          onClick={() => doSync(false)}>
+                    {syncing ? "Syncing…" : "Sync now"}
+                  </button>
+                  <button type="button" className="btn" disabled={syncing}
+                          title="Re-walk the entire history — repairs gaps, safe to repeat"
+                          onClick={() => doSync(true)}>Full re-sync</button>
+                  <button type="button" className="btn" disabled={syncing}
+                          onClick={doDisconnect}>Disconnect</button>
+                </div>
+              </>
+            )}
+            <div className="whoop-conn-sep" />
+          </div>
+        )}
+
         <div className="card-sub">
-          Upload the ZIP from WHOOP&nbsp;app → App Settings → Data Export → Create Export
-          (arrives by email). Re-uploading a newer export updates existing days.
+          {status?.connected ? "Or upload" : "Upload"} the ZIP from WHOOP&nbsp;app → App
+          Settings → Data Export → Create Export (arrives by email). Re-uploading a newer
+          export updates existing days.
+          {status?.connected && (
+            <> The export also carries journal entries, which the API cannot provide.</>
+          )}
         </div>
         <div className="btn-row">
           <label className={`btn${busy ? " disabled" : ""}`} title="Upload your WHOOP data export">

@@ -86,6 +86,12 @@ export default function App() {
     if (err || q.get("connected")) {
       window.history.replaceState({}, "", window.location.pathname);
     }
+    // WHOOP's callback lands on the dashboard, where its outcome is invisible.
+    // Open the tab that owns the connection so the result is where the user
+    // just was; WhoopView consumes the param and cleans the URL itself.
+    if (q.get("whoop_connected") || q.get("whoop_error")) {
+      setTab("whoop");
+    }
   }, []);
 
   const loadData = useCallback(async () => {

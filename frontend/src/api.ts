@@ -256,6 +256,28 @@ export interface WhoopDay {
   asleep_h: number | null;
 }
 
+export interface WhoopStatus {
+  /** Does this DEPLOYMENT have WHOOP credentials? Distinct from `connected`:
+   * a self-host install with no credentials should be offered the export-ZIP
+   * path and no Connect button, rather than a control that 400s. */
+  configured: boolean;
+  connected: boolean;
+  /** Connected, but the last token refresh was rejected — data has silently
+   * stopped updating and only a human reconnect fixes it. */
+  reconnect_required: boolean;
+  whoop_user_id: number | null;
+  last_sync: JobInfo | null;
+  /** Newest API-written day on file. Null = connected but never synced. */
+  latest_api_date: string | null;
+}
+
+export interface WhoopSyncResult {
+  cycles: number;
+  written: number;
+  skipped: number;
+  from: string | null;
+}
+
 export interface WhoopImportResult {
   cycles: number;
   journal_answers: number;
@@ -652,6 +674,12 @@ export const api = {
   whoopAnalyze: () =>
     viaJob<{ text: string; created_at: string }>(() =>
       send("/api/whoop/insights/analyze?async=1", "POST")),
+  whoopStatus: () => getJSON<WhoopStatus>("/api/whoop/status"),
+  whoopSync: (full = false) =>
+    viaJob<WhoopSyncResult>(() =>
+      send(`/api/whoop/sync?async=1${full ? "&full=1" : ""}`, "POST")),
+  whoopDisconnect: () =>
+    send<{ disconnected: boolean; message: string }>("/api/whoop/disconnect", "POST"),
   importWhoop: async (file: File): Promise<WhoopImportResult> => {
     const fd = new FormData();
     fd.append("file", file);
