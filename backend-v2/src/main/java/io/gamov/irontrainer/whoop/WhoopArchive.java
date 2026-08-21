@@ -76,7 +76,16 @@ public final class WhoopArchive {
         } catch (Exception e) {
             throw new IllegalArgumentException("Could not read the export ZIP: " + e.getMessage(), e);
         }
-        return new Export(cycles, journal);
+        // Collapse two-cycle days with the SAME rule the API path uses, or the two
+        // sources keep different cycles for those dates (bean 80i2). Deliberately
+        // after the journal join above: that maps by cycleStart, so a discarded
+        // cycle must still contribute its date or its journal answers lose theirs.
+        List<WhoopCycle> deduped = WhoopCycle.dedupeByDate(cycles);
+        if (deduped.size() != cycles.size()) {
+            LOG.infof("WHOOP export: %d cycles collapsed to %d days (%d two-cycle days).",
+                    cycles.size(), deduped.size(), cycles.size() - deduped.size());
+        }
+        return new Export(deduped, journal);
     }
 
     private static List<Map<String, String>> csvRows(ZipFile zf, String fileName, boolean required)

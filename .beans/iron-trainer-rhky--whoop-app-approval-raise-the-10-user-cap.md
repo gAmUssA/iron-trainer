@@ -3,9 +3,9 @@
 title: WHOOP app approval — raise the 10-user cap
 status: todo
 type: task
-priority: low
+priority: normal
 created_at: 2026-07-29T20:38:26Z
-updated_at: 2026-07-29T20:38:26Z
+updated_at: 2026-08-21T20:24:09Z
 parent: iron-trainer-ids6
 ---
 

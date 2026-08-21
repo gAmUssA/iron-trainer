@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -209,5 +210,70 @@ class WhoopSyncTest {
         assertEquals(4242L, WhoopSync.memberId(java.util.List.of(
                 map("id", 1L), map("id", 2L, "user_id", 4242L))));
         assertNull(WhoopSync.memberId(java.util.List.of(map("id", 1L))));
+    }
+
+    // ── two-cycle days (bean 80i2) ───────────────────────────────────────────
+
+    private static WhoopCycle cyc(String date, String start, Double recovery) {
+        WhoopCycle c = new WhoopCycle();
+        c.date = date;
+        c.cycleStart = start;
+        c.recoveryScore = recovery;
+        return c;
+    }
+
+    @Test
+    void aScoredCycleBeatsAnUnscoredOneOnTheSameDay() {
+        // 118 of the 128 two-cycle days in a real 5.7-year export have exactly one
+        // scored cycle. Resolving those explicitly matters: the upsert's null-guard
+        // happens to produce the same outcome, but only as a side effect of merge
+        // order, and only for the fields that are null.
+        List<WhoopCycle> out = WhoopCycle.dedupeByDate(List.of(
+                cyc("2026-06-28", "2026-06-28 02:00:00", null),
+                cyc("2026-06-28", "2026-06-28 01:00:00", 42.0)));
+        assertEquals(1, out.size());
+        assertEquals(42.0, out.get(0).recoveryScore);
+    }
+
+    @Test
+    void whenBothAreScoredTheMorningCycleWins() {
+        // The real 2025-10-07 from the export: a transatlantic travel day where the
+        // 00:53 UTC cycle (08:46 local wake, recovery 30) and the 19:47 UTC
+        // post-flight cycle (recovery 10) both land on 2025-10-07.
+        //
+        // Order is REVERSED from the natural one on purpose — the bug was that
+        // whichever arrived last won, so a test feeding them in the convenient order
+        // would pass against the broken code too.
+        List<WhoopCycle> out = WhoopCycle.dedupeByDate(List.of(
+                cyc("2025-10-07", "2025-10-07 19:47:37", 10.0),
+                cyc("2025-10-07", "2025-10-07 00:53:22", 30.0)));
+        assertEquals(1, out.size());
+        assertEquals(30.0, out.get(0).recoveryScore,
+                "the morning cycle is the day's recovery; the later one is post-flight");
+        assertEquals("2025-10-07 00:53:22", out.get(0).cycleStart);
+    }
+
+    @Test
+    void bothIngestPathsResolveATwoCycleDayIdentically() {
+        // The whole point: ZIP and API must pick the SAME cycle. Feeding the same two
+        // cycles in opposite orders models the two sources' differing iteration and
+        // must produce one identical answer.
+        WhoopCycle morning = cyc("2025-12-01", "2025-12-01 06:00:00", 75.0);
+        WhoopCycle evening = cyc("2025-12-01", "2025-12-01 21:00:00", 10.0);
+        WhoopCycle zipWins = WhoopCycle.dedupeByDate(List.of(morning, evening)).get(0);
+        WhoopCycle apiWins = WhoopCycle.dedupeByDate(List.of(evening, morning)).get(0);
+        assertEquals(zipWins.cycleStart, apiWins.cycleStart);
+        assertEquals(75.0, apiWins.recoveryScore);
+    }
+
+    @Test
+    void singleCycleDaysAreUntouchedAndOrderIsPreserved() {
+        List<WhoopCycle> out = WhoopCycle.dedupeByDate(List.of(
+                cyc("2026-01-01", "2026-01-01 05:00:00", 60.0),
+                cyc("2026-01-02", "2026-01-02 05:00:00", 61.0),
+                cyc("2026-01-03", "2026-01-03 05:00:00", 62.0)));
+        assertEquals(3, out.size());
+        assertEquals("2026-01-01", out.get(0).date);
+        assertEquals("2026-01-03", out.get(2).date);
     }
 }

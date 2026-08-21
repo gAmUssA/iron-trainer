@@ -38,16 +38,35 @@ in-memory and streamed), so no volume is needed.
    DATABASE_PASSWORD=<password>
    ```
 
-### 2. ⚠️ Migrations are NOT auto-applied in production
+### 2. Migrations ARE auto-applied in production
 
-Flyway `migrate-at-start` is enabled only under `%dev`/`%test`. **In production the app
-does not run migrations at startup** (bean `backend-v2-railway-deploy`). Any new
-column/table must be applied to Supabase **manually, before** the image that expects
-it cuts over — otherwise the new deploy 500s on the changed schema:
+Flyway runs on every boot, in every profile. `quarkus.flyway.migrate-at-start=true` in
+`application.properties` carries **no profile prefix**, and `%prod.` sets
+`baseline-on-migrate=true` / `baseline-version=2` — settings that only mean anything
+if Flyway is running in prod. Add a versioned migration under
+`backend-v2/src/main/resources/db/migration/` and the next deploy applies it.
 
-```bash
-psql "<supabase-connection-string>" -c "ALTER TABLE … ADD COLUMN IF NOT EXISTS …;"
+Observed on 2026-08-21, three consecutive deploys:
+
 ```
+Current version of schema "public": 9
+Migrating schema "public" to version "10 - whoop api tokens"
+Migrating schema "public" to version "11 - whoop cycles source"
+Migrating schema "public" to version "12 - whoop reconnect flag"
+```
+
+> **Do not apply DDL by hand.** This section previously said the opposite, and
+> following it actively breaks a deploy: the manual `ALTER TABLE` succeeds, then
+> Flyway finds no history row for that version, tries to apply the migration itself,
+> and fails with *relation already exists*. Boot fails, and Railway keeps serving the
+> **old image** — so CI is green, the deploy looks finished, and the running code is
+> stale. That silent-rollback behaviour is the real hazard recorded in bean
+> `backend-v2-railway-deploy`.
+
+Verify after any schema change by checking the deploy log for the expected
+`Migrating schema "public" to version "N"` line — Flyway is quiet when there is
+nothing to do (`Schema "public" is up to date`), so silence means "already applied",
+not "skipped".
 
 ### 3. Railway (app service)
 
