@@ -46,8 +46,14 @@ public class SpaFallback implements ExceptionMapper<NotFoundException> {
         // unauthenticated. Extensionless /privacy is the URL worth publishing;
         // privacy.html is what actually exists on disk.
         if (isPrivacyRoute()) {
+            // Raw Location header, NOT .location(URI): JAX-RS absolutizes a relative
+            // URI against the request base, and behind Railway's TLS-terminating
+            // proxy the app sees the scheme as http — so .location() emitted
+            // "http://irontrainer.app/privacy.html", a scheme DOWNGRADE on a URL
+            // linked from an OAuth consent screen. A relative Location is resolved
+            // by the client against the scheme it actually used, which is https.
             return Response.status(Response.Status.MOVED_PERMANENTLY)
-                    .location(java.net.URI.create("/privacy.html"))
+                    .header("Location", "/privacy.html")
                     .build();
         }
         if (isClientRoute()) {
