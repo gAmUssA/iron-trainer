@@ -38,6 +38,10 @@ public class WhoopSync {
 
     private static final Logger LOG = Logger.getLogger(WhoopSync.class);
 
+    /** The ZIP's timestamp shape, which WhoopInsights.minutesOfDay expects. */
+    private static final java.time.format.DateTimeFormatter ZIP_TS =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", java.util.Locale.US);
+
     /** WHOOP caps page size at 25; asking for more is rejected, not clamped. */
     private static final int PAGE = 25;
 
@@ -62,6 +66,20 @@ public class WhoopSync {
 
     @ConfigProperty(name = "irontrainer.history-years", defaultValue = "5")
     int historyYears;
+
+    /** The WHOOP member id seen on the fetched records, if any. Lets the caller
+     * stamp whoop_user_id WITHOUT the read:profile scope — cycle records already
+     * carry user_id, so calling /v2/user/profile/basic would mean requesting a
+     * scope we do not otherwise need (and would 403 without it). */
+    public static Long memberId(List<Map<String, Object>> records) {
+        for (Map<String, Object> r : records) {
+            Long id = asLong(r.get("user_id"));
+            if (id != null) {
+                return id;
+            }
+        }
+        return null;
+    }
 
     /** What one sync did, for the job envelope and the UI. */
     public record Result(int cycles, int written, int skipped, String from, String to) {
@@ -116,7 +134,26 @@ public class WhoopSync {
             }
         }
 
-        int[] counts = QuarkusTransaction.requiringNew().call(() -> upsert(aid, rows));
+        // Stamp the WHOOP member from data we already have, so a reconnect as a
+        // DIFFERENT member is visible instead of silently blending two people's
+        // recovery history. Doing it here rather than at connect avoids needing the
+        // read:profile scope at all.
+        Long member = memberId(cycles);
+        int[] counts = QuarkusTransaction.requiringNew().call(() -> {
+            if (member != null) {
+                io.gamov.irontrainer.athlete.Athlete a =
+                        io.gamov.irontrainer.athlete.Athlete.findById(aid);
+                if (a != null) {
+                    if (a.whoopUserId != null && !a.whoopUserId.equals(member)) {
+                        LOG.warnf("Athlete %d is syncing WHOOP member %d but previously "
+                                + "synced %d — existing WHOOP history belongs to the "
+                                + "previous member.", aid, member, a.whoopUserId);
+                    }
+                    a.whoopUserId = member;
+                }
+            }
+            return upsert(aid, rows);
+        });
         LOG.infof("WHOOP sync: athlete=%d cycles=%d written=%d skipped=%d from=%s",
                 aid, cycles.size(), counts[0], counts[1], startIso);
         return new Result(cycles.size(), counts[0], counts[1], startIso, endIso);
@@ -189,11 +226,14 @@ public class WhoopSync {
                 rec == null ? null : (String) rec.get("updated_at"),
                 slp == null ? null : (String) slp.get("updated_at"));
 
-        // cycle_start/cycle_end are deliberately NOT written here. They hold the
-        // ZIP's "yyyy-MM-dd HH:mm:ss", and WhoopInsights.minutesOfDay parses with
-        // exactly that formatter, returning null on failure. Writing the API's
-        // ISO-8601 into them would make bedtime consistency silently degrade to
-        // fewer nights with no error logged anywhere.
+        // cycle_start/cycle_end are stored in the ZIP's "yyyy-MM-dd HH:mm:ss" shape,
+        // NOT raw ISO-8601. WhoopInsights.minutesOfDay parses with exactly that
+        // formatter and returns null on failure, so raw ISO here would silently
+        // drop every API-only day out of bedtime consistency. Omitting the fields
+        // entirely has the same effect, which is the trap an earlier revision fell
+        // into — the fix is to convert, not to skip.
+        c.cycleStart = zipTimestamp((String) cycle.get("start"));
+        c.cycleEnd = zipTimestamp((String) cycle.get("end"));
 
         // Only SCORED rows contribute metrics. A poll routinely catches this
         // morning's cycle as PENDING_SCORE; writing it would blank a previously
@@ -243,6 +283,20 @@ public class WhoopSync {
 
     static boolean scored(Map<String, Object> o) {
         return "SCORED".equals(o.get("score_state"));
+    }
+
+    /** ISO-8601 instant → the "yyyy-MM-dd HH:mm:ss" UTC form the ZIP importer
+     * writes and WhoopInsights.minutesOfDay parses. Both sources must agree on the
+     * representation or bedtime consistency silently loses half its nights. */
+    static String zipTimestamp(String iso) {
+        if (iso == null || iso.isBlank()) {
+            return null;
+        }
+        try {
+            return ZIP_TS.format(Instant.parse(iso.strip()).atOffset(ZoneOffset.UTC));
+        } catch (java.time.DateTimeException e) {
+            return null;
+        }
     }
 
     /** ISO-8601 instant + a fixed offset → the local calendar date.
@@ -338,6 +392,8 @@ public class WhoopSync {
         if (in.sleepEfficiencyPct != null) stored.sleepEfficiencyPct = in.sleepEfficiencyPct;
         if (in.respiratoryRate != null) stored.respiratoryRate = in.respiratoryRate;
         if (in.asleepH != null) stored.asleepH = in.asleepH;
+        if (in.cycleStart != null) stored.cycleStart = in.cycleStart;
+        if (in.cycleEnd != null) stored.cycleEnd = in.cycleEnd;
         if (in.whoopCycleId != null) stored.whoopCycleId = in.whoopCycleId;
         if (in.apiUpdatedAt != null) stored.apiUpdatedAt = in.apiUpdatedAt;
         stored.source = "api";

@@ -184,4 +184,30 @@ class WhoopSyncTest {
         assertEquals(1.0, row.asleepH, 1e-9);
         assertTrue("api".equals(row.source));
     }
+
+    // ── regressions from PR review ───────────────────────────────────────────
+
+    @Test
+    void cycleStartIsStoredInTheZipFormatSoBedtimeStillWorks() {
+        // Omitting cycle_start (an earlier revision) or writing raw ISO both make
+        // WhoopInsights.minutesOfDay return null, silently dropping every API-only
+        // day out of bedtime consistency with no error anywhere.
+        Map<String, Object> c = cycle(9L, "2026-08-14T22:41:12.000Z",
+                "2026-08-15T06:15:00.000Z", "+00:00", "SCORED", 11.0, null);
+        WhoopCycle row = WhoopSync.toRow(c, Map.of(), Map.of());
+        assertEquals("2026-08-14 22:41:12", row.cycleStart);
+        assertEquals("2026-08-15 06:15:00", row.cycleEnd);
+        // The real check: the insights parser must accept what we wrote.
+        assertEquals(22 * 60 + 41, WhoopInsights.minutesOfDay(row.cycleStart), 1e-9);
+    }
+
+    @Test
+    void memberIdComesFromTheRecordsNotAProfileCall() {
+        // Reading it from /v2/user/profile/basic would need the read:profile scope,
+        // which is not requested — the call would 403 and leave the cross-member
+        // check silently disabled. Cycle records already carry user_id.
+        assertEquals(4242L, WhoopSync.memberId(java.util.List.of(
+                map("id", 1L), map("id", 2L, "user_id", 4242L))));
+        assertNull(WhoopSync.memberId(java.util.List.of(map("id", 1L))));
+    }
 }

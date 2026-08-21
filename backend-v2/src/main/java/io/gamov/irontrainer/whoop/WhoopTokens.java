@@ -25,10 +25,17 @@ import org.jboss.logging.Logger;
  * <ol>
  *   <li><b>Losing the new refresh token locks the athlete out.</b> With Strava the
  *       old refresh token keeps working, so a crash between "refreshed" and
- *       "persisted" is survivable. Here it is not — the old token is already dead
- *       and the new one was never written, so the only recovery is reconnecting by
- *       hand. The persist therefore happens in the SAME transaction as the refresh,
- *       and nothing else is allowed between them.</li>
+ *       "persisted" is survivable. Here it is not.
+ *
+ *       <p>This is <b>not solvable by a transaction</b>, and an earlier revision of
+ *       this class wrongly implied it was. WHOOP invalidating the old token is an
+ *       external side effect; JTA cannot roll it back. Wrapping the HTTP call in the
+ *       transaction only widens the window in which a timeout can strand us. So the
+ *       call happens OUTSIDE any transaction and the response is persisted in the
+ *       shortest possible one. The residual risk — process death in the millisecond
+ *       between response and commit — is real, unavoidable, and recovered by the
+ *       athlete reconnecting; {@link #validAccessToken} surfaces that as a 409 with
+ *       instructions rather than an opaque failure.</li>
  *   <li><b>Two refreshes must never race.</b> {@code synchronized} on the refresh
  *       path serializes them within a process. That is enough here because the
  *       daily sync runs as a single JobRunner job and JobRunner already blocks a
@@ -46,7 +53,14 @@ public class WhoopTokens {
     private static final long EXPIRY_MARGIN_S = 120;
 
     /** Scope must be re-sent on refresh; `offline` is what keeps the refresh token
-     * alive at all. Dropping it silently downgrades the grant. */
+     * alive at all. Dropping it silently downgrades the grant.
+     *
+     * <p>Deliberately WITHOUT read:profile. An earlier revision called
+     * /v2/user/profile/basic to stamp whoop_user_id, which needs that scope — it
+     * would have 403'd and been swallowed by a non-fatal catch, silently defeating
+     * the cross-member check it existed for. The cycle records already carry
+     * user_id, so the id comes from data we fetch anyway and the extra scope (plus
+     * a dashboard edit and a re-consent) is unnecessary. */
     static final String SCOPE = "offline read:recovery read:cycles read:sleep";
 
     @RestClient
@@ -78,7 +92,8 @@ public class WhoopTokens {
      * <p>synchronized: see the class docs — concurrent refreshes fail at WHOOP and
      * the loser is left holding a dead refresh token. */
     public synchronized String validAccessToken(int aid) {
-        Athlete a = Athlete.findById(aid);
+        Athlete a = io.quarkus.narayana.jta.QuarkusTransaction.requiringNew()
+                .call(() -> Athlete.<Athlete>findById(aid));
         String refresh = a == null ? null : a.whoopRefreshToken;
         if (refresh == null || refresh.isEmpty()) {
             throw new WebApplicationException(
@@ -92,10 +107,9 @@ public class WhoopTokens {
         return refreshAndPersist(aid, refresh);
     }
 
-    /** The refresh + persist pair, in one transaction. Split out so the
-     * transactional boundary is exactly around "get new tokens, write new tokens"
-     * — a rollback here must not leave the athlete holding a spent refresh token. */
-    @Transactional
+    /** HTTP first, OUTSIDE any transaction; then the shortest possible durable
+     * write. See the class docs for why the reverse — call inside a transaction —
+     * buys nothing and costs a wider failure window. */
     String refreshAndPersist(int aid, String refresh) {
         Map<String, Object> token;
         try {
@@ -109,8 +123,12 @@ public class WhoopTokens {
             throw new WebApplicationException(
                     "WHOOP sign-in has expired. Reconnect WHOOP in Settings.", 409);
         }
-        Athlete a = Athlete.findById(aid);
-        saveTokens(a, token);
+        // From here the OLD refresh token is already dead at WHOOP. Persist
+        // immediately and do nothing else first.
+        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().run(() -> {
+            Athlete a = Athlete.findById(aid);
+            saveTokens(a, token);
+        });
         return (String) token.get("access_token");
     }
 
@@ -143,11 +161,6 @@ public class WhoopTokens {
     public Map<String, Object> exchange(String code) {
         return whoop.exchangeCode(clientId.orElse(""), clientSecret.orElse(""),
                 code, "authorization_code", redirectUri);
-    }
-
-    /** Who this token belongs to. Used once at connect to stamp whoop_user_id. */
-    public Map<String, Object> profile(String accessToken) {
-        return whoop.profile("Bearer " + accessToken);
     }
 
     /** Forget the connection locally (disconnect). WHOOP has no documented

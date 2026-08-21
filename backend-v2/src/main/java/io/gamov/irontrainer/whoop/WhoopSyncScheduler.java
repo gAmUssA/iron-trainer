@@ -1,10 +1,12 @@
 package io.gamov.irontrainer.whoop;
 
 import io.gamov.irontrainer.athlete.Athlete;
+import io.gamov.irontrainer.jobs.JobRunner;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.WebApplicationException;
 import java.util.List;
 import org.jboss.logging.Logger;
 
@@ -30,6 +32,9 @@ public class WhoopSyncScheduler {
     @Inject
     WhoopTokens tokens;
 
+    @Inject
+    JobRunner jobs;
+
     @Scheduled(cron = "{whoop.sync-cron}", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     void daily() {
         if (!tokens.configured()) {
@@ -46,15 +51,23 @@ public class WhoopSyncScheduler {
         LOG.infof("WHOOP daily sync starting for %d athlete(s).", connected.size());
         for (Integer aid : connected) {
             try {
-                WhoopSync.Result r = sync.runSync(aid, false);
-                LOG.infof("WHOOP daily sync: athlete=%d cycles=%d written=%d",
-                        aid, r.cycles(), r.written());
+                // Through JobRunner, NOT a direct call. concurrentExecution=SKIP only
+                // stops two SCHEDULER firings overlapping; it does nothing about a
+                // manual POST /api/whoop/sync running at the same time. Both paths
+                // must share the per-athlete same-kind job block, or two syncs race
+                // on upsert's find-then-write and one silently loses.
+                jobs.submit(aid, "whoop_sync", () -> sync.runSync(aid, false).toRow());
+            } catch (WebApplicationException e) {
+                // The deliberate 409 from WhoopTokens: the athlete must reconnect.
+                // A user action, not a fault — warn without a stack trace, and it
+                // will recur daily until they do something about it.
+                LOG.warnf("WHOOP daily sync skipped for athlete %d: %s", aid, e.getMessage());
             } catch (RuntimeException e) {
-                // One athlete's expired token must not stop everyone else's sync.
-                // A 409 here means "reconnect required" and will recur daily until
-                // they do — logged at warn, not error, because it is a user action
-                // rather than a fault.
-                LOG.warnf("WHOOP daily sync failed for athlete %d: %s", aid, e.getMessage());
+                // Everything else — rate limits, network, malformed payloads, DB
+                // errors — is a genuine fault and gets a stack trace. Lumping these
+                // in with "reconnect required" would hide a recurring outage behind
+                // a message telling the user to click a button that will not help.
+                LOG.errorf(e, "WHOOP daily sync FAILED for athlete %d", aid);
             }
         }
     }
