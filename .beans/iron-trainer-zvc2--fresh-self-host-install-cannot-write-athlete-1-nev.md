@@ -1,11 +1,11 @@
 ---
 # iron-trainer-zvc2
 title: 'Fresh self-host install cannot write: athlete 1 never exists'
-status: todo
+status: completed
 type: bug
 priority: high
 created_at: 2026-08-19T14:24:11Z
-updated_at: 2026-08-19T14:24:44Z
+updated_at: 2026-08-21T02:18:26Z
 parent: iron-trainer-4lve
 ---
 
@@ -50,6 +50,39 @@ race + date. Wherever it lands it must be idempotent (boot, restart, upgrade) an
 NOT fire on the SaaS deployment, where athlete rows are owned by the auth flow.
 
 ## Todo
-- [ ] Create the default athlete row on first boot in local mode, idempotently
-- [ ] Assert it does not run under the %prod SaaS profile
-- [ ] Regression test: fresh DB -> POST a write -> 200, not 500
+- [x] Create the default athlete row on first boot in local mode, idempotently
+- [x] Assert it does not run under the %prod SaaS profile
+- [x] Regression test: fresh DB -> POST a write -> 200, not 500
+
+## Fixed 2026-08-20 — LocalAthleteBootstrap
+
+Startup observer that inserts the default athlete when `auth-required=false`.
+
+The condition is deliberately the SAME one `BearerAuthFilter` uses to hand that id
+out, rather than a new "local mode" flag. Tying them together is the point: the row
+must exist exactly when, and only when, the filter will use it. When the explicit
+flag arrives with 4lve, this condition should FOLLOW it rather than gain a parallel
+one — two sources of truth here is how the bug comes back.
+
+Details worth keeping:
+- Explicit-id native insert with `ON CONFLICT DO NOTHING`. The column is a serial
+  mapped as IDENTITY, so persisting an entity would allocate a different id than the
+  one the filter hands out.
+- `setval` afterwards. An explicit-id insert leaves the sequence behind, so the next
+  ordinary insert (connecting Strava) would reuse the id and die on the primary key —
+  a bug that surfaces much later, in someone else's session. Covered by a test.
+- `@Priority(Integer.MAX_VALUE)` so it runs after Flyway's own startup observer;
+  otherwise it hits a table that does not exist yet.
+
+Verified:
+- 5 new tests; full suite 272 passed / 0 failed.
+- Disabling the bootstrap makes `aFreshInstallCanActuallyWrite` fail with the exact
+  original error, so it is a real regression test rather than a passing decoration.
+- A separate profile asserts NOTHING is created when `auth-required=true` (SaaS).
+- End to end in a container against a fresh Postgres: `POST /api/tests/result` -> 200
+  (it was 500), athlete row present, startup logs "Local mode: created athlete 1".
+
+Follow-up: `backend-v2/scripts/upgrade-test.sh` seeds the athlete row by hand to work
+around this, and that seeding must STAY for now — the upgrade test boots the PREVIOUS
+release first, and v0.1.0 does not have the fix. It can be removed once the release
+being upgraded FROM creates its own athlete.
