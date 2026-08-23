@@ -544,4 +544,66 @@ class WhoopResourceTest {
                 WhoopCycle.findById(new WhoopCycle.PK(aid, "2026-02-02")));
         assertEquals(64.0, after.recoveryScore, "a later score for the SAME cycle must land");
     }
+
+    @Test
+    void aZipImportReplacesAnApiRowHoldingTheWRONGCycleButNotTheRightOne() throws Exception {
+        // The ZIP importer does NOT go through upsert — it uses a delete+batch-insert
+        // path for speed, and that path used to drop every api-owned date outright.
+        // So a bounded API window could store the later cycle and no export could
+        // ever displace it: the stored winner still depended on ingest order, which
+        // is the whole defect 80i2 removes.
+        //
+        // Uses AID because the endpoint resolves the athlete itself, and a date no
+        // other test touches so this cannot perturb their counts.
+        final String day = "2026-03-15";
+        String csv = String.join("\n", HEADER,
+                "2026-03-15 02:14:30,2026-03-16 01:58:00,UTC-04:00,67,52,48.5,33.9,96,14.2,"
+                        + "2456,171,88,2026-03-15 02:20:00,2026-03-15 10:41:12,89,16.1,432,470,92")
+                + "\n";
+        try {
+            QuarkusTransaction.requiringNew().run(() -> {
+                WhoopCycle.delete("athleteId = ?1 and date = ?2", AID, day);
+                WhoopCycle later = new WhoopCycle();
+                later.athleteId = AID;
+                later.date = day;
+                later.cycleStart = "2026-03-15 20:00:00";   // evening cycle — should LOSE
+                later.recoveryScore = 9.0;
+                later.source = "api";
+                later.apiUpdatedAt = "2026-03-16T09:00:00.000Z";
+                later.persist();
+            });
+
+            given().multiPart("file", "export.zip", zipOf("physiological_cycles.csv", csv),
+                            "application/zip")
+                    .when().post("/api/whoop/import").then().statusCode(200);
+
+            WhoopCycle after = QuarkusTransaction.requiringNew().call(() ->
+                    WhoopCycle.findById(new WhoopCycle.PK(AID, day)));
+            assertEquals(67.0, after.recoveryScore,
+                    "the export's morning cycle must displace an api row holding the later one");
+
+            // The converse: when the api row is the SAME cycle it must survive, because
+            // it is the same measurement at higher precision — that is what
+            // api-over-zip precedence is actually for.
+            QuarkusTransaction.requiringNew().run(() -> {
+                WhoopCycle same = WhoopCycle.findById(new WhoopCycle.PK(AID, day));
+                same.source = "api";
+                same.cycleStart = "2026-03-15 02:14:30";   // SAME cycle as the export row
+                same.recoveryScore = 67.4321;              // full API precision
+                same.apiUpdatedAt = "2026-03-16T09:00:00.000Z";
+            });
+
+            given().multiPart("file", "export.zip", zipOf("physiological_cycles.csv", csv),
+                            "application/zip")
+                    .when().post("/api/whoop/import").then().statusCode(200);
+
+            WhoopCycle kept = QuarkusTransaction.requiringNew().call(() ->
+                    WhoopCycle.findById(new WhoopCycle.PK(AID, day)));
+            assertEquals(67.4321, kept.recoveryScore,
+                    "same cycle -> keep the API row; that is what api-over-zip is FOR");
+        } finally {
+            QuarkusTransaction.requiringNew().run(() ->
+                    WhoopCycle.delete("athleteId = ?1 and date = ?2", AID, day));
+        }
+    }
 }

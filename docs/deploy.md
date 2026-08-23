@@ -63,10 +63,23 @@ Migrating schema "public" to version "12 - whoop reconnect flag"
 > stale. That silent-rollback behaviour is the real hazard recorded in bean
 > `backend-v2-railway-deploy`.
 
-Verify after any schema change by checking the deploy log for the expected
-`Migrating schema "public" to version "N"` line — Flyway is quiet when there is
-nothing to do (`Schema "public" is up to date`), so silence means "already applied",
-not "skipped".
+Verify after any schema change by requiring **positive evidence** in the deploy log —
+one of:
+
+```
+Migrating schema "public" to version "N - <name>"     # applied on this boot
+```
+or
+```
+Current version of schema "public": N
+Schema "public" is up to date. No migration necessary.   # already applied, N must match
+```
+
+**Absence of both is not success.** It reads the same whether the migration was
+already applied, Flyway never started, the container never booted, or the logs are
+simply unavailable — and this is a service where a failed boot leaves the *previous*
+image serving happily. Treat a log with neither line as unverified and go look, rather
+than inferring "already applied" from silence.
 
 ### 3. Railway (app service)
 

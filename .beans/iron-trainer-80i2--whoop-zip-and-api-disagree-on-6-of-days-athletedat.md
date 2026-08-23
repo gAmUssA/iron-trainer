@@ -5,7 +5,7 @@ status: completed
 type: bug
 priority: high
 created_at: 2026-08-21T19:05:55Z
-updated_at: 2026-08-23T17:12:08Z
+updated_at: 2026-08-23T17:26:37Z
 parent: iron-trainer-ids6
 ---
 
@@ -161,3 +161,36 @@ Both cases have tests, verified to fail without the check:
 
 **Consequence worth noting: the 10 bad days in production self-heal on the next full
 re-sync.** Before this they would have stayed wrong forever.
+
+
+## Second review pass on #131 — the ZIP writer bypassed the rule entirely
+
+Two suppressed findings, both correct.
+
+**The ZIP importer does not use `upsert`.** It has its own delete+batch-insert path
+(a per-row merge SELECTs each PK — ~27k round trips, which blew the 60s transaction
+timeout in the 2026-08-05 prod incident). That path did
+`cycleByDate.keySet().removeAll(apiOwned)`: every api-owned date dropped
+unconditionally, no cycle comparison. So a bounded API window could store the LATER
+cycle and no export could ever displace it — the stored winner still depended on which
+source ran first, which is the entire defect this bean exists to remove.
+
+Now applies the same `sameCycleAs`/`preferredOver` decision per date: same cycle keeps
+the API row (higher precision, which is what api-over-zip is FOR), different cycle goes
+to the tie-break.
+
+Implementation note worth keeping: the stored rows must be read as a **scalar
+projection**, not `find().list()`. Loading them as managed entities puts them in the
+persistence context and the batch persist then dies with
+`NonUniqueObjectException — a different object with the same identifier` on exactly
+the dates the export wins. Cost me a 500 before I saw it.
+
+**docs/deploy.md verification advice was unsound** — and in the section about a
+service that silently serves the old image on a failed boot, which is worse than
+merely wrong. It said absence of the `Migrating schema` line means "already applied".
+It equally means Flyway never started, the container never booted, or logs were
+unavailable. Rewritten to require positive evidence: either the migration line, or
+`Schema "public" is up to date` together with a matching
+`Current version of schema "public": N`.
+
+Test verified to fail against the old behaviour: `expected: <67.0> but was: <9.0>`.
