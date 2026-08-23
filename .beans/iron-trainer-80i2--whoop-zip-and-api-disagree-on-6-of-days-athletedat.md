@@ -5,7 +5,7 @@ status: completed
 type: bug
 priority: high
 created_at: 2026-08-21T19:05:55Z
-updated_at: 2026-08-21T20:24:18Z
+updated_at: 2026-08-23T17:12:08Z
 parent: iron-trainer-ids6
 ---
 
@@ -129,3 +129,35 @@ only remaining difference is precision — where the API genuinely wins.
 - [x] Applied as WhoopCycle.dedupeByDate, called by both paths (scored beats unscored, then earliest cycleStart)
 - [x] Verified: reproduces 2085 days exactly and keeps the morning cycle on all 10
 - [x] Now accurate — with both paths agreeing on WHICH cycle, the only difference left is precision
+
+
+## Review of #131 — deduping within a fetch was not enough
+
+Copilot caught that `dedupeByDate` only picks a winner among rows in the CURRENT
+response, while the upsert then judges against the stored row by `apiUpdatedAt`. Two
+holes, both real:
+
+1. **A re-sync could never REPAIR an already-wrong day.** The correct morning cycle
+   normally carries the OLDER `updated_at`, so the staleness guard rejected it as
+   stale. That is precisely the state production is in for the 10 ambiguous dates —
+   the fix would have prevented future corruption while leaving the existing damage
+   permanent.
+2. **A bounded window could re-corrupt a correct day.** If the daily window starts
+   after the morning cycle, WHOOP returns only the later one; dedupe passes the single
+   row through, its `updated_at` is newer, and it overwrites a correct row.
+
+Fixed by applying the same judgement in `upsert` against the stored row.
+`WhoopCycle.sameCycleAs` distinguishes an update from a different cycle competing for
+the date (`whoopCycleId` when both have it, else `cycleStart` — the ZIP sets no id).
+Different cycle -> the tie-break decides and the timestamp rule is bypassed, because
+comparing the `updated_at` of two DIFFERENT cycles is meaningless.
+
+Replacement is a full overwrite, not the null-skipping merge: keeping the loser's
+values where the winner has none stitches a row out of both cycles — the morning
+cycle's recovery beside the evening cycle's SpO2, a day that never happened.
+
+Both cases have tests, verified to fail without the check:
+`expected: <30.0> but was: <10.0>` and `expected: <75.0> but was: <10.0>`.
+
+**Consequence worth noting: the 10 bad days in production self-heal on the next full
+re-sync.** Before this they would have stayed wrong forever.

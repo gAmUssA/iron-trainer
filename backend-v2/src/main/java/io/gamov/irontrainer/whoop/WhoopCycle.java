@@ -155,15 +155,18 @@ public class WhoopCycle extends PanacheEntityBase {
                 continue;
             }
             WhoopCycle held = best.get(c.date);
-            if (held == null || preferOver(c, held)) {
+            if (held == null || preferredOver(c, held)) {
                 best.put(c.date, c);
             }
         }
         return new ArrayList<>(best.values());
     }
 
-    /** True when {@code cand} should replace {@code held} for the same date. */
-    private static boolean preferOver(WhoopCycle cand, WhoopCycle held) {
+    /** True when {@code cand} should replace {@code held} for the same date.
+     *
+     * <p>Public because the upsert needs the SAME judgement against the row already
+     * in the database, not just within one fetch — see WhoopSync.upsert. */
+    public static boolean preferredOver(WhoopCycle cand, WhoopCycle held) {
         boolean candScored = cand.recoveryScore != null;
         boolean heldScored = held.recoveryScore != null;
         if (candScored != heldScored) {
@@ -176,5 +179,23 @@ public class WhoopCycle extends PanacheEntityBase {
             return true;
         }
         return cand.cycleStart.compareTo(held.cycleStart) < 0;
+    }
+
+    /** Whether two rows for the same date describe the SAME physiological cycle.
+     *
+     * <p>{@code whoopCycleId} is authoritative but only the API sets it — export-ZIP
+     * rows have none — so {@code cycleStart} is the fallback, and it works across
+     * both paths because each stores UTC {@code yyyy-MM-dd HH:mm:ss}.
+     *
+     * <p>Defaults to TRUE when neither is available: with no evidence of a different
+     * cycle, an ordinary update is the safe reading. */
+    public static boolean sameCycleAs(WhoopCycle a, WhoopCycle b) {
+        if (a.whoopCycleId != null && b.whoopCycleId != null) {
+            return a.whoopCycleId.equals(b.whoopCycleId);
+        }
+        if (a.cycleStart != null && b.cycleStart != null) {
+            return a.cycleStart.equals(b.cycleStart);
+        }
+        return true;
     }
 }
