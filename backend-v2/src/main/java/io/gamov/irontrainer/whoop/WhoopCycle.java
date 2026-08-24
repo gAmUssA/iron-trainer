@@ -1,6 +1,8 @@
 package io.gamov.irontrainer.whoop;
 
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
+import java.util.ArrayList;
+import java.util.List;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -116,5 +118,84 @@ public class WhoopCycle extends PanacheEntityBase {
         public int hashCode() {
             return Objects.hash(athleteId, date);
         }
+    }
+
+    /** Collapse rows that share a date, deterministically (bean 80i2).
+     *
+     * <p>{@code (athlete_id, date)} is the primary key, so a day carrying two WHOOP
+     * cycles cannot be represented — one is discarded. In a real 5.7-year export that
+     * is <b>128 of 2085 days</b>: 21 spanning a timezone change, the rest days where
+     * WHOOP simply recorded two cycles.
+     *
+     * <p>Without this, which cycle survives depends on ingest ORDER, so the export ZIP
+     * and the API could keep DIFFERENT cycles for the same date. Observed on
+     * 2025-10-07, a transatlantic travel day: the ZIP kept the 08:46-local wake
+     * (recovery 30) and a later API sync overwrote it with the post-flight cycle
+     * (recovery 10). Not a rounding difference — a different day's readiness.
+     *
+     * <p>Two rules, in order:
+     * <ol>
+     *   <li><b>A scored cycle beats an unscored one.</b> On 118 of those 128 days only
+     *       one cycle has a recovery score, so this alone resolves them — and resolves
+     *       them explicitly, rather than relying on the upsert's null-guard to do it
+     *       by accident.</li>
+     *   <li><b>Otherwise the earliest cycle start wins</b> — the morning cycle, which
+     *       is the recovery WHOOP's own app shows for the day. The later one is the
+     *       nap or the post-flight cycle. This decides the remaining 10 days.</li>
+     * </ol>
+     *
+     * <p>Both ingest paths must call this, or the disagreement returns. cycleStart is
+     * stored as UTC {@code yyyy-MM-dd HH:mm:ss} in both, so lexicographic order is
+     * chronological order and no parsing is needed.
+     */
+    public static List<WhoopCycle> dedupeByDate(List<WhoopCycle> rows) {
+        Map<String, WhoopCycle> best = new LinkedHashMap<>();
+        for (WhoopCycle c : rows) {
+            if (c == null || c.date == null) {
+                continue;
+            }
+            WhoopCycle held = best.get(c.date);
+            if (held == null || preferredOver(c, held)) {
+                best.put(c.date, c);
+            }
+        }
+        return new ArrayList<>(best.values());
+    }
+
+    /** True when {@code cand} should replace {@code held} for the same date.
+     *
+     * <p>Public because the upsert needs the SAME judgement against the row already
+     * in the database, not just within one fetch — see WhoopSync.upsert. */
+    public static boolean preferredOver(WhoopCycle cand, WhoopCycle held) {
+        boolean candScored = cand.recoveryScore != null;
+        boolean heldScored = held.recoveryScore != null;
+        if (candScored != heldScored) {
+            return candScored;
+        }
+        if (cand.cycleStart == null) {
+            return false;
+        }
+        if (held.cycleStart == null) {
+            return true;
+        }
+        return cand.cycleStart.compareTo(held.cycleStart) < 0;
+    }
+
+    /** Whether two rows for the same date describe the SAME physiological cycle.
+     *
+     * <p>{@code whoopCycleId} is authoritative but only the API sets it — export-ZIP
+     * rows have none — so {@code cycleStart} is the fallback, and it works across
+     * both paths because each stores UTC {@code yyyy-MM-dd HH:mm:ss}.
+     *
+     * <p>Defaults to TRUE when neither is available: with no evidence of a different
+     * cycle, an ordinary update is the safe reading. */
+    public static boolean sameCycleAs(WhoopCycle a, WhoopCycle b) {
+        if (a.whoopCycleId != null && b.whoopCycleId != null) {
+            return a.whoopCycleId.equals(b.whoopCycleId);
+        }
+        if (a.cycleStart != null && b.cycleStart != null) {
+            return a.cycleStart.equals(b.cycleStart);
+        }
+        return true;
     }
 }

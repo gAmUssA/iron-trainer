@@ -4,6 +4,7 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.gamov.irontrainer.athlete.Athlete;
@@ -437,5 +438,172 @@ class WhoopResourceTest {
             a.whoopAccessToken = "at";
             a.whoopTokenExpiresAt = Instant.now().getEpochSecond() + 3600;
         });
+    }
+
+    // ── two-cycle days vs the STORED row (bean 80i2, review of #131) ─────────
+
+    private static WhoopCycle mk(String date, String start, Long cycleId,
+                                 Double recovery, String apiUpdatedAt, Double spo2) {
+        WhoopCycle c = new WhoopCycle();
+        c.date = date;
+        c.cycleStart = start;
+        c.whoopCycleId = cycleId;
+        c.recoveryScore = recovery;
+        c.apiUpdatedAt = apiUpdatedAt;
+        c.spo2Pct = spo2;
+        c.source = "api";
+        return c;
+    }
+
+    @Test
+    void aReSyncRepairsADayAlreadyHoldingTheWrongCycle() {
+        // Production's exact state for 2025-10-07: the post-flight cycle got stored
+        // because the old code let arrival order decide. Deduping within a fetch
+        // does NOT fix it — the correct morning cycle carries the OLDER updated_at,
+        // so the staleness guard rejects it and the day stays wrong forever.
+        final int aid = 7010;
+        QuarkusTransaction.requiringNew().run(() -> {
+            if (Athlete.findById(aid) == null) {
+                Athlete.getEntityManager()
+                        .createNativeQuery("INSERT INTO athlete (id) VALUES (" + aid + ")")
+                        .executeUpdate();
+            }
+            WhoopCycle.delete("athleteId", aid);
+            WhoopCycle wrong = mk("2025-10-07", "2025-10-07 19:47:37", 222L, 10.0,
+                    "2025-10-08T09:00:00.000Z", 95.83);
+            wrong.athleteId = aid;
+            wrong.persist();
+        });
+
+        WhoopCycle morning = mk("2025-10-07", "2025-10-07 00:53:22", 111L, 30.0,
+                "2025-10-07T09:00:00.000Z", null);   // older updated_at, on purpose
+        QuarkusTransaction.requiringNew().run(() -> whoopSync.upsert(aid, List.of(morning)));
+
+        WhoopCycle after = QuarkusTransaction.requiringNew().call(() ->
+                WhoopCycle.findById(new WhoopCycle.PK(aid, "2025-10-07")));
+        assertEquals(30.0, after.recoveryScore, "the morning cycle must win the repair");
+        assertEquals("2025-10-07 00:53:22", after.cycleStart);
+        assertNull(after.spo2Pct,
+                "replacing a different cycle must not keep the loser's SpO2 — that row "
+                        + "would describe a day that never happened");
+    }
+
+    @Test
+    void aPartialWindowReturningOnlyTheLaterCycleCannotClobberACorrectDay() {
+        // The daily job's window can start after the morning cycle, so WHOOP returns
+        // only the later one. dedupeByDate sees a single row and passes it through;
+        // its updated_at is NEWER, so without the stored-row check it wins and
+        // silently re-corrupts a day that was already right.
+        final int aid = 7011;
+        QuarkusTransaction.requiringNew().run(() -> {
+            if (Athlete.findById(aid) == null) {
+                Athlete.getEntityManager()
+                        .createNativeQuery("INSERT INTO athlete (id) VALUES (" + aid + ")")
+                        .executeUpdate();
+            }
+            WhoopCycle.delete("athleteId", aid);
+            WhoopCycle good = mk("2025-12-01", "2025-12-01 06:00:00", 111L, 75.0,
+                    "2025-12-01T09:00:00.000Z", null);
+            good.athleteId = aid;
+            good.persist();
+        });
+
+        WhoopCycle evening = mk("2025-12-01", "2025-12-01 21:00:00", 222L, 10.0,
+                "2025-12-02T09:00:00.000Z", 91.0);   // newer updated_at
+        int[] r = QuarkusTransaction.requiringNew().call(() ->
+                whoopSync.upsert(aid, List.of(evening)));
+
+        WhoopCycle after = QuarkusTransaction.requiringNew().call(() ->
+                WhoopCycle.findById(new WhoopCycle.PK(aid, "2025-12-01")));
+        assertEquals(75.0, after.recoveryScore, "the morning cycle must survive");
+        assertEquals(1, r[1], "the later cycle should be counted as skipped");
+    }
+
+    @Test
+    void refreshingTheSameCycleStillUpdatesNormally() {
+        // The guard must not freeze legitimate updates: same cycle id, newer data.
+        final int aid = 7012;
+        QuarkusTransaction.requiringNew().run(() -> {
+            if (Athlete.findById(aid) == null) {
+                Athlete.getEntityManager()
+                        .createNativeQuery("INSERT INTO athlete (id) VALUES (" + aid + ")")
+                        .executeUpdate();
+            }
+            WhoopCycle.delete("athleteId", aid);
+            WhoopCycle pending = mk("2026-02-02", "2026-02-02 06:00:00", 555L, null,
+                    "2026-02-02T09:00:00.000Z", null);
+            pending.athleteId = aid;
+            pending.persist();
+        });
+
+        WhoopCycle scored = mk("2026-02-02", "2026-02-02 06:00:00", 555L, 64.0,
+                "2026-02-02T12:00:00.000Z", null);
+        QuarkusTransaction.requiringNew().run(() -> whoopSync.upsert(aid, List.of(scored)));
+
+        WhoopCycle after = QuarkusTransaction.requiringNew().call(() ->
+                WhoopCycle.findById(new WhoopCycle.PK(aid, "2026-02-02")));
+        assertEquals(64.0, after.recoveryScore, "a later score for the SAME cycle must land");
+    }
+
+    @Test
+    void aZipImportReplacesAnApiRowHoldingTheWRONGCycleButNotTheRightOne() throws Exception {
+        // The ZIP importer does NOT go through upsert — it uses a delete+batch-insert
+        // path for speed, and that path used to drop every api-owned date outright.
+        // So a bounded API window could store the later cycle and no export could
+        // ever displace it: the stored winner still depended on ingest order, which
+        // is the whole defect 80i2 removes.
+        //
+        // Uses AID because the endpoint resolves the athlete itself, and a date no
+        // other test touches so this cannot perturb their counts.
+        final String day = "2026-03-15";
+        String csv = String.join("\n", HEADER,
+                "2026-03-15 02:14:30,2026-03-16 01:58:00,UTC-04:00,67,52,48.5,33.9,96,14.2,"
+                        + "2456,171,88,2026-03-15 02:20:00,2026-03-15 10:41:12,89,16.1,432,470,92")
+                + "\n";
+        try {
+            QuarkusTransaction.requiringNew().run(() -> {
+                WhoopCycle.delete("athleteId = ?1 and date = ?2", AID, day);
+                WhoopCycle later = new WhoopCycle();
+                later.athleteId = AID;
+                later.date = day;
+                later.cycleStart = "2026-03-15 20:00:00";   // evening cycle — should LOSE
+                later.recoveryScore = 9.0;
+                later.source = "api";
+                later.apiUpdatedAt = "2026-03-16T09:00:00.000Z";
+                later.persist();
+            });
+
+            given().multiPart("file", "export.zip", zipOf("physiological_cycles.csv", csv),
+                            "application/zip")
+                    .when().post("/api/whoop/import").then().statusCode(200);
+
+            WhoopCycle after = QuarkusTransaction.requiringNew().call(() ->
+                    WhoopCycle.findById(new WhoopCycle.PK(AID, day)));
+            assertEquals(67.0, after.recoveryScore,
+                    "the export's morning cycle must displace an api row holding the later one");
+
+            // The converse: when the api row is the SAME cycle it must survive, because
+            // it is the same measurement at higher precision — that is what
+            // api-over-zip precedence is actually for.
+            QuarkusTransaction.requiringNew().run(() -> {
+                WhoopCycle same = WhoopCycle.findById(new WhoopCycle.PK(AID, day));
+                same.source = "api";
+                same.cycleStart = "2026-03-15 02:14:30";   // SAME cycle as the export row
+                same.recoveryScore = 67.4321;              // full API precision
+                same.apiUpdatedAt = "2026-03-16T09:00:00.000Z";
+            });
+
+            given().multiPart("file", "export.zip", zipOf("physiological_cycles.csv", csv),
+                            "application/zip")
+                    .when().post("/api/whoop/import").then().statusCode(200);
+
+            WhoopCycle kept = QuarkusTransaction.requiringNew().call(() ->
+                    WhoopCycle.findById(new WhoopCycle.PK(AID, day)));
+            assertEquals(67.4321, kept.recoveryScore,
+                    "same cycle -> keep the API row; that is what api-over-zip is FOR");
+        } finally {
+            QuarkusTransaction.requiringNew().run(() ->
+                    WhoopCycle.delete("athleteId = ?1 and date = ?2", AID, day));
+        }
     }
 }

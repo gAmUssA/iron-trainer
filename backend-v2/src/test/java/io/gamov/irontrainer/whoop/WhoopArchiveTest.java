@@ -49,7 +49,12 @@ class WhoopArchiveTest {
                 "2026-07-29 02:05:00,,UTC-04:00,,,,,,5.1,890,140,95,,,,,,,") + "\n";
 
         List<WhoopCycle> cycles = WhoopArchive.parse(zipWith("physiological_cycles.csv", csv)).cycles();
-        assertEquals(2, cycles.size());
+        // ONE row, not two. Both CSV rows derive to 2026-07-28 — the second is an
+        // open cycle whose 02:05 UTC start is 22:05 the PREVIOUS local day — so this
+        // fixture is itself a two-cycle day, and dedupeByDate collapses it (80i2).
+        // It always collapsed; before the rule existed the (athlete, date) key just
+        // decided it later and by arrival order. The scored cycle wins.
+        assertEquals(1, cycles.size());
 
         WhoopCycle c = cycles.get(0);
         assertEquals("2026-07-28", c.date);
@@ -65,9 +70,25 @@ class WhoopArchiveTest {
         assertEquals(16.1, c.respiratoryRate);
         assertEquals(7.2, c.asleepH, 1e-9);   // 432 min
 
-        WhoopCycle open = cycles.get(1);
-        // 02:05 UTC - 4 h = 22:05 the previous local day.
-        assertEquals("2026-07-28", open.date);
+    }
+
+    @Test
+    void anOpenCycleFallsBackToItsStartAndRespectsTheOffset() {
+        // Split out of the test above, which could no longer assert this: its open
+        // cycle collided with the scored one and is now collapsed away. Here the
+        // open cycle owns its own date, so the fallback ladder stays covered.
+        // 2026-07-30 02:05 UTC at UTC-04:00 is 22:05 on 2026-07-29 locally.
+        String csv = String.join("\n", HEADER,
+                "2026-07-30 02:05:00,,UTC-04:00,,,,,,5.1,890,140,95,,,,,,,") + "\n";
+        List<WhoopCycle> cycles;
+        try {
+            cycles = WhoopArchive.parse(zipWith("physiological_cycles.csv", csv)).cycles();
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+        assertEquals(1, cycles.size());
+        WhoopCycle open = cycles.get(0);
+        assertEquals("2026-07-29", open.date);
         assertNull(open.recoveryScore);
         assertEquals(5.1, open.dayStrain);
     }

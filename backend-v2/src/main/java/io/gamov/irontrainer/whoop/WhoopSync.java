@@ -197,13 +197,17 @@ public class WhoopSync {
             }
         }
 
-        List<WhoopCycle> rows = new ArrayList<>();
+        List<WhoopCycle> mapped = new ArrayList<>();
         for (Map<String, Object> cycle : cycles) {
             WhoopCycle row = toRow(cycle, recoveryByCycle, sleepByCycle);
             if (row != null) {
-                rows.add(row);
+                mapped.add(row);
             }
         }
+        // Same collapse the ZIP path applies. Without it the two sources can keep
+        // DIFFERENT cycles for a two-cycle date and a re-sync silently changes the
+        // day's recovery — see WhoopCycle.dedupeByDate (bean 80i2).
+        final List<WhoopCycle> rows = WhoopCycle.dedupeByDate(mapped);
 
         // Stamp the WHOOP member from data we already have, so a reconnect as a
         // DIFFERENT member is visible instead of silently blending two people's
@@ -480,6 +484,31 @@ public class WhoopSync {
                 written++;
                 continue;
             }
+            // A DIFFERENT cycle competing for this date is not an update, and the
+            // timestamp rule below must not decide it — comparing the updated_at of
+            // two different cycles is meaningless. The same tie-break that resolves
+            // a fetch has to be applied against the stored row too (bean 80i2),
+            // otherwise deduping within one response is not enough:
+            //
+            //  * a re-sync can never REPAIR an already-wrong day, because the
+            //    correct earlier cycle usually has the older updated_at and gets
+            //    rejected as stale — exactly the state production is in now; and
+            //  * a bounded window that happens to start after the morning cycle
+            //    returns only the later one, which then has a newer updated_at and
+            //    overwrites a row that was already correct.
+            if (!WhoopCycle.sameCycleAs(stored, incoming)) {
+                if (!WhoopCycle.preferredOver(incoming, stored)) {
+                    skipped++;
+                    continue;
+                }
+                // REPLACE, not merge. Null-skipping is right when refreshing one
+                // cycle, but across two different cycles it stitches a row out of
+                // both — the morning cycle's recovery beside the evening cycle's
+                // SpO2, a day that never happened.
+                replaceWith(stored, incoming, now);
+                written++;
+                continue;
+            }
             // An 'api' row is never overwritten by anything older. Within 'api',
             // only a newer observation wins; a re-fetch of unchanged data is a no-op.
             if ("api".equals(stored.source)
@@ -518,6 +547,34 @@ public class WhoopSync {
         if (in.apiUpdatedAt != null) stored.apiUpdatedAt = in.apiUpdatedAt;
         stored.source = "api";
         stored.updatedAt = now;
+    }
+
+    /** Overwrite every metric, nulls included, when a different cycle wins the date.
+     * Deliberately not {@link #merge}: leaving the losing cycle's values in place
+     * where the winner has none produces a row that describes no real day. */
+    private static void replaceWith(WhoopCycle stored, WhoopCycle in, String now) {
+        stored.recoveryScore = in.recoveryScore;
+        stored.hrvRmssdMs = in.hrvRmssdMs;
+        stored.rhrBpm = in.rhrBpm;
+        stored.dayStrain = in.dayStrain;
+        stored.energyKcal = in.energyKcal;
+        stored.spo2Pct = in.spo2Pct;
+        stored.skinTempC = in.skinTempC;
+        stored.sleepPerformancePct = in.sleepPerformancePct;
+        stored.sleepEfficiencyPct = in.sleepEfficiencyPct;
+        stored.respiratoryRate = in.respiratoryRate;
+        stored.asleepH = in.asleepH;
+        stored.cycleStart = in.cycleStart;
+        stored.cycleEnd = in.cycleEnd;
+        stored.whoopCycleId = in.whoopCycleId;
+        stored.apiUpdatedAt = in.apiUpdatedAt;
+        stored.source = in.source == null ? "api" : in.source;
+        stored.updatedAt = now;
+    }
+
+    /** Test seam for the different-cycle replacement path. */
+    void upsertReplaceForTest(WhoopCycle stored, WhoopCycle incoming) {
+        replaceWith(stored, incoming, PyJson.utcNowIso());
     }
 
     /** Test seam for {@link #merge}, which is private because nothing in
