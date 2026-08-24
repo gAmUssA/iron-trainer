@@ -10,6 +10,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -82,8 +84,21 @@ public final class WhoopArchive {
         // cycle must still contribute its date or its journal answers lose theirs.
         List<WhoopCycle> deduped = WhoopCycle.dedupeByDate(cycles);
         if (deduped.size() != cycles.size()) {
-            LOG.infof("WHOOP export: %d cycles collapsed to %d days (%d two-cycle days).",
-                    cycles.size(), deduped.size(), cycles.size() - deduped.size());
+            // Count REMOVED CYCLES and COLLIDING DAYS separately — they are not the
+            // same number. A date carrying three cycles removes two while colliding
+            // once, so reporting the removal count as "two-cycle days" overstates how
+            // many days were affected.
+            Set<String> collidingDays = new LinkedHashSet<>();
+            Set<String> seenDates = new LinkedHashSet<>();
+            for (WhoopCycle c : cycles) {
+                if (c != null && c.date != null && !seenDates.add(c.date)) {
+                    collidingDays.add(c.date);
+                }
+            }
+            LOG.infof("WHOOP export: %d cycles collapsed to %d days — "
+                    + "%d duplicate cycle(s) removed across %d day(s).",
+                    cycles.size(), deduped.size(),
+                    cycles.size() - deduped.size(), collidingDays.size());
         }
         return new Export(deduped, journal);
     }

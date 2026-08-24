@@ -55,10 +55,10 @@ precedes that sleep. (The Phase 2 shadow-mode diff in 4a6s also catches this for
 this is just the cheaper way to find out first.)
 
 ## Todo
-- [ ] Register a WHOOP app; record whether localhost redirect URIs are accepted
-- [ ] Probe historical reach with the 2015 start date
-- [ ] Verify the sleep -> cycle association direction
-- [ ] Write the three answers into 4a6s so the implementation is not blocked on guesses
+- [x] Register a WHOOP app; record whether localhost redirect URIs are accepted
+- [x] Probe historical reach — five years served in one walk (see Q2 below)
+- [x] Verify the sleep -> cycle association direction
+- [x] Write the three answers into 4a6s so the implementation is not blocked on guesses
 
 
 ## ANSWERED — all three, 2026-08-21

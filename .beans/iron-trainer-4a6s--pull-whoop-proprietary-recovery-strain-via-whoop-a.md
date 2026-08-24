@@ -150,8 +150,22 @@ sleep→cycle direction). Do that first; two of the three change the design.
   paste-the-URL-back fallback is NOT needed.
 - The app is registered with scopes `read:recovery`, `read:cycles`, `read:sleep`.
   Credentials are in `.env` as `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET`.
-- Q2 (historical reach) and Q3 (sleep -> cycle direction) still open; both need a live
-  token, so they are answered during Phase 2 shadow-mode rather than before Phase 1.
+- **Q2 ANSWERED: the API is not a short rolling window.** A live backfill returned
+  `{"cycles":1522,"written":1426,"skipped":96,"from":"2021-08-21"}` — five years in one
+  walk. Precisely: five years is where OUR `irontrainer.history-years` stops, not where
+  WHOOP does, so the true ceiling is still untested. The export holds 2213 cycles over
+  2085 days (~5.7 years), so WHOOP retains at least that. The practical question is
+  settled: the ZIP is not needed for deep history, only for journal entries.
+- **Q3 ANSWERED: the sleep -> cycle association is correct.** Proven by comparison
+  rather than documentation: the export was parsed offline and compared per-date
+  against the API rows in production. If the join were off by one, EVERY overlapping
+  date would disagree. Instead ~94% match exactly (the export simply carries lower
+  precision — `hrv 54.8577` stored as `54`), and the disagreements are not
+  shifted-by-a-day duplicates but days carrying two genuine cycles, which
+  `(athlete_id, date)` cannot represent. That is a separate defect, tracked and fixed
+  in bean 80i2.
+- Consequence for the plan: the Phase 2 shadow-mode diff is no longer needed to
+  validate the join — the offline comparison did it and is repeatable as a script.
 
 ### Privacy policy
 Published at https://irontrainer.app/privacy (PR #126) — required for the WHOOP app.

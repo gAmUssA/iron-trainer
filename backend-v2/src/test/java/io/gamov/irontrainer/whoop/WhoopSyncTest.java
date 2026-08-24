@@ -276,4 +276,21 @@ class WhoopSyncTest {
         assertEquals("2026-01-01", out.get(0).date);
         assertEquals("2026-01-03", out.get(2).date);
     }
+
+    @Test
+    void threeCyclesOnOneDateCollapseToOneAndCountAsASingleCollidingDay() {
+        // Removed-cycle count and colliding-day count are NOT the same number, which
+        // is why the import log reports them separately: three cycles on one date
+        // remove two while colliding once. Reporting "2 two-cycle days" here would
+        // overstate how many days were affected.
+        List<WhoopCycle> in = List.of(
+                cyc("2026-05-05", "2026-05-05 22:00:00", 12.0),
+                cyc("2026-05-05", "2026-05-05 07:00:00", 55.0),
+                cyc("2026-05-05", "2026-05-05 13:00:00", 30.0));
+        List<WhoopCycle> out = WhoopCycle.dedupeByDate(in);
+        assertEquals(1, out.size());
+        assertEquals(55.0, out.get(0).recoveryScore, "earliest start still wins with three");
+        assertEquals(2, in.size() - out.size(), "two cycles removed");
+        assertEquals(1, in.stream().map(c -> c.date).distinct().count(), "one day affected");
+    }
 }
