@@ -1,11 +1,11 @@
 ---
 # iron-trainer-si52
 title: WHOOP connect UI + /api/whoop/status (API sync has no UI at all)
-status: in-progress
+status: completed
 type: task
 priority: high
 created_at: 2026-08-21T15:07:08Z
-updated_at: 2026-08-21T15:16:29Z
+updated_at: 2026-08-24T19:55:40Z
 parent: iron-trainer-4a6s
 ---
 
@@ -61,3 +61,13 @@ should say "reconnect needed", not "connected".
 - [x] Surface reconnect-required distinctly from connected
 - [x] Disconnect should confirm before firing — it drops the token, and reconnecting
       costs a round trip through WHOOP
+
+
+## Summary of Changes
+Shipped in PR #129 and live in production. `GET /api/whoop/status` (configured /
+connected / reconnect_required / last_sync / latest_api_date / effective schedule),
+the connection panel in WhoopView, callback tab handoff, and V12's
+`whoop_reconnect_required` so a dead connection is representable at all.
+
+Follow-ups landed separately: #130 (callback timed out behind Cloudflare; catch-up
+instead of a blind 5-year backfill) and #131 (deterministic two-cycle-day rule).
