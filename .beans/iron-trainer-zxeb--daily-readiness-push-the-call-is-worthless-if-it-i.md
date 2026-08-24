@@ -5,7 +5,8 @@ status: todo
 type: feature
 priority: normal
 created_at: 2026-08-24T19:30:25Z
-updated_at: 2026-08-24T19:30:25Z
+updated_at: 2026-08-24T19:55:40Z
+parent: iron-trainer-flnw
 ---
 
 Every project surveyed in `docs/research/ai-triathlon-coaches-landscape.md` delivers
@@ -38,3 +39,31 @@ load ratio fine, but you're digging a hole." That text already exists in
 - [ ] Scheduled job producing the daily call, guarded on data freshness
 - [ ] Per-athlete send time in Settings
 - [ ] Verify on a real device with a real 05:30 alarm, not the simulator
+
+
+## Overlap check (should have been done before filing)
+
+This was filed off the coach survey without first checking the in-progress epics, and
+it lands squarely inside **[[iron-trainer-flnw]]** ("Daily Companion — the coach comes
+to you… notifications, briefs") and **[[iron-trainer-03qt]]** ("iOS Companion &
+Notifications… local reminders and morning briefs"). Re-parented under flnw.
+
+**It is not a pure duplicate, and the difference is a real decision.** 03qt states the
+posture explicitly:
+
+> local reminders and morning briefs. **No servers, no background Strava — the device
+> does the talking.**
+
+This bean assumed a server-driven APNs push. Those are different architectures with
+different consequences:
+
+- **Local notification (03qt's posture):** the device schedules it from data it already
+  holds. Works offline, no APNs plumbing, no server knowledge of when you wake — but it
+  can only speak from the last sync the phone did, so on a morning where WHOOP has not
+  synced it either says nothing or says something stale.
+- **Server push (this bean):** the backend computes the call at send time from fresh
+  data, and can stay silent when the data is not fresh. Costs APNs plumbing and means
+  the server holds a schedule for each athlete.
+
+Decide this deliberately rather than by whichever gets built first. The freshness
+guard is the crux — see [[iron-trainer-00ww]].
