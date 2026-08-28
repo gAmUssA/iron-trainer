@@ -5,7 +5,7 @@ status: todo
 type: feature
 priority: normal
 created_at: 2026-07-14T20:11:12Z
-updated_at: 2026-07-15T02:33:12Z
+updated_at: 2026-08-28
 parent: iron-trainer-hdn5
 ---
 
@@ -34,11 +34,24 @@ out-and-back; the race guide says 750 ft of gain while a finisher's Garmin logge
 the swim was cut from 1.2 mi to 750 yd. Run is two loops on an unshaded boardwalk.
 
 ### Blocked on athlete input
-`sweat_rate_l_h`, `gel_carb_g` and `gi_tolerance` are all null, so the fluid and sodium
-figures are derived from body mass alone (0.8 L/h placeholder) and labelled as
-estimates. For a 100 kg athlete the truth could be 0.6 or 1.4 L/h — at 1.4 the bike
-finishes 2 L down and the run does not happen. A sweat-rate test protocol is in the
-plan; it must run before taper, i.e. within ~10 days of 2026-08-25.
+`sweat_rate_l_h`, `gel_carb_g` and `gi_tolerance` are all null. The app does NOT give up
+on a null rate — `Nutrition.estimateSweatRate` derives one from body mass:
+100 kg x 0.012 x 1.15 = **1.38 L/h**, with the fluid target capped at **1.0 L/h**
+(`FLUID_REPLACE_FRACTION` 0.8, `MAX_FLUID_ML_H` 1000) and sodium at **690 mg/h**.
+
+The first draft of the plan substituted 0.8 L/h without saying why — an unexplained
+second override of the app, and LOWER than its estimate, which is the dangerous
+direction for hydration. Corrected to the app's figures (caught in review of #133).
+
+The cap means the athlete is planned to run a ~2 L deficit deliberately, which is the
+strongest argument for actually measuring: a sweat-rate test protocol is in the plan and
+must run before taper, i.e. within ~10 days of 2026-08-25.
+
+### Numbers corrected in review
+`RaceReadiness`'s 6:38:19 total assumes the 0.78 bike, so it could not be used as the
+margin for an 0.72 prescription. Rescaled by the same cube root: bike 3:43:23 ->
+**3:49:25**, total **6:44:21**, margin **+1:45:39**. The conclusion survives — six
+minutes of bike buys the run — but the original figures did not support it.
 
 ## Todo
 - [x] Course dossier (conditions, incline, wind history, finisher warnings)
