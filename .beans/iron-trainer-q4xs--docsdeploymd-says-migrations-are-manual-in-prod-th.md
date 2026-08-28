@@ -1,11 +1,11 @@
 ---
 # iron-trainer-q4xs
 title: docs/deploy.md says migrations are manual in prod; they are automatic
-status: todo
+status: completed
 type: bug
 priority: high
 created_at: 2026-08-21T14:22:18Z
-updated_at: 2026-08-21T14:22:18Z
+updated_at: 2026-08-25T18:40:22Z
 ---
 
 `docs/deploy.md` section 2 contradicts the code, in the direction that causes a
@@ -52,12 +52,31 @@ simply stale — it predates whatever change removed the profile scoping.
 - PR #127 adds V10/V11 expecting auto-application.
 
 ## Todo
-- [ ] Rewrite deploy.md section 2 to say migrations ARE applied automatically at
+- [x] Rewrite deploy.md section 2 to say migrations ARE applied automatically at
       startup, and that manual DDL is the thing that breaks it
-- [ ] Explain the one real caveat: `%prod` baselines at V2 because V1/V2 were
+- [x] Explain the one real caveat: `%prod` baselines at V2 because V1/V2 were
       applied to Supabase by hand before Flyway was switched on — so those two are
       recorded as done rather than re-run
-- [ ] Say what to actually do instead: add the migration, deploy, watch the boot
+- [x] Say what to actually do instead: add the migration, deploy, watch the boot
       log, and verify per the deploy-health note
-- [ ] Secondary, non-urgent: `.env.example` still lists Python/FastAPI-era vars
+- [x] Secondary: `.env.example` still lists Python/FastAPI-era vars
       that nothing reads. Confusing rather than dangerous — clean up in the same pass
+
+## Summary of Changes
+
+deploy.md section 2 rewritten in #131. It said migrations were manual in prod; they are
+automatic — `quarkus.flyway.migrate-at-start=true` carries no profile prefix. Following
+the old text actively broke a deploy: manual DDL succeeds, Flyway then finds no history
+row, fails with *relation already exists*, boot fails, and Railway keeps serving the OLD
+image — green CI, stale code.
+
+Copilot then caught that the verification step I wrote was itself unsound: it said
+absence of the `Migrating schema` line means "already applied", which equally means
+Flyway never started or logs were unavailable. Now requires positive evidence — the
+migration line, or `Schema is up to date` plus a matching `Current version`.
+
+`.env.example` rewritten today (2026-08-25). It still described the FastAPI app: port
+8000, `DATA_DIR`/SQLite, a SQLAlchemy `DATABASE_URL`. Replaced with the vars backend-v2
+actually reads (verified against application.properties), the WHOOP block that never
+existed, and a note that dev/test need no DB config at all because Dev Services provides
+one.

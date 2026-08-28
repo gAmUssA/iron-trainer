@@ -1,11 +1,11 @@
 ---
 # iron-trainer-4a6s
 title: Pull WHOOP proprietary Recovery % + Strain via WHOOP API (distinct source)
-status: todo
+status: completed
 type: feature
 priority: normal
 created_at: 2026-07-29T20:38:25Z
-updated_at: 2026-08-21T04:00:18Z
+updated_at: 2026-08-25T18:40:40Z
 parent: iron-trainer-ids6
 blocked_by:
     - iron-trainer-mfm9
@@ -14,11 +14,11 @@ blocked_by:
 The ONLY thing worth pulling directly from WHOOP: its proprietary Recovery % (+ Strain) — NOT in Apple Health. Store as a distinct metric, source='whoop_api'. Do NOT pull raw HRV/RHR/sleep from WHOOP (already ingested via HealthKit — would double-count).
 
 ## Todo
-- [ ] WHOOP dev app: create at id.whoop.com → Client ID/Secret (self-serve; ≤10 users until approval — fine for personal/beta).
-- [ ] OAuth 2.0 Authorization Code + offline scope: iOS ASWebAuthenticationSession (or web redirect) → backend (Quarkus) holds secret, code→token exchange, store + ROTATE refresh tokens (single-use). Scopes: read:recovery, read:cycles.
-- [ ] Pull layer: GET recovery (via Cycle endpoints) — recovery_score, day strain; cursor pagination (nextToken, start/end). Respect 100/min + 10k/day.
-- [ ] Store as whoop_recovery / whoop_strain with source='whoop_api'; reuse daily_recovery-style schema + a source column.
-- [ ] (Later) webhooks (recovery.updated, HMAC-SHA256 verify, fetch-on-notify) — start with a daily/hourly poll; add webhooks only if latency matters.
+- [x] WHOOP dev app: create at id.whoop.com → Client ID/Secret (self-serve; ≤10 users until approval — fine for personal/beta).
+- [x] OAuth 2.0 Authorization Code + offline scope: iOS ASWebAuthenticationSession (or web redirect) → backend (Quarkus) holds secret, code→token exchange, store + ROTATE refresh tokens (single-use). Scopes: read:recovery, read:cycles.
+- [x] Pull layer: GET recovery (via Cycle endpoints) — recovery_score, day strain; cursor pagination (nextToken, start/end). Respect 100/min + 10k/day.
+- [x] Store as whoop_recovery / whoop_strain with source='whoop_api'; reuse daily_recovery-style schema + a source column.
+- [x] (Deliberately NOT built) webhooks (recovery.updated, HMAC-SHA256 verify, fetch-on-notify) — start with a daily/hourly poll; add webhooks only if latency matters.
 Effort ~3-5 days. Auth token: ~1h access, rotating refresh.
 
 ## Research 2026-08-20 — API surveyed, and this bean's plan needs amending
@@ -169,3 +169,35 @@ sleep→cycle direction). Do that first; two of the three change the design.
 
 ### Privacy policy
 Published at https://irontrainer.app/privacy (PR #126) — required for the WHOOP app.
+
+## Summary of Changes
+
+Shipped across #127, #130, #131 and live in production since 2026-08-21.
+
+**Built:** prod + dev WHOOP apps registered; OAuth 2.0 with rotating single-use refresh
+tokens; typed v2 client (data endpoints live under `/developer/v2/…`, OAuth does not —
+an asymmetry that made the first live attempt look connected while every data call
+404'd); pacing at 700ms/page against the 100/min cap with backoff on 429; dedup upsert
+with source precedence; daily 10:00 job through JobRunner; connect UI and
+`/api/whoop/status` (bean si52).
+
+**Deviations from the plan above, each for a reason found by running it:**
+- Storage is one `whoop_cycles` table with a `source` column, not separate
+  `whoop_recovery`/`whoop_strain` — the ZIP importer already owned that table and two
+  tables would have needed the same precedence rules twice.
+- Scopes are `read:recovery read:cycles read:sleep offline`, adding sleep. Deliberately
+  no `read:profile`: the member id comes from `user_id` already present on cycle
+  records, so the cross-member check costs no extra scope.
+- The connect-time sync is a **catch-up from the newest stored day**, not a full
+  backfill. A blind 5-year walk re-fetched years already on disk and, run inline,
+  exceeded Cloudflare's 100s edge timeout — the athlete got a 524 on a connection that
+  had actually succeeded (#130).
+- Webhooks: not built, and now a deliberate no. A daily poll costs ~4 requests against
+  a 10k/day budget for a metric that changes once overnight; webhooks would add a public
+  endpoint, HMAC verification, delivery dedup and a reconciliation poll anyway.
+
+**The export ZIP is permanent, not transitional.** v2 has no journal endpoint, so
+journal entries can only come from the export.
+
+Open follow-ups tracked separately: [[iron-trainer-gcuv]] (scheduler across instances),
+[[iron-trainer-rhky]] (10-member cap), [[iron-trainer-80i2]] (closed — two-cycle days).
